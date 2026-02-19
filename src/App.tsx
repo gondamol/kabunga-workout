@@ -15,6 +15,7 @@ import ProfilePage from './pages/ProfilePage';
 import BottomNav from './components/BottomNav';
 import InstallPrompt from './components/InstallPrompt';
 import OfflineBanner from './components/OfflineBanner';
+import UpdateBanner from './components/UpdateBanner';
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
     const { user, initialized } = useAuthStore();
@@ -62,6 +63,7 @@ export default function App() {
 
     return (
         <div className="flex flex-col min-h-screen bg-bg-primary">
+            <UpdateBanner />
             <OfflineBanner isOnline={isOnline} />
 
             <main className={`flex-1 ${showBottomNav ? 'pb-20' : ''}`}>

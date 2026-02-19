@@ -35,6 +35,13 @@ interface WorkoutState {
     }) => void;
     removeExercise: (exerciseId: string) => void;
     updateExerciseNotes: (exerciseId: string, notes: string) => void;
+    /** Edit the planned sets/reps/weight/label on an exercise in the queue */
+    updateExercisePlan: (exerciseId: string, patch: {
+        plannedSets?: number;
+        plannedReps?: number | null;
+        plannedWeight?: number | null;
+        label?: string;
+    }) => void;
 
     addSet: (exerciseId: string) => void;
     removeSet: (exerciseId: string, setId: string) => void;
@@ -264,6 +271,54 @@ export const useWorkoutStore = create<WorkoutState>()(
                         exercises: activeSession.exercises.map(e =>
                             e.id === exerciseId ? { ...e, notes } : e
                         ),
+                        updatedAt: Date.now(),
+                    },
+                });
+            },
+
+            updateExercisePlan: (exerciseId, patch) => {
+                const { activeSession } = get();
+                if (!activeSession) return;
+                set({
+                    activeSession: {
+                        ...activeSession,
+                        exercises: activeSession.exercises.map(e => {
+                            if (e.id !== exerciseId) return e;
+                            const newPlan = {
+                                plannedSets: patch.plannedSets ?? e.plannedSets,
+                                plannedReps: patch.plannedReps !== undefined ? patch.plannedReps ?? undefined : e.plannedReps,
+                                plannedWeight: patch.plannedWeight !== undefined ? patch.plannedWeight ?? undefined : e.plannedWeight,
+                                name: patch.label ?? e.name,
+                            };
+                            // Sync the set rows count to match plannedSets
+                            let sets = [...e.sets];
+                            if (patch.plannedSets !== undefined) {
+                                const target = patch.plannedSets;
+                                if (target > sets.length) {
+                                    const toAdd = target - sets.length;
+                                    const lastSet = sets[sets.length - 1];
+                                    for (let i = 0; i < toAdd; i++) {
+                                        sets.push({
+                                            id: generateId(),
+                                            reps: lastSet?.reps ?? (newPlan.plannedReps || 0),
+                                            weight: lastSet?.weight ?? (newPlan.plannedWeight || 0),
+                                            completed: false,
+                                        });
+                                    }
+                                } else if (target < sets.length) {
+                                    sets = sets.slice(0, target);
+                                }
+                            }
+                            // Sync weight & reps into uncompleted set rows
+                            if (patch.plannedReps !== undefined || patch.plannedWeight !== undefined) {
+                                sets = sets.map(s => s.completed ? s : {
+                                    ...s,
+                                    ...(patch.plannedReps !== undefined && patch.plannedReps !== null ? { reps: patch.plannedReps } : {}),
+                                    ...(patch.plannedWeight !== undefined ? { weight: patch.plannedWeight ?? 0 } : {}),
+                                });
+                            }
+                            return { ...e, ...newPlan, sets };
+                        }),
                         updatedAt: Date.now(),
                     },
                 });

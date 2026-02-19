@@ -7,14 +7,16 @@ import type { WorkoutSession } from '../lib/types';
 import { useEffect, useState } from 'react';
 import { COMMON_EXERCISES } from '../lib/constants';
 import {
-    Play, Dumbbell, Clock, Plus, X, Search,
-    GripVertical, ChevronRight, Trash2, History,
+    Play, Dumbbell, Clock, Plus, X, Search, History,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 
 export default function WorkoutPage() {
     const { user } = useAuthStore();
-    const { startWorkout, activeSession, addExercise, initPlan, isTimerRunning } = useWorkoutStore();
+    const {
+        startWorkout, activeSession, addExercise, initPlan,
+        isTimerRunning, updateExercisePlan, removeExercise,
+    } = useWorkoutStore();
     const navigate = useNavigate();
 
     const [history, setHistory] = useState<WorkoutSession[]>([]);
@@ -33,15 +35,13 @@ export default function WorkoutPage() {
             .catch(console.warn);
     }, [user]);
 
-    // If there's an active session with a timer running, go straight to it
+    // Resume if already live, otherwise start fresh from the plan
     const handleResumeOrStart = () => {
         if (!user) return;
-
         if (activeSession && isTimerRunning) {
             navigate('/active-workout');
             return;
         }
-
         if (queue.length === 0) {
             toast('Add at least one exercise first! 💪', { icon: '⚠️' });
             return;
@@ -52,7 +52,6 @@ export default function WorkoutPage() {
 
     const handleAddExercise = (name: string) => {
         if (!user) return;
-        // If no session yet, initialise a planning session (no timer)
         if (!activeSession) initPlan(user.uid);
         addExercise(name);
         setShowPicker(false);
@@ -64,16 +63,12 @@ export default function WorkoutPage() {
         if (custom.trim()) handleAddExercise(custom.trim());
     };
 
-    const handleRemoveExercise = (id: string) => {
-        useWorkoutStore.getState().removeExercise(id);
-    };
-
     const filtered = COMMON_EXERCISES.filter(e =>
         e.toLowerCase().includes(search.toLowerCase())
     );
 
     return (
-        <div className="max-w-lg mx-auto px-4 pt-6 pb-4 space-y-5">
+        <div className="max-w-lg mx-auto px-4 pt-6 pb-24 space-y-5">
             {/* Header */}
             <div className="flex items-center justify-between animate-fade-in">
                 <h1 className="text-2xl font-bold">Workout</h1>
@@ -95,8 +90,13 @@ export default function WorkoutPage() {
 
             {tab === 'plan' && (
                 <>
+                    {/* Tip banner */}
+                    <p className="text-xs text-text-muted px-1">
+                        Set up your exercises below — sets, reps, weight — then tap <strong className="text-text-primary">Start Workout</strong>. You'll move straight to doing them one by one.
+                    </p>
+
                     {/* Exercise Queue */}
-                    <div className="space-y-2 animate-fade-in stagger-1">
+                    <div className="space-y-3 animate-fade-in stagger-1">
                         {queue.length === 0 ? (
                             <div className="glass rounded-3xl p-8 text-center border-2 border-dashed border-border">
                                 <div className="w-16 h-16 rounded-2xl bg-accent/10 flex items-center justify-center mx-auto mb-4">
@@ -104,7 +104,7 @@ export default function WorkoutPage() {
                                 </div>
                                 <h3 className="font-bold text-base mb-1">Build your workout</h3>
                                 <p className="text-sm text-text-secondary mb-5">
-                                    Add exercises below, then hit Start when ready
+                                    Add your warmup, main lifts and cooldown — then hit Start
                                 </p>
                                 <button
                                     onClick={() => setShowPicker(true)}
@@ -116,33 +116,19 @@ export default function WorkoutPage() {
                         ) : (
                             <>
                                 {queue.map((ex, idx) => (
-                                    <div
+                                    <ExerciseCard
                                         key={ex.id}
-                                        className="glass rounded-2xl p-4 flex items-center gap-3 animate-fade-in"
-                                    >
-                                        {/* Order number */}
-                                        <div className="w-8 h-8 rounded-lg bg-accent/10 flex items-center justify-center shrink-0">
-                                            <span className="text-xs font-bold text-accent">{idx + 1}</span>
-                                        </div>
-                                        <div className="flex-1 min-w-0">
-                                            <p className="font-semibold text-sm truncate">{ex.name}</p>
-                                            {ex.plannedSets && (
-                                                <p className="text-xs text-text-muted mt-0.5">
-                                                    {ex.plannedSets} sets × {ex.plannedReps} reps
-                                                    {ex.plannedWeight ? ` @ ${ex.plannedWeight}kg` : ''}
-                                                </p>
-                                            )}
-                                        </div>
-                                        <button
-                                            onClick={() => handleRemoveExercise(ex.id)}
-                                            className="p-2 text-text-muted active:scale-90 transition-transform"
-                                        >
-                                            <X size={16} />
-                                        </button>
-                                    </div>
+                                        index={idx}
+                                        name={ex.name}
+                                        plannedSets={ex.plannedSets ?? 1}
+                                        plannedReps={ex.plannedReps ?? null}
+                                        plannedWeight={ex.plannedWeight ?? null}
+                                        onChange={(patch) => updateExercisePlan(ex.id, patch)}
+                                        onRemove={() => removeExercise(ex.id)}
+                                    />
                                 ))}
 
-                                {/* Add more button */}
+                                {/* Add more */}
                                 <button
                                     onClick={() => setShowPicker(true)}
                                     className="w-full py-3 rounded-2xl border-2 border-dashed border-border text-text-muted text-sm font-medium flex items-center justify-center gap-2 hover:border-accent/40 hover:text-accent transition-colors"
@@ -177,7 +163,7 @@ export default function WorkoutPage() {
                         </button>
                     )}
 
-                    {/* Quick stats row */}
+                    {/* Quick stats */}
                     {history.length > 0 && (
                         <div className="glass rounded-2xl p-4 flex items-center justify-around animate-fade-in stagger-3">
                             <div className="text-center">
@@ -256,7 +242,6 @@ export default function WorkoutPage() {
                             </button>
                         </div>
 
-                        {/* Search */}
                         <div className="relative mb-3">
                             <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-text-muted" />
                             <input
@@ -269,7 +254,6 @@ export default function WorkoutPage() {
                             />
                         </div>
 
-                        {/* Custom */}
                         <div className="flex gap-2 mb-3">
                             <input
                                 type="text"
@@ -288,7 +272,6 @@ export default function WorkoutPage() {
                             </button>
                         </div>
 
-                        {/* List */}
                         <div className="overflow-y-auto flex-1 -mx-2">
                             {filtered.map(name => (
                                 <button
@@ -304,6 +287,118 @@ export default function WorkoutPage() {
                     </div>
                 </div>
             )}
+        </div>
+    );
+}
+
+// ──────────────────────────────────────────────────────────────────────────────
+// Inline editable exercise card for the Plan tab
+// ──────────────────────────────────────────────────────────────────────────────
+interface ExerciseCardProps {
+    index: number;
+    name: string;
+    plannedSets: number;
+    plannedReps: number | null;
+    plannedWeight: number | null;  // null = bodyweight
+    onChange: (patch: { plannedSets?: number; plannedReps?: number | null; plannedWeight?: number | null }) => void;
+    onRemove: () => void;
+}
+
+function ExerciseCard({ index, name, plannedSets, plannedReps, plannedWeight, onChange, onRemove }: ExerciseCardProps) {
+    return (
+        <div className="glass rounded-2xl p-4 animate-fade-in">
+            {/* Top row: number + name + remove */}
+            <div className="flex items-center gap-3 mb-3">
+                <div className="w-8 h-8 rounded-lg bg-accent/10 flex items-center justify-center shrink-0">
+                    <span className="text-xs font-bold text-accent">{index + 1}</span>
+                </div>
+                <p className="flex-1 font-semibold text-sm truncate">{name}</p>
+                <button
+                    onClick={onRemove}
+                    className="p-1.5 text-text-muted hover:text-red active:scale-90 transition-all"
+                >
+                    <X size={16} />
+                </button>
+            </div>
+
+            {/* Input row: Sets — Reps — Weight */}
+            <div className="grid grid-cols-3 gap-2">
+                {/* Sets */}
+                <div>
+                    <label className="block text-[10px] text-text-muted font-semibold uppercase tracking-wide mb-1 text-center">
+                        Sets
+                    </label>
+                    <div className="flex items-center gap-1">
+                        <button
+                            onClick={() => onChange({ plannedSets: Math.max(1, plannedSets - 1) })}
+                            className="w-8 h-8 rounded-lg bg-bg-input border border-border flex items-center justify-center text-lg font-bold text-text-muted active:scale-90 transition-transform"
+                        >
+                            −
+                        </button>
+                        <input
+                            type="number"
+                            inputMode="numeric"
+                            value={plannedSets}
+                            min={1}
+                            max={20}
+                            onChange={e => {
+                                const v = parseInt(e.target.value);
+                                if (v >= 1) onChange({ plannedSets: v });
+                            }}
+                            className="flex-1 min-w-0 bg-bg-input border border-border rounded-xl py-2 text-sm text-center font-bold focus:outline-none focus:border-accent/50"
+                        />
+                        <button
+                            onClick={() => onChange({ plannedSets: Math.min(20, plannedSets + 1) })}
+                            className="w-8 h-8 rounded-lg bg-bg-input border border-border flex items-center justify-center text-lg font-bold text-text-muted active:scale-90 transition-transform"
+                        >
+                            +
+                        </button>
+                    </div>
+                </div>
+
+                {/* Reps */}
+                <div>
+                    <label className="block text-[10px] text-text-muted font-semibold uppercase tracking-wide mb-1 text-center">
+                        Reps
+                    </label>
+                    <input
+                        type="number"
+                        inputMode="numeric"
+                        value={plannedReps ?? ''}
+                        placeholder="—"
+                        onChange={e => {
+                            const v = parseInt(e.target.value);
+                            onChange({ plannedReps: isNaN(v) ? null : v });
+                        }}
+                        className="w-full bg-bg-input border border-border rounded-xl py-2 text-sm text-center font-bold focus:outline-none focus:border-accent/50"
+                    />
+                </div>
+
+                {/* Weight — optional */}
+                <div>
+                    <label className="block text-[10px] text-text-muted font-semibold uppercase tracking-wide mb-1 text-center">
+                        kg <span className="normal-case font-normal">(opt)</span>
+                    </label>
+                    <input
+                        type="number"
+                        inputMode="decimal"
+                        value={plannedWeight ?? ''}
+                        placeholder="BW"
+                        onChange={e => {
+                            const raw = e.target.value;
+                            onChange({ plannedWeight: raw === '' ? null : parseFloat(raw) || null });
+                        }}
+                        className="w-full bg-bg-input border border-border rounded-xl py-2 text-sm text-center font-bold focus:outline-none focus:border-accent/50"
+                    />
+                </div>
+            </div>
+
+            {/* Summary line */}
+            <p className="text-xs text-text-muted mt-2 text-center">
+                {plannedSets} set{plannedSets !== 1 ? 's' : ''}
+                {plannedReps ? ` × ${plannedReps} reps` : ''}
+                {plannedWeight ? ` @ ${plannedWeight}kg` : ' — bodyweight'}
+            </p>
         </div>
     );
 }
