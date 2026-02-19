@@ -9,25 +9,30 @@ interface WorkoutState {
     timerSeconds: number;
     isTimerRunning: boolean;
 
+    // Which exercise is currently "on screen" during a live session
+    currentExerciseIndex: number;
+
     // Rest timer
     restSeconds: number;
-    restTarget: number; // how long they want to rest
+    restTarget: number;
     isResting: boolean;
     defaultRestSeconds: number;
 
-    // Guided mode
+    // Template guided mode
     activeTemplate: WorkoutTemplate | null;
-    currentPhaseIndex: number;
-    currentExerciseIndex: number;
     isGuidedMode: boolean;
 
     // Actions
-    startWorkout: (userId: string) => void;
+    initPlan: (userId: string) => void;          // Create session in planning state (no timer)
+    startWorkout: (userId: string) => void;       // Start timer on existing or new session
     startFromTemplate: (userId: string, template: WorkoutTemplate) => void;
     endWorkout: () => WorkoutSession | null;
     cancelWorkout: () => void;
 
-    addExercise: (name: string, planned?: { sets?: number; reps?: number; weight?: number; restSeconds?: number; cue?: string; isWarmup?: boolean }) => void;
+    addExercise: (name: string, planned?: {
+        sets?: number; reps?: number; weight?: number;
+        restSeconds?: number; cue?: string; isWarmup?: boolean;
+    }) => void;
     removeExercise: (exerciseId: string) => void;
     updateExerciseNotes: (exerciseId: string, notes: string) => void;
 
@@ -42,19 +47,33 @@ interface WorkoutState {
     tick: () => void;
     setTimerRunning: (running: boolean) => void;
 
+    // Guided navigation (one exercise at a time)
+    goToExercise: (index: number) => void;
+    nextExercise: () => void;
+    prevExercise: () => void;
+
     // Rest timer
     startRest: (seconds?: number) => void;
     stopRest: () => void;
     setDefaultRest: (seconds: number) => void;
-
-    // Guided mode navigation
-    nextExercise: () => void;
-    prevExercise: () => void;
-    getCurrentPhase: () => WorkoutPhase | null;
-    getCurrentTemplateExercise: () => { name: string; cue: string } | null;
 }
 
 const generateId = () => Math.random().toString(36).slice(2, 10) + Date.now().toString(36);
+
+const blankSession = (userId: string): WorkoutSession => ({
+    id: generateId(),
+    userId,
+    startedAt: Date.now(),
+    endedAt: null,
+    duration: 0,
+    exercises: [],
+    mediaUrls: [],
+    caloriesEstimate: 0,
+    notes: '',
+    status: 'active',
+    createdAt: Date.now(),
+    updatedAt: Date.now(),
+});
 
 export const useWorkoutStore = create<WorkoutState>()(
     persist(
@@ -62,47 +81,59 @@ export const useWorkoutStore = create<WorkoutState>()(
             activeSession: null,
             timerSeconds: 0,
             isTimerRunning: false,
+            currentExerciseIndex: 0,
 
-            // Rest timer state
             restSeconds: 0,
             restTarget: 90,
             isResting: false,
             defaultRestSeconds: 90,
 
-            // Guided mode state
             activeTemplate: null,
-            currentPhaseIndex: 0,
-            currentExerciseIndex: 0,
             isGuidedMode: false,
 
-            startWorkout: (userId: string) => {
-                const session: WorkoutSession = {
-                    id: generateId(),
-                    userId,
-                    startedAt: Date.now(),
-                    endedAt: null,
-                    duration: 0,
-                    exercises: [],
-                    mediaUrls: [],
-                    caloriesEstimate: 0,
-                    notes: '',
-                    status: 'active',
-                    createdAt: Date.now(),
-                    updatedAt: Date.now(),
-                };
+            // ─── initPlan ───
+            // Creates a session in "planning" state — exercises can be added,
+            // but the timer is NOT running yet.
+            initPlan: (userId: string) => {
+                const existing = get().activeSession;
+                if (existing) return; // already have one
                 set({
-                    activeSession: session,
+                    activeSession: { ...blankSession(userId), status: 'active' },
                     timerSeconds: 0,
-                    isTimerRunning: true,
-                    isGuidedMode: false,
-                    activeTemplate: null,
-                    restSeconds: 0,
+                    isTimerRunning: false,
+                    currentExerciseIndex: 0,
                     isResting: false,
+                    restSeconds: 0,
                 });
             },
 
+            // ─── startWorkout ───
+            // Boots the timer on whatever session exists (or creates one).
+            startWorkout: (userId: string) => {
+                const existing = get().activeSession;
+                if (existing) {
+                    // Reuse the existing plan — just start the timer
+                    set({
+                        isTimerRunning: true,
+                        currentExerciseIndex: 0,
+                        activeSession: { ...existing, startedAt: Date.now() },
+                    });
+                } else {
+                    set({
+                        activeSession: blankSession(userId),
+                        timerSeconds: 0,
+                        isTimerRunning: true,
+                        currentExerciseIndex: 0,
+                        isResting: false,
+                        restSeconds: 0,
+                        isGuidedMode: false,
+                        activeTemplate: null,
+                    });
+                }
+            },
+
+            // ─── startFromTemplate ───
             startFromTemplate: (userId: string, template: WorkoutTemplate) => {
-                // Build exercises from all template phases
                 const exercises: Exercise[] = [];
                 for (const phase of template.phases) {
                     for (const ex of phase.exercises) {
@@ -128,35 +159,19 @@ export const useWorkoutStore = create<WorkoutState>()(
                     }
                 }
 
-                const session: WorkoutSession = {
-                    id: generateId(),
-                    userId,
-                    templateId: template.id,
-                    startedAt: Date.now(),
-                    endedAt: null,
-                    duration: 0,
-                    exercises,
-                    mediaUrls: [],
-                    caloriesEstimate: 0,
-                    notes: '',
-                    status: 'active',
-                    createdAt: Date.now(),
-                    updatedAt: Date.now(),
-                };
-
                 set({
-                    activeSession: session,
+                    activeSession: { ...blankSession(userId), templateId: template.id, exercises },
                     timerSeconds: 0,
                     isTimerRunning: true,
                     isGuidedMode: true,
                     activeTemplate: template,
-                    currentPhaseIndex: 0,
                     currentExerciseIndex: 0,
                     restSeconds: 0,
                     isResting: false,
                 });
             },
 
+            // ─── endWorkout ───
             endWorkout: () => {
                 const { activeSession, timerSeconds } = get();
                 if (!activeSession) return null;
@@ -177,11 +192,13 @@ export const useWorkoutStore = create<WorkoutState>()(
                     restSeconds: 0,
                     isGuidedMode: false,
                     activeTemplate: null,
+                    currentExerciseIndex: 0,
                 });
                 playCompletionChime();
                 return completed;
             },
 
+            // ─── cancelWorkout ───
             cancelWorkout: () => {
                 set({
                     activeSession: null,
@@ -191,25 +208,27 @@ export const useWorkoutStore = create<WorkoutState>()(
                     restSeconds: 0,
                     isGuidedMode: false,
                     activeTemplate: null,
+                    currentExerciseIndex: 0,
                 });
             },
 
-            addExercise: (name: string, planned) => {
+            // ─── Exercise management ───
+            addExercise: (name, planned) => {
                 const { activeSession } = get();
                 if (!activeSession) return;
-                const numSets = planned?.sets || 1;
+                const numSets = planned?.sets || 3;
                 const exercise: Exercise = {
                     id: generateId(),
                     name,
                     sets: Array.from({ length: numSets }, () => ({
                         id: generateId(),
-                        reps: 0,
+                        reps: planned?.reps || 0,
                         weight: planned?.weight || 0,
                         completed: false,
                         isWarmup: planned?.isWarmup,
                     })),
                     notes: '',
-                    plannedSets: planned?.sets,
+                    plannedSets: planned?.sets || 3,
                     plannedReps: planned?.reps,
                     plannedWeight: planned?.weight,
                     restSeconds: planned?.restSeconds,
@@ -225,25 +244,24 @@ export const useWorkoutStore = create<WorkoutState>()(
                 });
             },
 
-            removeExercise: (exerciseId: string) => {
-                const { activeSession } = get();
+            removeExercise: (exerciseId) => {
+                const { activeSession, currentExerciseIndex } = get();
                 if (!activeSession) return;
+                const newExercises = activeSession.exercises.filter(e => e.id !== exerciseId);
                 set({
-                    activeSession: {
-                        ...activeSession,
-                        exercises: activeSession.exercises.filter((e) => e.id !== exerciseId),
-                        updatedAt: Date.now(),
-                    },
+                    activeSession: { ...activeSession, exercises: newExercises, updatedAt: Date.now() },
+                    // Clamp index if we removed an exercise before current
+                    currentExerciseIndex: Math.min(currentExerciseIndex, Math.max(0, newExercises.length - 1)),
                 });
             },
 
-            updateExerciseNotes: (exerciseId: string, notes: string) => {
+            updateExerciseNotes: (exerciseId, notes) => {
                 const { activeSession } = get();
                 if (!activeSession) return;
                 set({
                     activeSession: {
                         ...activeSession,
-                        exercises: activeSession.exercises.map((e) =>
+                        exercises: activeSession.exercises.map(e =>
                             e.id === exerciseId ? { ...e, notes } : e
                         ),
                         updatedAt: Date.now(),
@@ -251,25 +269,22 @@ export const useWorkoutStore = create<WorkoutState>()(
                 });
             },
 
-            addSet: (exerciseId: string) => {
+            addSet: (exerciseId) => {
                 const { activeSession } = get();
                 if (!activeSession) return;
                 set({
                     activeSession: {
                         ...activeSession,
-                        exercises: activeSession.exercises.map((e) =>
+                        exercises: activeSession.exercises.map(e =>
                             e.id === exerciseId
                                 ? {
                                     ...e,
-                                    sets: [
-                                        ...e.sets,
-                                        {
-                                            id: generateId(),
-                                            reps: 0,
-                                            weight: e.sets[e.sets.length - 1]?.weight || e.plannedWeight || 0,
-                                            completed: false,
-                                        },
-                                    ],
+                                    sets: [...e.sets, {
+                                        id: generateId(),
+                                        reps: e.sets[e.sets.length - 1]?.reps || 0,
+                                        weight: e.sets[e.sets.length - 1]?.weight || e.plannedWeight || 0,
+                                        completed: false,
+                                    }],
                                 }
                                 : e
                         ),
@@ -278,15 +293,15 @@ export const useWorkoutStore = create<WorkoutState>()(
                 });
             },
 
-            removeSet: (exerciseId: string, setId: string) => {
+            removeSet: (exerciseId, setId) => {
                 const { activeSession } = get();
                 if (!activeSession) return;
                 set({
                     activeSession: {
                         ...activeSession,
-                        exercises: activeSession.exercises.map((e) =>
+                        exercises: activeSession.exercises.map(e =>
                             e.id === exerciseId
-                                ? { ...e, sets: e.sets.filter((s) => s.id !== setId) }
+                                ? { ...e, sets: e.sets.filter(s => s.id !== setId) }
                                 : e
                         ),
                         updatedAt: Date.now(),
@@ -294,20 +309,15 @@ export const useWorkoutStore = create<WorkoutState>()(
                 });
             },
 
-            updateSet: (exerciseId: string, setId: string, data: Partial<ExerciseSet>) => {
+            updateSet: (exerciseId, setId, data) => {
                 const { activeSession } = get();
                 if (!activeSession) return;
                 set({
                     activeSession: {
                         ...activeSession,
-                        exercises: activeSession.exercises.map((e) =>
+                        exercises: activeSession.exercises.map(e =>
                             e.id === exerciseId
-                                ? {
-                                    ...e,
-                                    sets: e.sets.map((s) =>
-                                        s.id === setId ? { ...s, ...data } : s
-                                    ),
-                                }
+                                ? { ...e, sets: e.sets.map(s => s.id === setId ? { ...s, ...data } : s) }
                                 : e
                         ),
                         updatedAt: Date.now(),
@@ -315,7 +325,7 @@ export const useWorkoutStore = create<WorkoutState>()(
                 });
             },
 
-            toggleSetComplete: (exerciseId: string, setId: string) => {
+            toggleSetComplete: (exerciseId, setId) => {
                 const { activeSession } = get();
                 if (!activeSession) return;
                 const exercise = activeSession.exercises.find(e => e.id === exerciseId);
@@ -325,16 +335,11 @@ export const useWorkoutStore = create<WorkoutState>()(
                 set({
                     activeSession: {
                         ...activeSession,
-                        exercises: activeSession.exercises.map((e) =>
+                        exercises: activeSession.exercises.map(e =>
                             e.id === exerciseId
                                 ? {
-                                    ...e,
-                                    sets: e.sets.map((s) =>
-                                        s.id === setId ? {
-                                            ...s,
-                                            completed: newCompleted,
-                                            completedAt: newCompleted ? Date.now() : undefined,
-                                        } : s
+                                    ...e, sets: e.sets.map(s =>
+                                        s.id === setId ? { ...s, completed: newCompleted, completedAt: newCompleted ? Date.now() : undefined } : s
                                     ),
                                 }
                                 : e
@@ -343,12 +348,10 @@ export const useWorkoutStore = create<WorkoutState>()(
                     },
                 });
 
-                if (newCompleted) {
-                    vibrateSetComplete();
-                }
+                if (newCompleted) vibrateSetComplete();
             },
 
-            completeSet: (exerciseId: string, setId: string) => {
+            completeSet: (exerciseId, setId) => {
                 const { activeSession, defaultRestSeconds } = get();
                 if (!activeSession) return;
                 const exercise = activeSession.exercises.find(e => e.id === exerciseId);
@@ -357,16 +360,11 @@ export const useWorkoutStore = create<WorkoutState>()(
                 set({
                     activeSession: {
                         ...activeSession,
-                        exercises: activeSession.exercises.map((e) =>
+                        exercises: activeSession.exercises.map(e =>
                             e.id === exerciseId
                                 ? {
-                                    ...e,
-                                    sets: e.sets.map((s) =>
-                                        s.id === setId ? {
-                                            ...s,
-                                            completed: true,
-                                            completedAt: Date.now(),
-                                        } : s
+                                    ...e, sets: e.sets.map(s =>
+                                        s.id === setId ? { ...s, completed: true, completedAt: Date.now() } : s
                                     ),
                                 }
                                 : e
@@ -376,36 +374,25 @@ export const useWorkoutStore = create<WorkoutState>()(
                 });
 
                 vibrateSetComplete();
-                // Auto-start rest timer
                 get().startRest(restTime);
             },
 
-            addMediaUrl: (url: string) => {
+            addMediaUrl: (url) => {
                 const { activeSession } = get();
                 if (!activeSession) return;
-                set({
-                    activeSession: {
-                        ...activeSession,
-                        mediaUrls: [...activeSession.mediaUrls, url],
-                        updatedAt: Date.now(),
-                    },
-                });
+                set({ activeSession: { ...activeSession, mediaUrls: [...activeSession.mediaUrls, url], updatedAt: Date.now() } });
             },
 
+            // ─── Timer ───
             tick: () => {
-                const { isTimerRunning, isResting, restSeconds, restTarget } = get();
+                const { isTimerRunning, isResting, restSeconds } = get();
                 if (isTimerRunning) {
-                    set((state) => ({ timerSeconds: state.timerSeconds + 1 }));
+                    set(state => ({ timerSeconds: state.timerSeconds + 1 }));
                 }
                 if (isResting && restSeconds > 0) {
                     const newRest = restSeconds - 1;
                     set({ restSeconds: newRest });
-
-                    // Countdown beeps in last 3 seconds
-                    if (newRest <= 3 && newRest > 0) {
-                        playCountdownBeep();
-                    }
-                    // Rest complete
+                    if (newRest <= 3 && newRest > 0) playCountdownBeep();
                     if (newRest === 0) {
                         playAlarm();
                         vibrateRestComplete();
@@ -414,66 +401,40 @@ export const useWorkoutStore = create<WorkoutState>()(
                 }
             },
 
-            setTimerRunning: (running: boolean) => set({ isTimerRunning: running }),
+            setTimerRunning: (running) => set({ isTimerRunning: running }),
 
-            // Rest timer
-            startRest: (seconds?: number) => {
-                const { defaultRestSeconds } = get();
-                const target = seconds || defaultRestSeconds;
-                set({ isResting: true, restSeconds: target, restTarget: target });
+            // ─── Guided navigation ───
+            goToExercise: (index) => {
+                const exercises = get().activeSession?.exercises ?? [];
+                if (index >= 0 && index < exercises.length) {
+                    set({ currentExerciseIndex: index });
+                }
             },
 
-            stopRest: () => {
-                set({ isResting: false, restSeconds: 0 });
-            },
-
-            setDefaultRest: (seconds: number) => {
-                set({ defaultRestSeconds: seconds });
-            },
-
-            // Guided mode navigation
             nextExercise: () => {
-                const { activeTemplate, currentPhaseIndex, currentExerciseIndex } = get();
-                if (!activeTemplate) return;
-
-                const phase = activeTemplate.phases[currentPhaseIndex];
-                if (!phase) return;
-
-                if (currentExerciseIndex < phase.exercises.length - 1) {
+                const exercises = get().activeSession?.exercises ?? [];
+                const { currentExerciseIndex } = get();
+                if (currentExerciseIndex < exercises.length - 1) {
                     set({ currentExerciseIndex: currentExerciseIndex + 1 });
-                } else if (currentPhaseIndex < activeTemplate.phases.length - 1) {
-                    set({ currentPhaseIndex: currentPhaseIndex + 1, currentExerciseIndex: 0 });
                 }
             },
 
             prevExercise: () => {
-                const { activeTemplate, currentPhaseIndex, currentExerciseIndex } = get();
-                if (!activeTemplate) return;
-
+                const { currentExerciseIndex } = get();
                 if (currentExerciseIndex > 0) {
                     set({ currentExerciseIndex: currentExerciseIndex - 1 });
-                } else if (currentPhaseIndex > 0) {
-                    const prevPhase = activeTemplate.phases[currentPhaseIndex - 1];
-                    set({
-                        currentPhaseIndex: currentPhaseIndex - 1,
-                        currentExerciseIndex: prevPhase.exercises.length - 1,
-                    });
                 }
             },
 
-            getCurrentPhase: () => {
-                const { activeTemplate, currentPhaseIndex } = get();
-                return activeTemplate?.phases[currentPhaseIndex] || null;
+            // ─── Rest timer ───
+            startRest: (seconds) => {
+                const target = seconds || get().defaultRestSeconds;
+                set({ isResting: true, restSeconds: target, restTarget: target });
             },
 
-            getCurrentTemplateExercise: () => {
-                const { activeTemplate, currentPhaseIndex, currentExerciseIndex } = get();
-                if (!activeTemplate) return null;
-                const phase = activeTemplate.phases[currentPhaseIndex];
-                if (!phase) return null;
-                const ex = phase.exercises[currentExerciseIndex];
-                return ex ? { name: ex.name, cue: ex.cue } : null;
-            },
+            stopRest: () => set({ isResting: false, restSeconds: 0 }),
+
+            setDefaultRest: (seconds) => set({ defaultRestSeconds: seconds }),
         }),
         {
             name: 'kabunga-workout-session',
@@ -481,10 +442,9 @@ export const useWorkoutStore = create<WorkoutState>()(
                 activeSession: state.activeSession,
                 timerSeconds: state.timerSeconds,
                 isTimerRunning: state.isTimerRunning,
+                currentExerciseIndex: state.currentExerciseIndex,
                 isGuidedMode: state.isGuidedMode,
                 activeTemplate: state.activeTemplate,
-                currentPhaseIndex: state.currentPhaseIndex,
-                currentExerciseIndex: state.currentExerciseIndex,
                 defaultRestSeconds: state.defaultRestSeconds,
             }),
         }

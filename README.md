@@ -1,8 +1,8 @@
 # 🏋️ Kabunga Workout — PWA
 
-**Track workouts, crush challenges, fuel your body, share victories.**
+**Your real-time gym companion. Build your plan, start your session, get guided rep by rep.**
 
-A production-ready Progressive Web App for workout tracking, nutrition logging, and social sharing. Built mobile-first for everyday gym users.
+A production-ready Progressive Web App for guided workout sessions, progressive overload tracking, challenges, and workout history. Built mobile-first for everyday gym users — beginner to advanced.
 
 ---
 
@@ -12,9 +12,10 @@ A production-ready Progressive Web App for workout tracking, nutrition logging, 
 |-------|-----------|
 | **Frontend** | React 18 + TypeScript + Vite |
 | **Styling** | Tailwind CSS v4 (mobile-first) |
-| **State** | Zustand (persisted) |
-| **Backend** | Firebase (Auth + Firestore + Storage) |
-| **PWA** | vite-plugin-pwa + Workbox |
+| **State** | Zustand (persisted to localStorage) |
+| **Backend** | Firebase (Auth + Firestore) |
+| **Media** | Supabase Storage (photos + videos) |
+| **PWA** | vite-plugin-pwa + Workbox (autoUpdate) |
 | **Charts** | Recharts |
 | **Camera** | react-webcam + MediaRecorder API |
 | **Sharing** | Web Share API + clipboard fallback |
@@ -27,38 +28,42 @@ A production-ready Progressive Web App for workout tracking, nutrition logging, 
 ```
 kabunga-workout/
 ├── public/
-│   ├── icons/            # PWA icons
+│   ├── icons/                  # PWA icons (192, 512)
 │   └── favicon.svg
 ├── src/
-│   ├── components/       # Reusable UI components
-│   │   ├── BottomNav.tsx
-│   │   ├── InstallPrompt.tsx
-│   │   └── OfflineBanner.tsx
-│   ├── lib/              # Core utilities
-│   │   ├── firebase.ts         # Firebase init + offline persistence
-│   │   ├── firestoreService.ts # CRUD operations
-│   │   ├── offlineQueue.ts     # IndexedDB queue for offline
-│   │   ├── types.ts            # TypeScript models
-│   │   ├── constants.ts        # Exercise library, presets
-│   │   └── utils.ts            # Formatting, compression, sharing
-│   ├── pages/            # Route pages
+│   ├── components/
+│   │   ├── BottomNav.tsx        # Tab navigation
+│   │   ├── RestTimer.tsx        # Animated rest countdown overlay
+│   │   ├── InstallPrompt.tsx    # PWA install banner
+│   │   └── OfflineBanner.tsx    # Offline/online indicator
+│   ├── lib/
+│   │   ├── firebase.ts          # Firebase init + offline persistence
+│   │   ├── firestoreService.ts  # CRUD operations
+│   │   ├── offlineQueue.ts      # IndexedDB queue for offline writes
+│   │   ├── timerService.ts      # Web Audio beeps, vibration, overload engine
+│   │   ├── templates.ts         # Built-in workout templates (PPL, Full Body…)
+│   │   ├── types.ts             # TypeScript models
+│   │   ├── constants.ts         # Exercise library, macros, presets
+│   │   └── utils.ts             # Formatting, compression, sharing
+│   ├── pages/
 │   │   ├── LoginPage.tsx
 │   │   ├── DashboardPage.tsx
-│   │   ├── WorkoutPage.tsx
-│   │   ├── ActiveWorkoutPage.tsx
+│   │   ├── WorkoutPage.tsx      # Exercise queue builder + history
+│   │   ├── ActiveWorkoutPage.tsx # One-exercise-at-a-time guided session
+│   │   ├── TemplatesPage.tsx    # Browse & start from templates
 │   │   ├── ChallengesPage.tsx
 │   │   ├── NutritionPage.tsx
 │   │   └── ProfilePage.tsx
-│   ├── stores/           # Zustand state
+│   ├── stores/
 │   │   ├── authStore.ts
-│   │   └── workoutStore.ts
+│   │   └── workoutStore.ts      # Session, timer, rest timer, guided nav
 │   ├── App.tsx
 │   ├── main.tsx
 │   └── index.css
-├── firestore.rules       # Firestore security rules
-├── storage.rules         # Storage security rules
-├── .env.example          # Environment template
-└── vite.config.ts        # Vite + PWA + Tailwind config
+├── firestore.rules
+├── storage.rules
+├── .env.example
+└── vite.config.ts
 ```
 
 ---
@@ -78,20 +83,38 @@ npm install
 1. Create a project at [Firebase Console](https://console.firebase.google.com)
 2. Enable **Authentication** (Email/Password + Google)
 3. Create **Firestore Database** (production mode)
-4. Enable **Storage**
+4. Deploy security rules: `firestore.rules`
 5. Copy your config values
 
 ### 3. Environment Variables
 
 ```bash
 cp .env.example .env
-# Edit .env with your Firebase credentials
+# Edit .env with your Firebase (and optional Supabase) credentials
+```
+
+Required:
+```env
+VITE_FIREBASE_API_KEY=
+VITE_FIREBASE_AUTH_DOMAIN=
+VITE_FIREBASE_PROJECT_ID=
+VITE_FIREBASE_STORAGE_BUCKET=
+VITE_FIREBASE_MESSAGING_SENDER_ID=
+VITE_FIREBASE_APP_ID=
+```
+
+Optional (for in-workout photo/video capture + upload):
+```env
+VITE_SUPABASE_URL=
+VITE_SUPABASE_ANON_KEY=
 ```
 
 ### 4. Run Development Server
 
 ```bash
 npm run dev
+# App available at http://localhost:5173
+# Also accessible on your phone via the Network URL shown in the terminal
 ```
 
 ### 5. Build for Production
@@ -101,96 +124,79 @@ npm run build
 npm run preview
 ```
 
-### 6. Deploy
+---
 
-**Vercel:**
-```bash
-npm install -g vercel
-vercel --prod
-```
+## 🌐 Deployment (Vercel — Recommended)
 
-**Netlify:**
-```bash
-npm install -g netlify-cli
-netlify deploy --prod --dir=dist
-```
+1. Push code to GitHub
+2. Connect the repo to [Vercel](https://vercel.com)
+3. Add all `VITE_*` environment variables in the Vercel dashboard
+4. Done — every `git push` to `main` auto-deploys
+
+> **PWA note:** Because `registerType: 'autoUpdate'` is set in `vite.config.ts`, users with the app installed will receive the new version automatically the next time they open it — no manual refresh needed.
 
 ---
 
 ## 🔥 Features
 
-### Authentication
-- Email/password sign up & sign in
-- Google OAuth login
-- Persistent sessions
-- Protected routes
+### 🏋️ Guided Workout Sessions
+- **Plan first, then start:** Build your exercise queue on the Workout tab, then hit Start
+- **One exercise at a time:** Large, focused view — exercise name, target sets × reps, coaching cue
+- **Progress strip:** One dot per exercise — green when complete, purple = current
+- **Next / Prev navigation:** Swipe between exercises; app remembers your position
+- **Rest timer:** Auto-starts after completing a set — countdown ring, ±15s adjust, skip
+- **Add mid-workout:** Tap + at any time to insert a new exercise
+- **Resume:** If you leave the app, your session and timer are preserved
 
-### Workout Tracking
-- One-tap "Start Workout" — timestamp recorded
-- Real-time timer display
-- Add exercises (sets × reps × weight)
-- Auto-save via Zustand persistence (survives crashes)
-- End workout → duration calculated, calories estimated
-- Full session stored in Firestore
+### 📋 Workout Templates
+- 7 built-in templates: PPL (Push/Pull/Legs), Full Body, Upper/Lower, HIIT
+- Browse by category (Strength, Hypertrophy, Conditioning)
+- One-tap start — exercises load directly into the guided session
 
-### Camera Integration
-- In-workout camera (rear-facing)
-- Photo capture with WebP compression
-- Video recording (30s max)
-- Media attached to workout document
-- Compressed before upload
+### 📊 Exercise Tracking
+- Sets × Reps × Weight per set
+- RPE (1–10) rating per set
+- Tap set number to mark complete → rest timer auto-starts
+- Per-exercise coaching cues and notes
 
-### Challenge System
+### 🎯 Challenge System
 - Weekly / Monthly / Yearly challenges
-- Quick templates (e.g., "12 Workouts This Month")
+- Quick templates ("12 Workouts This Month", etc.)
 - Auto progress tracking from actual workout data
-- Visual progress bars
-- Completed/Active/Expired categorization
+- Visual progress bars + completion detection
 
-### Nutrition Tracking
-- Log meals manually or from presets
+### 🍎 Nutrition Tracking
+- Log meals by type (breakfast, lunch, dinner, snack)
 - Track calories + protein + carbs + fat
-- Daily summary with macro pie chart
+- Daily macro summary + pie chart
 - Date navigation
-- Meal type categorization
 
-### Dashboard
-- Workout frequency chart (7-day bar)
-- Current streak counter
-- Total training time this month
-- Estimated calories burned
-- Challenge progress bars
-- Nutrition daily summary
+### 📈 Dashboard
+- 7-day workout frequency bar chart
+- Current streak, total training time, calories burned
+- Active challenge progress
 - Recent sessions list
 
-### Social Sharing
-- Auto-generated workout summary text
-- Native share sheet (Web Share API)
-- Fallback to clipboard copy
-- Shareable stats & achievements
+### 📷 Camera (Supabase required)
+- In-workout rear-facing camera
+- Photo capture (WebP compressed)
+- Video recording (30s max, WebM)
+- Media attached to workout session
 
-### Offline Support
+### 🔔 Real-Time Feedback
+- Web Audio API beeps for rest countdown (3–1s)
+- Vibration API haptics on set completion and rest end
+- Toast notifications for key actions
+
+### 📴 Offline Support
 - Firestore offline persistence (IndexedDB)
-- Zustand persisted state (localStorage)
-- Custom offline queue for writes
-- Auto-sync on reconnection
-- Visual offline banner
+- Zustand persisted state (localStorage — survives crashes)
+- Custom offline action queue → auto-sync on reconnect
+- Visual offline/online banner
 
 ---
 
 ## 🗃️ Firestore Data Models
-
-### `users/{userId}`
-```json
-{
-  "uid": "abc123",
-  "email": "user@example.com",
-  "displayName": "Jane Doe",
-  "photoURL": null,
-  "createdAt": 1708300000000,
-  "updatedAt": 1708300000000
-}
-```
 
 ### `workouts/{workoutId}`
 ```json
@@ -204,19 +210,21 @@ netlify deploy --prod --dir=dist
     {
       "id": "e1",
       "name": "Bench Press",
+      "plannedSets": 4,
+      "plannedReps": 8,
+      "plannedWeight": 80,
+      "cue": "Retract scapula, full ROM",
       "sets": [
-        { "id": "s1", "reps": 10, "weight": 60, "completed": true },
-        { "id": "s2", "reps": 8, "weight": 70, "completed": true }
+        { "id": "s1", "reps": 8, "weight": 80, "rpe": 8, "completed": true },
+        { "id": "s2", "reps": 7, "weight": 80, "rpe": 9, "completed": true }
       ],
       "notes": ""
     }
   ],
-  "mediaUrls": ["https://storage.../photo1.webp"],
+  "mediaUrls": [],
   "caloriesEstimate": 420,
-  "notes": "",
   "status": "completed",
-  "createdAt": 1708300000000,
-  "updatedAt": 1708303600000
+  "templateId": null
 }
 ```
 
@@ -231,24 +239,7 @@ netlify deploy --prod --dir=dist
   "currentCount": 7,
   "startDate": 1706745600000,
   "endDate": 1709424000000,
-  "completed": false,
-  "createdAt": 1706745600000
-}
-```
-
-### `meals/{mealId}`
-```json
-{
-  "id": "m_abc",
-  "userId": "abc123",
-  "name": "Chicken Breast",
-  "calories": 165,
-  "protein": 31,
-  "carbs": 0,
-  "fat": 3.6,
-  "date": "2025-02-18",
-  "mealType": "lunch",
-  "createdAt": 1708300000000
+  "completed": false
 }
 ```
 
@@ -257,35 +248,20 @@ netlify deploy --prod --dir=dist
 ## 🔐 Security
 
 - **Firestore rules:** Users can only read/write their own documents
-- **Storage rules:** 10MB per-file upload limit, user-scoped paths
-- **Auth:** Firebase Auth handles session tokens
-- **No secrets in client code** — Firebase config is safe to expose (rules do enforcement)
+- **Env vars:** All secrets in `.env` (gitignored) — set separately in Vercel dashboard
+- **No secrets in source code** — Firebase client config is safe to expose (rules enforce access)
 
 ---
 
-## 📈 Scalability (50k+ Users)
+## �️ Roadmap
 
-| Area | Strategy |
-|------|----------|
-| **Firestore** | Composite indexes, query by userId, limit results |
-| **Storage** | Lazy loading, WebP compression, CDN serving |
-| **Auth** | Firebase handles scale natively |
-| **Frontend** | Code splitting, lazy routes, optimistic UI |
-| **Caching** | Workbox runtime caching, stale-while-revalidate |
-| **Cost** | Firestore free tier: 50k reads/day, 20k writes/day |
-
----
-
-## 🗺️ Future Roadmap
-
-1. **AI Coach** — GPT-powered workout suggestions based on history
-2. **Wearable Integration** — Google Fit / Apple Health sync
-3. **Social Feed** — Follow friends, public challenge leaderboards
-4. **Exercise Library** — Video demos, muscle group targeting
-5. **Progressive Overload Tracking** — Volume charts, PR alerts
-6. **Barcode Nutrition Scanner** — Scan food packaging
-7. **Workout Templates** — Save & reuse routines
-8. **REST Timer** — Configurable rest countdown between sets
+- [ ] Progressive overload suggestions (show "try +2.5kg" based on last session)
+- [ ] Workout history calendar view + volume charts
+- [ ] AI Coach — GPT-powered suggestions based on history
+- [ ] Exercise video demos (muscle group targeting)
+- [ ] Social feed — follow friends, challenge leaderboards
+- [ ] Wearable integration — Google Fit / Apple Health
+- [ ] Barcode nutrition scanner
 
 ---
 

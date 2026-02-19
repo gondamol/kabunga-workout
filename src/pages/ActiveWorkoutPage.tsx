@@ -7,14 +7,13 @@ import { formatDuration, generateWorkoutSummary, shareWorkout, compressImage } f
 import { uploadMedia } from '../lib/firestoreService';
 import { useAuthStore } from '../stores/authStore';
 import { COMMON_EXERCISES } from '../lib/constants';
-import { formatTimer } from '../lib/timerService';
 import RestTimer from '../components/RestTimer';
 import toast from 'react-hot-toast';
 import {
-    Plus, X, Trash2, Check, Square, CheckSquare,
-    Camera, Video, Share2, StopCircle, ChevronDown, ChevronUp,
-    Pause, Play, Search, Timer, MessageSquare, Zap,
-    ChevronLeft, ChevronRight,
+    Plus, X, Check, CheckSquare, Square,
+    Camera, Video, StopCircle, Pause, Play,
+    Search, Timer, ChevronLeft, ChevronRight,
+    Zap, MoreHorizontal, Trash2,
 } from 'lucide-react';
 import Webcam from 'react-webcam';
 
@@ -23,27 +22,25 @@ export default function ActiveWorkoutPage() {
     const { user } = useAuthStore();
     const {
         activeSession, timerSeconds, isTimerRunning,
-        addExercise, removeExercise, addSet, removeSet, updateSet, toggleSetComplete, completeSet,
+        currentExerciseIndex, goToExercise, nextExercise, prevExercise,
+        addExercise, removeExercise, addSet, removeSet, updateSet, completeSet, toggleSetComplete,
         endWorkout, cancelWorkout, tick, setTimerRunning, addMediaUrl,
-        isResting, restSeconds, startRest, stopRest, defaultRestSeconds,
-        isGuidedMode, activeTemplate, currentPhaseIndex, currentExerciseIndex,
-        nextExercise, prevExercise,
+        startRest, defaultRestSeconds, isResting,
     } = useWorkoutStore();
 
-    const [showExercisePicker, setShowExercisePicker] = useState(false);
-    const [searchQuery, setSearchQuery] = useState('');
-    const [customExercise, setCustomExercise] = useState('');
+    const [showPicker, setShowPicker] = useState(false);
+    const [search, setSearch] = useState('');
+    const [custom, setCustom] = useState('');
     const [showCamera, setShowCamera] = useState(false);
     const [isRecording, setIsRecording] = useState(false);
-    const [showEndConfirm, setShowEndConfirm] = useState(false);
-    const [expandedExercise, setExpandedExercise] = useState<string | null>(null);
+    const [showMenu, setShowMenu] = useState(false);
     const [uploading, setUploading] = useState(false);
 
     const webcamRef = useRef<Webcam>(null);
     const mediaRecorderRef = useRef<MediaRecorder | null>(null);
     const chunksRef = useRef<Blob[]>([]);
 
-    // Timer tick
+    // Master 1-second tick
     useEffect(() => {
         const interval = setInterval(tick, 1000);
         return () => clearInterval(interval);
@@ -54,58 +51,55 @@ export default function ActiveWorkoutPage() {
         if (!activeSession) navigate('/workout', { replace: true });
     }, [activeSession, navigate]);
 
-    // Auto-expand first exercise or guided exercise
-    useEffect(() => {
-        if (activeSession?.exercises.length && !expandedExercise) {
-            setExpandedExercise(activeSession.exercises[0].id);
-        }
-    }, [activeSession?.exercises.length]);
+    if (!activeSession) return null;
 
-    const filteredExercises = COMMON_EXERCISES.filter((e) =>
-        e.toLowerCase().includes(searchQuery.toLowerCase())
-    );
+    const exercises = activeSession.exercises;
+    const currentEx = exercises[currentExerciseIndex];
+    const isFirst = currentExerciseIndex === 0;
+    const isLast = currentExerciseIndex === exercises.length - 1;
+    const completedSets = currentEx?.sets.filter(s => s.completed).length ?? 0;
+    const totalSets = currentEx?.sets.length ?? 0;
+    const allSetsComplete = totalSets > 0 && completedSets === totalSets;
+
+    // ─── Exercise picker ───
+    const filtered = COMMON_EXERCISES.filter(e => e.toLowerCase().includes(search.toLowerCase()));
 
     const handleAddExercise = (name: string) => {
         addExercise(name);
-        setShowExercisePicker(false);
-        setSearchQuery('');
-        setCustomExercise('');
+        setShowPicker(false);
+        setSearch('');
+        setCustom('');
+        // Jump to the newly added exercise
+        setTimeout(() => goToExercise(exercises.length), 50);
     };
 
     const handleAddCustom = () => {
-        if (customExercise.trim()) {
-            handleAddExercise(customExercise.trim());
-        }
+        if (custom.trim()) handleAddExercise(custom.trim());
     };
 
-    // Camera capture
+    // ─── Camera ───
     const capturePhoto = useCallback(async () => {
         if (!webcamRef.current || !user) return;
-        const imageSrc = webcamRef.current.getScreenshot();
-        if (!imageSrc) return;
-
+        const src = webcamRef.current.getScreenshot();
+        if (!src) return;
         setUploading(true);
         try {
-            const res = await fetch(imageSrc);
+            const res = await fetch(src);
             const blob = await res.blob();
             const compressed = await compressImage(blob);
             const url = await uploadMedia(user.uid, compressed, 'photo.webp');
             addMediaUrl(url);
             toast.success('Photo saved! 📸');
         } catch (err: any) {
-            console.error('📸 Upload error:', err);
-            toast.error(`Upload failed: ${err?.message || 'Unknown error'}`, { duration: 6000 });
-        } finally {
-            setUploading(false);
-        }
+            toast.error(`Upload failed: ${err?.message || 'Unknown error'}`);
+        } finally { setUploading(false); }
     }, [user, addMediaUrl]);
 
-    // Video recording
     const startRecording = useCallback(() => {
         if (!webcamRef.current?.stream) return;
         chunksRef.current = [];
         const mr = new MediaRecorder(webcamRef.current.stream, { mimeType: 'video/webm' });
-        mr.ondataavailable = (e) => { if (e.data.size > 0) chunksRef.current.push(e.data); };
+        mr.ondataavailable = e => { if (e.data.size > 0) chunksRef.current.push(e.data); };
         mr.onstop = async () => {
             if (!user) return;
             const blob = new Blob(chunksRef.current, { type: 'video/webm' });
@@ -135,16 +129,16 @@ export default function ActiveWorkoutPage() {
         }
     }, []);
 
-    // End workout
+    // ─── End workout ───
     const handleEnd = async () => {
         const completed = endWorkout();
         if (!completed) return;
 
-        const totalSets = completed.exercises.reduce((s, e) => s + e.sets.length, 0);
+        const totalSetsAll = completed.exercises.reduce((s, e) => s + e.sets.length, 0);
         const summary = generateWorkoutSummary(
             completed.duration,
             completed.exercises.length,
-            totalSets,
+            totalSetsAll,
             completed.caloriesEstimate,
         );
 
@@ -157,9 +151,7 @@ export default function ActiveWorkoutPage() {
         });
 
         setTimeout(() => {
-            if (confirm('Share your workout? 💪')) {
-                shareWorkout(summary);
-            }
+            if (confirm('Share your workout? 💪')) shareWorkout(summary);
         }, 800);
     };
 
@@ -170,402 +162,374 @@ export default function ActiveWorkoutPage() {
         }
     };
 
-    if (!activeSession) return null;
-
-    // Current phase info for guided mode
-    const currentPhase = isGuidedMode && activeTemplate ? activeTemplate.phases[currentPhaseIndex] : null;
-    const guidedExerciseIdx = isGuidedMode ? currentExerciseIndex : -1;
-    const totalPhases = activeTemplate?.phases.length || 0;
-
     return (
-        <div className="max-w-lg mx-auto px-4 pt-4 pb-8 min-h-screen flex flex-col">
+        <div className="max-w-lg mx-auto flex flex-col min-h-screen px-4 pt-4 pb-6">
             {/* Rest timer overlay */}
             <RestTimer />
 
-            {/* Timer header */}
-            <div className="flex items-center justify-between mb-4">
-                <button onClick={handleCancel} className="text-text-muted text-sm font-medium px-3 py-2">
+            {/* ── Top bar ── */}
+            <div className="flex items-center justify-between mb-5">
+                <button onClick={handleCancel} className="text-sm text-text-muted font-medium px-2 py-2">
                     Cancel
                 </button>
-                <div className="text-center">
-                    <p className="text-3xl font-black tracking-wider font-mono gradient-text">
-                        {formatDuration(timerSeconds)}
-                    </p>
-                    {isGuidedMode && currentPhase && (
-                        <p className="text-xs text-accent font-medium mt-0.5">
-                            {currentPhase.name} • Phase {currentPhaseIndex + 1}/{totalPhases}
-                        </p>
-                    )}
-                </div>
+                {/* Workout timer */}
                 <button
                     onClick={() => setTimerRunning(!isTimerRunning)}
-                    className="w-10 h-10 rounded-xl bg-bg-card flex items-center justify-center"
+                    className="flex items-center gap-2 px-4 py-2 rounded-xl bg-bg-card"
                 >
-                    {isTimerRunning ? <Pause size={18} className="text-amber" /> : <Play size={18} className="text-green" />}
-                </button>
-            </div>
-
-            {/* Quick rest timer button */}
-            <div className="flex items-center gap-2 mb-4">
-                <button
-                    onClick={() => startRest(defaultRestSeconds)}
-                    className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-medium glass text-text-secondary active:scale-95 transition-transform"
-                >
-                    <Timer size={16} />
-                    Rest {defaultRestSeconds}s
-                </button>
-
-                {/* Camera toggle */}
-                {import.meta.env.VITE_SUPABASE_URL && (
-                    <button
-                        id="toggle-camera"
-                        onClick={() => setShowCamera(!showCamera)}
-                        className={`flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-medium transition-all ${showCamera ? 'bg-accent text-white' : 'glass text-text-secondary'}`}
-                    >
-                        <Camera size={16} />
-                        Camera
-                    </button>
-                )}
-
-                {activeSession.mediaUrls.length > 0 && (
-                    <span className="text-xs text-text-muted px-2 py-1 bg-bg-card rounded-lg">
-                        {activeSession.mediaUrls.length} media
+                    {isTimerRunning
+                        ? <Pause size={14} className="text-amber" />
+                        : <Play size={14} className="text-green" />}
+                    <span className="text-xl font-black font-mono gradient-text">
+                        {formatDuration(timerSeconds)}
                     </span>
-                )}
+                </button>
+                <button
+                    onClick={() => setShowMenu(!showMenu)}
+                    className="p-2 text-text-muted"
+                >
+                    <MoreHorizontal size={22} />
+                </button>
             </div>
 
-            {/* Camera panel */}
-            {showCamera && (
-                <div className="glass rounded-2xl p-3 mb-4 animate-slide-up">
-                    <div className="rounded-xl overflow-hidden mb-3 aspect-[4/3] bg-bg-input">
-                        <Webcam
-                            ref={webcamRef}
-                            audio={false}
-                            screenshotFormat="image/jpeg"
-                            videoConstraints={{ facingMode: 'environment', width: 640, height: 480 }}
-                            className="w-full h-full object-cover"
-                        />
-                    </div>
-                    <div className="flex items-center justify-center gap-4">
+            {/* Overflow menu */}
+            {showMenu && (
+                <div className="absolute top-16 right-4 z-50 bg-bg-surface border border-border rounded-2xl shadow-xl overflow-hidden animate-fade-in">
+                    {import.meta.env.VITE_SUPABASE_URL && (
                         <button
-                            onClick={capturePhoto}
-                            disabled={uploading}
-                            className="w-14 h-14 rounded-full bg-white flex items-center justify-center active:scale-95 transition-transform disabled:opacity-50"
+                            onClick={() => { setShowCamera(!showCamera); setShowMenu(false); }}
+                            className="w-full text-left px-5 py-3 text-sm hover:bg-bg-card flex items-center gap-3"
                         >
-                            <Camera size={24} className="text-bg-primary" />
+                            <Camera size={16} className="text-text-muted" /> Camera
                         </button>
-                        {!isRecording ? (
-                            <button
-                                onClick={startRecording}
-                                disabled={uploading}
-                                className="w-14 h-14 rounded-full bg-red flex items-center justify-center active:scale-95 transition-transform disabled:opacity-50"
-                            >
-                                <Video size={24} className="text-white" />
-                            </button>
-                        ) : (
-                            <button
-                                onClick={stopRecording}
-                                className="w-14 h-14 rounded-full bg-red flex items-center justify-center animate-pulse active:scale-95 transition-transform"
-                            >
-                                <StopCircle size={24} className="text-white" />
-                            </button>
-                        )}
-                    </div>
-                    {uploading && (
-                        <p className="text-xs text-text-muted text-center mt-2">Uploading...</p>
                     )}
-                </div>
-            )}
-
-            {/* Guided mode navigation */}
-            {isGuidedMode && currentPhase && (
-                <div className="flex items-center justify-between glass rounded-xl px-4 py-3 mb-4 animate-fade-in">
                     <button
-                        onClick={prevExercise}
-                        disabled={currentPhaseIndex === 0 && guidedExerciseIdx === 0}
-                        className="p-1 text-text-muted disabled:opacity-20"
+                        onClick={() => { startRest(defaultRestSeconds); setShowMenu(false); }}
+                        className="w-full text-left px-5 py-3 text-sm hover:bg-bg-card flex items-center gap-3"
                     >
-                        <ChevronLeft size={20} />
+                        <Timer size={16} className="text-text-muted" /> Rest Timer
                     </button>
-                    <div className="text-center flex-1 min-w-0">
-                        <p className="text-xs text-accent font-semibold uppercase tracking-wider">{currentPhase.name}</p>
-                        {currentPhase.exercises[guidedExerciseIdx] && (
-                            <>
-                                <p className="text-sm font-bold truncate">{currentPhase.exercises[guidedExerciseIdx].name}</p>
-                                {currentPhase.exercises[guidedExerciseIdx].cue && (
-                                    <p className="text-[11px] text-text-secondary mt-0.5 flex items-center justify-center gap-1">
-                                        <MessageSquare size={10} />
-                                        {currentPhase.exercises[guidedExerciseIdx].cue}
-                                    </p>
-                                )}
-                            </>
-                        )}
-                    </div>
                     <button
-                        onClick={nextExercise}
-                        disabled={
-                            currentPhaseIndex >= totalPhases - 1 &&
-                            guidedExerciseIdx >= (currentPhase?.exercises.length || 1) - 1
-                        }
-                        className="p-1 text-text-muted disabled:opacity-20"
+                        onClick={() => { handleEnd(); setShowMenu(false); }}
+                        className="w-full text-left px-5 py-3 text-sm text-red hover:bg-red/10 flex items-center gap-3"
                     >
-                        <ChevronRight size={20} />
+                        <Check size={16} /> Finish Workout
                     </button>
                 </div>
             )}
+            {showMenu && <div className="fixed inset-0 z-40" onClick={() => setShowMenu(false)} />}
 
-            {/* Exercise list */}
-            <div className="flex-1 space-y-3">
-                {activeSession.exercises.map((exercise) => {
-                    const isExpanded = expandedExercise === exercise.id;
-                    const completedSets = exercise.sets.filter((s) => s.completed).length;
-                    const allDone = completedSets === exercise.sets.length && exercise.sets.length > 0;
+            {/* ── Exercise progress strip ── */}
+            <div className="flex gap-1.5 mb-5">
+                {exercises.map((ex, i) => {
+                    const done = ex.sets.length > 0 && ex.sets.every(s => s.completed);
+                    const active = i === currentExerciseIndex;
                     return (
-                        <div key={exercise.id} className={`glass rounded-2xl overflow-hidden animate-fade-in ${allDone ? 'opacity-60' : ''}`}>
-                            <button
-                                onClick={() => setExpandedExercise(isExpanded ? null : exercise.id)}
-                                className="w-full flex items-center gap-3 p-4"
-                            >
-                                <div className="flex-1 text-left">
-                                    <div className="flex items-center gap-2">
-                                        <p className="font-semibold text-sm">{exercise.name}</p>
-                                        {exercise.isWarmup && (
-                                            <span className="text-[10px] px-1.5 py-0.5 rounded bg-amber/10 text-amber font-medium">Warmup</span>
-                                        )}
-                                        {allDone && <Check size={14} className="text-green" />}
-                                    </div>
-                                    <div className="flex items-center gap-2 mt-0.5">
-                                        <p className="text-xs text-text-muted">
-                                            {completedSets}/{exercise.sets.length} sets
-                                        </p>
-                                        {exercise.plannedReps && (
-                                            <p className="text-xs text-accent">
-                                                Target: {exercise.plannedSets}×{exercise.plannedReps} @ {exercise.plannedWeight}kg
-                                            </p>
-                                        )}
-                                    </div>
-                                    {/* Coaching cue */}
-                                    {exercise.cue && isExpanded && (
-                                        <div className="flex items-start gap-1.5 mt-2 p-2 rounded-lg bg-accent/5 border border-accent/10">
-                                            <Zap size={12} className="text-accent mt-0.5 shrink-0" />
-                                            <p className="text-xs text-text-secondary">{exercise.cue}</p>
-                                        </div>
-                                    )}
-                                </div>
-                                <button
-                                    onClick={(e) => { e.stopPropagation(); removeExercise(exercise.id); }}
-                                    className="text-text-muted p-2"
-                                >
-                                    <Trash2 size={16} />
-                                </button>
-                                {isExpanded ? <ChevronUp size={16} className="text-text-muted" /> : <ChevronDown size={16} className="text-text-muted" />}
-                            </button>
-
-                            {isExpanded && (
-                                <div className="px-4 pb-4 space-y-2 animate-fade-in">
-                                    {/* Sets header */}
-                                    <div className="grid grid-cols-[40px_1fr_1fr_50px_40px] gap-2 text-xs text-text-muted font-medium px-1">
-                                        <span>Set</span>
-                                        <span>Weight (kg)</span>
-                                        <span>Reps</span>
-                                        <span className="text-center">RPE</span>
-                                        <span></span>
-                                    </div>
-
-                                    {exercise.sets.map((set, idx) => (
-                                        <div key={set.id} className={`grid grid-cols-[40px_1fr_1fr_50px_40px] gap-2 items-center ${set.completed ? 'opacity-60' : ''}`}>
-                                            {/* Complete set button */}
-                                            <button
-                                                onClick={() => {
-                                                    if (!set.completed) {
-                                                        completeSet(exercise.id, set.id);
-                                                    } else {
-                                                        toggleSetComplete(exercise.id, set.id);
-                                                    }
-                                                }}
-                                                className="flex items-center justify-center"
-                                            >
-                                                {set.completed ? (
-                                                    <CheckSquare size={20} className="text-green" />
-                                                ) : (
-                                                    <Square size={20} className="text-text-muted" />
-                                                )}
-                                            </button>
-                                            <input
-                                                type="number"
-                                                inputMode="decimal"
-                                                value={set.weight || ''}
-                                                onChange={(e) =>
-                                                    updateSet(exercise.id, set.id, { weight: parseFloat(e.target.value) || 0 })
-                                                }
-                                                placeholder={exercise.plannedWeight ? String(exercise.plannedWeight) : '0'}
-                                                className="bg-bg-input border border-border rounded-xl py-3 px-3 text-sm text-center focus:outline-none focus:border-accent/50"
-                                            />
-                                            <input
-                                                type="number"
-                                                inputMode="numeric"
-                                                value={set.reps || ''}
-                                                onChange={(e) =>
-                                                    updateSet(exercise.id, set.id, { reps: parseInt(e.target.value) || 0 })
-                                                }
-                                                placeholder={exercise.plannedReps ? String(exercise.plannedReps) : '0'}
-                                                className="bg-bg-input border border-border rounded-xl py-3 px-3 text-sm text-center focus:outline-none focus:border-accent/50"
-                                            />
-                                            {/* RPE input */}
-                                            <input
-                                                type="number"
-                                                inputMode="numeric"
-                                                min={1}
-                                                max={10}
-                                                value={set.rpe || ''}
-                                                onChange={(e) => {
-                                                    const val = parseInt(e.target.value);
-                                                    updateSet(exercise.id, set.id, { rpe: val >= 1 && val <= 10 ? val : undefined });
-                                                }}
-                                                placeholder="—"
-                                                className="bg-bg-input border border-border rounded-xl py-3 px-1 text-xs text-center focus:outline-none focus:border-accent/50"
-                                            />
-                                            <button
-                                                onClick={() => removeSet(exercise.id, set.id)}
-                                                className="flex items-center justify-center text-text-muted"
-                                            >
-                                                <X size={16} />
-                                            </button>
-                                        </div>
-                                    ))}
-
-                                    {/* Add set + manual rest button */}
-                                    <div className="flex gap-2">
-                                        <button
-                                            onClick={() => addSet(exercise.id)}
-                                            className="flex-1 py-2.5 rounded-xl border border-dashed border-border text-text-muted text-xs font-medium hover:border-accent/50 hover:text-accent transition-colors"
-                                        >
-                                            + Add Set
-                                        </button>
-                                        <button
-                                            onClick={() => startRest(exercise.restSeconds || defaultRestSeconds)}
-                                            className="px-4 py-2.5 rounded-xl border border-dashed border-border text-text-muted text-xs font-medium hover:border-accent/50 hover:text-accent transition-colors flex items-center gap-1"
-                                        >
-                                            <Timer size={12} />
-                                            Rest {exercise.restSeconds || defaultRestSeconds}s
-                                        </button>
-                                    </div>
-                                </div>
-                            )}
-                        </div>
+                        <button
+                            key={ex.id}
+                            onClick={() => goToExercise(i)}
+                            className={`h-1.5 rounded-full flex-1 transition-all ${done ? 'bg-green' : active ? 'bg-accent' : 'bg-bg-card'
+                                }`}
+                        />
                     );
                 })}
-
-                {/* Add exercise button */}
+                {/* Placeholder for "add exercise" */}
                 <button
-                    id="add-exercise-btn"
-                    onClick={() => setShowExercisePicker(true)}
-                    className="w-full py-4 rounded-2xl border-2 border-dashed border-border text-text-muted font-medium flex items-center justify-center gap-2 hover:border-accent/50 hover:text-accent transition-colors active:scale-[0.98]"
+                    onClick={() => setShowPicker(true)}
+                    className="w-6 h-6 rounded-full bg-bg-card flex items-center justify-center shrink-0 -mt-2"
                 >
-                    <Plus size={20} />
-                    Add Exercise
+                    <Plus size={12} className="text-text-muted" />
                 </button>
             </div>
 
-            {/* End workout */}
-            <div className="mt-6 pt-4 border-t border-border">
-                {!showEndConfirm ? (
-                    <button
-                        id="finish-workout-btn"
-                        onClick={() => setShowEndConfirm(true)}
-                        className="w-full py-4 rounded-2xl gradient-green text-white font-bold text-lg flex items-center justify-center gap-2 active:scale-[0.97] transition-transform shadow-lg shadow-green/20"
-                    >
-                        <Check size={22} />
-                        Finish Workout
-                    </button>
-                ) : (
-                    <div className="space-y-3 animate-fade-in">
-                        <p className="text-center text-sm text-text-secondary">
-                            End workout? ({activeSession.exercises.length} exercises, {formatDuration(timerSeconds)})
-                        </p>
-                        <div className="flex gap-3">
+            {/* ── Current exercise card ── */}
+            {currentEx ? (
+                <div className="flex-1 flex flex-col">
+                    {/* Exercise header */}
+                    <div className="glass rounded-3xl p-5 mb-4">
+                        {/* Exercise name + nav */}
+                        <div className="flex items-center justify-between mb-2">
                             <button
-                                onClick={() => setShowEndConfirm(false)}
-                                className="flex-1 py-3 rounded-xl bg-bg-card text-text-secondary font-medium"
+                                onClick={prevExercise}
+                                disabled={isFirst}
+                                className="w-9 h-9 rounded-xl glass flex items-center justify-center disabled:opacity-20"
                             >
-                                Keep Going
+                                <ChevronLeft size={18} />
+                            </button>
+                            <div className="text-center flex-1 px-3">
+                                <p className="text-xs text-accent font-semibold uppercase tracking-wider mb-1">
+                                    Exercise {currentExerciseIndex + 1} of {exercises.length}
+                                </p>
+                                <h2 className="text-2xl font-black">{currentEx.name}</h2>
+                                {currentEx.plannedSets && (
+                                    <p className="text-sm text-text-secondary mt-1">
+                                        Target: {currentEx.plannedSets} sets × {currentEx.plannedReps} reps
+                                        {currentEx.plannedWeight ? ` @ ${currentEx.plannedWeight}kg` : ''}
+                                    </p>
+                                )}
+                            </div>
+                            <button
+                                onClick={nextExercise}
+                                disabled={isLast}
+                                className="w-9 h-9 rounded-xl glass flex items-center justify-center disabled:opacity-20"
+                            >
+                                <ChevronRight size={18} />
+                            </button>
+                        </div>
+
+                        {/* Coaching cue */}
+                        {currentEx.cue && (
+                            <div className="flex items-start gap-2 mt-3 p-3 rounded-xl bg-accent/5 border border-accent/10">
+                                <Zap size={14} className="text-accent mt-0.5 shrink-0" />
+                                <p className="text-xs text-text-secondary">{currentEx.cue}</p>
+                            </div>
+                        )}
+
+                        {/* Set completion progress */}
+                        <div className="flex items-center gap-2 mt-4">
+                            <div className="flex-1 h-2 bg-bg-input rounded-full overflow-hidden">
+                                <div
+                                    className="h-full rounded-full bg-green transition-all duration-500"
+                                    style={{ width: totalSets > 0 ? `${(completedSets / totalSets) * 100}%` : '0%' }}
+                                />
+                            </div>
+                            <span className="text-xs font-bold text-text-secondary shrink-0">
+                                {completedSets}/{totalSets} sets
+                            </span>
+                        </div>
+                    </div>
+
+                    {/* Camera panel */}
+                    {showCamera && (
+                        <div className="glass rounded-2xl p-3 mb-4 animate-slide-up">
+                            <div className="rounded-xl overflow-hidden mb-3 aspect-[4/3] bg-bg-input">
+                                <Webcam
+                                    ref={webcamRef}
+                                    audio={false}
+                                    screenshotFormat="image/jpeg"
+                                    videoConstraints={{ facingMode: 'environment', width: 640, height: 480 }}
+                                    className="w-full h-full object-cover"
+                                />
+                            </div>
+                            <div className="flex items-center justify-center gap-4">
+                                <button onClick={capturePhoto} disabled={uploading}
+                                    className="w-14 h-14 rounded-full bg-white flex items-center justify-center active:scale-95 transition-transform disabled:opacity-50">
+                                    <Camera size={22} className="text-bg-primary" />
+                                </button>
+                                {!isRecording ? (
+                                    <button onClick={startRecording} disabled={uploading}
+                                        className="w-14 h-14 rounded-full bg-red flex items-center justify-center active:scale-95 transition-transform disabled:opacity-50">
+                                        <Video size={22} className="text-white" />
+                                    </button>
+                                ) : (
+                                    <button onClick={stopRecording}
+                                        className="w-14 h-14 rounded-full bg-red flex items-center justify-center animate-pulse">
+                                        <StopCircle size={22} className="text-white" />
+                                    </button>
+                                )}
+                            </div>
+                        </div>
+                    )}
+
+                    {/* ── Sets table ── */}
+                    <div className="glass rounded-2xl overflow-hidden mb-4">
+                        {/* Header row */}
+                        <div className="grid grid-cols-[36px_1fr_1fr_44px_36px] gap-2 px-4 pt-3 pb-2 text-[11px] text-text-muted font-semibold uppercase tracking-wide">
+                            <span className="text-center">Set</span>
+                            <span className="text-center">kg</span>
+                            <span className="text-center">Reps</span>
+                            <span className="text-center">RPE</span>
+                            <span />
+                        </div>
+
+                        <div className="divide-y divide-border/40">
+                            {currentEx.sets.map((set, idx) => (
+                                <div
+                                    key={set.id}
+                                    className={`grid grid-cols-[36px_1fr_1fr_44px_36px] gap-2 items-center px-4 py-2 transition-colors ${set.completed ? 'bg-green/5' : ''}`}
+                                >
+                                    {/* Set number / complete toggle */}
+                                    <button
+                                        onClick={() => set.completed
+                                            ? toggleSetComplete(currentEx.id, set.id)
+                                            : completeSet(currentEx.id, set.id)
+                                        }
+                                        className="flex items-center justify-center"
+                                    >
+                                        {set.completed
+                                            ? <CheckSquare size={20} className="text-green" />
+                                            : <div className="w-6 h-6 rounded-lg border-2 border-border flex items-center justify-center">
+                                                <span className="text-xs font-bold text-text-muted">{idx + 1}</span>
+                                            </div>
+                                        }
+                                    </button>
+
+                                    <input
+                                        type="number"
+                                        inputMode="decimal"
+                                        value={set.weight || ''}
+                                        onChange={e => updateSet(currentEx.id, set.id, { weight: parseFloat(e.target.value) || 0 })}
+                                        placeholder={currentEx.plannedWeight ? String(currentEx.plannedWeight) : '0'}
+                                        className={`bg-bg-input border rounded-xl py-3 text-sm text-center focus:outline-none focus:border-accent/50 transition-colors ${set.completed ? 'border-green/20 text-text-muted' : 'border-border'}`}
+                                    />
+
+                                    <input
+                                        type="number"
+                                        inputMode="numeric"
+                                        value={set.reps || ''}
+                                        onChange={e => updateSet(currentEx.id, set.id, { reps: parseInt(e.target.value) || 0 })}
+                                        placeholder={currentEx.plannedReps ? String(currentEx.plannedReps) : '0'}
+                                        className={`bg-bg-input border rounded-xl py-3 text-sm text-center focus:outline-none focus:border-accent/50 transition-colors ${set.completed ? 'border-green/20 text-text-muted' : 'border-border'}`}
+                                    />
+
+                                    <input
+                                        type="number"
+                                        inputMode="numeric"
+                                        min={1} max={10}
+                                        value={set.rpe || ''}
+                                        onChange={e => {
+                                            const v = parseInt(e.target.value);
+                                            updateSet(currentEx.id, set.id, { rpe: v >= 1 && v <= 10 ? v : undefined });
+                                        }}
+                                        placeholder="—"
+                                        className={`bg-bg-input border rounded-xl py-3 text-xs text-center focus:outline-none focus:border-accent/50 ${set.completed ? 'border-green/20 text-text-muted' : 'border-border'}`}
+                                    />
+
+                                    <button
+                                        onClick={() => removeSet(currentEx.id, set.id)}
+                                        className="flex items-center justify-center text-text-muted active:scale-90"
+                                    >
+                                        <X size={14} />
+                                    </button>
+                                </div>
+                            ))}
+                        </div>
+
+                        {/* Add set */}
+                        <div className="flex gap-2 px-4 pb-3 pt-2">
+                            <button
+                                onClick={() => addSet(currentEx.id)}
+                                className="flex-1 py-2.5 rounded-xl border border-dashed border-border text-text-muted text-xs font-medium hover:border-accent/40 hover:text-accent transition-colors"
+                            >
+                                + Add Set
                             </button>
                             <button
-                                onClick={handleEnd}
-                                className="flex-1 py-3 rounded-xl gradient-green text-white font-bold"
+                                onClick={() => startRest(currentEx.restSeconds || defaultRestSeconds)}
+                                className="px-4 py-2.5 rounded-xl border border-dashed border-border text-text-muted text-xs font-medium hover:border-accent/40 hover:text-accent transition-colors flex items-center gap-1"
                             >
-                                End & Save
+                                <Timer size={13} /> Rest
                             </button>
                         </div>
                     </div>
-                )}
-            </div>
 
-            {/* Exercise Picker Modal */}
-            {showExercisePicker && (
+                    {/* ── Primary CTA ── */}
+                    {!isLast ? (
+                        <button
+                            id="next-exercise-btn"
+                            onClick={nextExercise}
+                            className={`w-full py-5 rounded-3xl font-bold text-lg flex items-center justify-center gap-3 active:scale-[0.97] transition-all shadow-lg ${allSetsComplete
+                                ? 'gradient-green text-white shadow-green/20'
+                                : 'gradient-primary text-white shadow-accent/20'
+                                }`}
+                        >
+                            {allSetsComplete ? <Check size={22} /> : <ChevronRight size={22} />}
+                            {allSetsComplete ? 'Done — Next Exercise' : 'Next Exercise'}
+                            <span className="text-sm opacity-70">
+                                ({currentExerciseIndex + 2} of {exercises.length})
+                            </span>
+                        </button>
+                    ) : (
+                        <button
+                            id="finish-workout-btn"
+                            onClick={handleEnd}
+                            className="w-full py-5 rounded-3xl gradient-green text-white font-bold text-lg flex items-center justify-center gap-3 active:scale-[0.97] transition-transform shadow-lg shadow-green/20"
+                        >
+                            <Check size={22} />
+                            Finish Workout 🎉
+                        </button>
+                    )}
+
+                    {/* Remove exercise link */}
+                    <button
+                        onClick={() => {
+                            removeExercise(currentEx.id);
+                        }}
+                        className="mt-3 w-full py-2 text-xs text-text-muted flex items-center justify-center gap-1 hover:text-red transition-colors"
+                    >
+                        <Trash2 size={13} /> Remove this exercise
+                    </button>
+                </div>
+            ) : (
+                /* Empty — add first exercise */
+                <div className="flex-1 flex flex-col items-center justify-center text-center py-12">
+                    <p className="text-text-secondary mb-4">Add an exercise to get started</p>
+                    <button
+                        onClick={() => setShowPicker(true)}
+                        className="px-6 py-3 rounded-xl gradient-primary text-white font-semibold"
+                    >
+                        + Add Exercise
+                    </button>
+                </div>
+            )}
+
+            {/* Exercise picker sheet */}
+            {showPicker && (
                 <div
                     className="fixed inset-0 z-[100] bg-black/60 flex items-end"
-                    onClick={() => setShowExercisePicker(false)}
+                    onClick={() => setShowPicker(false)}
                 >
                     <div
-                        className="w-full max-w-lg mx-auto bg-bg-surface rounded-t-3xl p-6 max-h-[80vh] overflow-y-auto animate-slide-up"
-                        onClick={(e) => e.stopPropagation()}
+                        className="w-full max-w-lg mx-auto bg-bg-surface rounded-t-3xl p-6 max-h-[80vh] flex flex-col animate-slide-up"
+                        onClick={e => e.stopPropagation()}
                     >
                         <div className="flex items-center justify-between mb-4">
                             <h3 className="text-lg font-bold">Add Exercise</h3>
-                            <button onClick={() => setShowExercisePicker(false)} className="p-2 text-text-muted">
+                            <button onClick={() => setShowPicker(false)} className="p-2 text-text-muted">
                                 <X size={20} />
                             </button>
                         </div>
 
-                        {/* Search */}
-                        <div className="relative mb-4">
+                        <div className="relative mb-3">
                             <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-text-muted" />
                             <input
                                 type="text"
-                                value={searchQuery}
-                                onChange={(e) => setSearchQuery(e.target.value)}
+                                value={search}
+                                onChange={e => setSearch(e.target.value)}
                                 placeholder="Search exercises..."
                                 autoFocus
-                                className="w-full bg-bg-input border border-border rounded-xl py-3 px-10 text-sm focus:outline-none focus:border-accent/50"
+                                className="w-full bg-bg-input border border-border rounded-xl py-3 pl-10 pr-4 text-sm focus:outline-none focus:border-accent/50"
                             />
                         </div>
 
-                        {/* Custom */}
-                        <div className="flex gap-2 mb-4">
+                        <div className="flex gap-2 mb-3">
                             <input
                                 type="text"
-                                value={customExercise}
-                                onChange={(e) => setCustomExercise(e.target.value)}
+                                value={custom}
+                                onChange={e => setCustom(e.target.value)}
                                 placeholder="Custom exercise..."
                                 className="flex-1 bg-bg-input border border-border rounded-xl py-3 px-4 text-sm focus:outline-none focus:border-accent/50"
-                                onKeyDown={(e) => e.key === 'Enter' && handleAddCustom()}
+                                onKeyDown={e => e.key === 'Enter' && handleAddCustom()}
                             />
                             <button
                                 onClick={handleAddCustom}
-                                disabled={!customExercise.trim()}
-                                className="px-4 rounded-xl gradient-primary text-white text-sm font-medium disabled:opacity-30"
+                                disabled={!custom.trim()}
+                                className="px-5 rounded-xl gradient-primary text-white text-sm font-semibold disabled:opacity-30"
                             >
                                 Add
                             </button>
                         </div>
 
-                        {/* List */}
-                        <div className="space-y-1">
-                            {filteredExercises.map((name) => (
+                        <div className="overflow-y-auto flex-1 -mx-2">
+                            {filtered.map(name => (
                                 <button
                                     key={name}
                                     onClick={() => handleAddExercise(name)}
-                                    className="w-full text-left py-3 px-4 rounded-xl text-sm hover:bg-bg-card-hover transition-colors active:scale-[0.98]"
+                                    className="w-full text-left py-3 px-4 rounded-xl text-sm hover:bg-bg-card transition-colors flex items-center justify-between group"
                                 >
-                                    {name}
+                                    <span>{name}</span>
+                                    <Plus size={16} className="text-text-muted opacity-0 group-hover:opacity-100 transition-opacity" />
                                 </button>
                             ))}
-                            {filteredExercises.length === 0 && searchQuery && (
-                                <p className="text-center text-text-muted text-sm py-4">
-                                    No matches. Use custom input above.
-                                </p>
-                            )}
                         </div>
                     </div>
                 </div>
