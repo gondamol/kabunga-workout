@@ -23,8 +23,13 @@ dist-ssr
 *.sln
 *.sw?
 
-# ─── Secrets — NEVER commit these ───
+# ─── Secrets & Private Files — NEVER commit these ───
 .env
 .env.*
 !.env.example
 readme_local.md
+IMPLEMENTATION_PLAN.md
+*.local.md
+
+# ─── Agent/AI config ───
+.agent/

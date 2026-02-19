@@ -1,11 +1,11 @@
 import { NavLink } from 'react-router-dom';
-import { Home, Dumbbell, Trophy, Apple, User } from 'lucide-react';
+import { Home, Dumbbell, LayoutGrid, Trophy, User } from 'lucide-react';
 
 const navItems = [
     { to: '/', icon: Home, label: 'Home' },
     { to: '/workout', icon: Dumbbell, label: 'Workout' },
+    { to: '/templates', icon: LayoutGrid, label: 'Templates' },
     { to: '/challenges', icon: Trophy, label: 'Challenges' },
-    { to: '/nutrition', icon: Apple, label: 'Nutrition' },
     { to: '/profile', icon: User, label: 'Profile' },
 ];
 

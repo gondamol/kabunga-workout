@@ -8,6 +8,7 @@ import LoginPage from './pages/LoginPage';
 import DashboardPage from './pages/DashboardPage';
 import WorkoutPage from './pages/WorkoutPage';
 import ActiveWorkoutPage from './pages/ActiveWorkoutPage';
+import TemplatesPage from './pages/TemplatesPage';
 import ChallengesPage from './pages/ChallengesPage';
 import NutritionPage from './pages/NutritionPage';
 import ProfilePage from './pages/ProfilePage';
@@ -76,6 +77,9 @@ export default function App() {
                     } />
                     <Route path="/active-workout" element={
                         <ProtectedRoute><ActiveWorkoutPage /></ProtectedRoute>
+                    } />
+                    <Route path="/templates" element={
+                        <ProtectedRoute><TemplatesPage /></ProtectedRoute>
                     } />
                     <Route path="/challenges" element={
                         <ProtectedRoute><ChallengesPage /></ProtectedRoute>

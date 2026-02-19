@@ -11,7 +11,7 @@ import { Trophy, Plus, X, Flame, Target, CheckCircle2 } from 'lucide-react';
 export default function ChallengesPage() {
     const { user } = useAuthStore();
     const [challenges, setChallenges] = useState<Challenge[]>([]);
-    const [loading, setLoading] = useState(true);
+    const [loading, setLoading] = useState(false);
     const [showCreate, setShowCreate] = useState(false);
     const [newTitle, setNewTitle] = useState('');
     const [newPeriod, setNewPeriod] = useState<ChallengePeriod>('monthly');
@@ -45,8 +45,6 @@ export default function ChallengesPage() {
             }
         } catch (err) {
             console.warn('Failed to load challenges', err);
-        } finally {
-            setLoading(false);
         }
     };
 

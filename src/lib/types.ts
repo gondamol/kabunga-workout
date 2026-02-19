@@ -8,12 +8,27 @@ export interface UserProfile {
     updatedAt: number;
 }
 
+// ─── User Preferences ───
+export interface UserPreferences {
+    userId: string;
+    units: 'kg' | 'lb';
+    defaultRestSeconds: number;
+    progressionStyle: 'linear' | 'double' | 'maintenance';
+    weeklyGoal: number;
+    notifications: boolean;
+    createdAt: number;
+}
+
 // ─── Workout ───
 export interface ExerciseSet {
     id: string;
     reps: number;
-    weight: number; // kg
+    weight: number; // kg or lb based on prefs
     completed: boolean;
+    rpe?: number; // Rate of Perceived Exertion 1-10
+    restTaken?: number; // seconds of rest taken after this set
+    completedAt?: number; // timestamp
+    isWarmup?: boolean;
 }
 
 export interface Exercise {
@@ -21,11 +36,23 @@ export interface Exercise {
     name: string;
     sets: ExerciseSet[];
     notes: string;
+    // Planning fields (from template)
+    plannedSets?: number;
+    plannedReps?: number;
+    plannedWeight?: number;
+    restSeconds?: number; // per-exercise rest override
+    cue?: string; // coaching cue text
+    isWarmup?: boolean;
+    // Tracking
+    personalBest?: boolean;
+    exerciseTime?: number; // seconds spent on this exercise
 }
 
 export interface WorkoutSession {
     id: string;
     userId: string;
+    templateId?: string; // which template was used
+    scheduledWorkoutId?: string; // link to scheduled workout
     startedAt: number;
     endedAt: number | null;
     duration: number; // seconds
@@ -36,6 +63,61 @@ export interface WorkoutSession {
     status: 'active' | 'completed' | 'cancelled';
     createdAt: number;
     updatedAt: number;
+}
+
+// ─── Workout Templates ───
+export interface TemplateExercise {
+    name: string;
+    sets: number;
+    reps: number;
+    weight: number;
+    restSeconds: number;
+    isWarmup: boolean;
+    cue: string;
+}
+
+export interface WorkoutPhase {
+    name: string; // "Warmup", "Main Lifts", "Accessories", "Cooldown"
+    duration?: number; // optional time limit in seconds
+    exercises: TemplateExercise[];
+}
+
+export interface WorkoutTemplate {
+    id: string;
+    userId: string; // "SYSTEM" for built-in templates
+    title: string;
+    category: string;
+    goalFocus: 'strength' | 'hypertrophy' | 'endurance' | 'general';
+    phases: WorkoutPhase[];
+    progressionRule: 'linear' | 'double' | 'maintenance';
+    createdAt: number;
+    updatedAt: number;
+}
+
+// ─── Scheduled Workouts ───
+export type ScheduledStatus = 'scheduled' | 'completed' | 'skipped' | 'rescheduled';
+
+export interface ScheduledWorkout {
+    id: string;
+    userId: string;
+    templateId: string;
+    title: string;
+    scheduledDate: string; // YYYY-MM-DD
+    scheduledTime?: string; // HH:mm
+    status: ScheduledStatus;
+    completedSessionId?: string;
+    skippedReason?: string;
+    createdAt: number;
+}
+
+// ─── Exercise History (for progressive overload) ───
+export interface ExerciseHistory {
+    name: string; // normalized exercise name
+    sessions: Array<{
+        date: number;
+        sets: Array<{ reps: number; weight: number; rpe?: number }>;
+        bestSet: { reps: number; weight: number }; // heaviest weight at target reps
+    }>;
 }
 
 // ─── Challenge ───

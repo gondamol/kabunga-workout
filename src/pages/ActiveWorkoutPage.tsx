@@ -7,11 +7,14 @@ import { formatDuration, generateWorkoutSummary, shareWorkout, compressImage } f
 import { uploadMedia } from '../lib/firestoreService';
 import { useAuthStore } from '../stores/authStore';
 import { COMMON_EXERCISES } from '../lib/constants';
+import { formatTimer } from '../lib/timerService';
+import RestTimer from '../components/RestTimer';
 import toast from 'react-hot-toast';
 import {
     Plus, X, Trash2, Check, Square, CheckSquare,
     Camera, Video, Share2, StopCircle, ChevronDown, ChevronUp,
-    Pause, Play, Search,
+    Pause, Play, Search, Timer, MessageSquare, Zap,
+    ChevronLeft, ChevronRight,
 } from 'lucide-react';
 import Webcam from 'react-webcam';
 
@@ -20,8 +23,11 @@ export default function ActiveWorkoutPage() {
     const { user } = useAuthStore();
     const {
         activeSession, timerSeconds, isTimerRunning,
-        addExercise, removeExercise, addSet, removeSet, updateSet, toggleSetComplete,
+        addExercise, removeExercise, addSet, removeSet, updateSet, toggleSetComplete, completeSet,
         endWorkout, cancelWorkout, tick, setTimerRunning, addMediaUrl,
+        isResting, restSeconds, startRest, stopRest, defaultRestSeconds,
+        isGuidedMode, activeTemplate, currentPhaseIndex, currentExerciseIndex,
+        nextExercise, prevExercise,
     } = useWorkoutStore();
 
     const [showExercisePicker, setShowExercisePicker] = useState(false);
@@ -47,6 +53,13 @@ export default function ActiveWorkoutPage() {
     useEffect(() => {
         if (!activeSession) navigate('/workout', { replace: true });
     }, [activeSession, navigate]);
+
+    // Auto-expand first exercise or guided exercise
+    useEffect(() => {
+        if (activeSession?.exercises.length && !expandedExercise) {
+            setExpandedExercise(activeSession.exercises[0].id);
+        }
+    }, [activeSession?.exercises.length]);
 
     const filteredExercises = COMMON_EXERCISES.filter((e) =>
         e.toLowerCase().includes(searchQuery.toLowerCase())
@@ -75,19 +88,13 @@ export default function ActiveWorkoutPage() {
         try {
             const res = await fetch(imageSrc);
             const blob = await res.blob();
-            console.log('📸 Captured blob:', blob.type, blob.size, 'bytes');
             const compressed = await compressImage(blob);
-            console.log('📸 Compressed blob:', compressed.type, compressed.size, 'bytes');
-            console.log('📸 Uploading to Supabase...');
             const url = await uploadMedia(user.uid, compressed, 'photo.webp');
-            console.log('📸 Upload success! URL:', url);
             addMediaUrl(url);
             toast.success('Photo saved! 📸');
         } catch (err: any) {
-            console.error('📸 Upload error full details:', err);
-            console.error('📸 Error message:', err?.message);
-            console.error('📸 Error code:', err?.statusCode || err?.code || err?.error);
-            toast.error(`Upload failed: ${err?.message || err?.error || 'Unknown error'}`, { duration: 6000 });
+            console.error('📸 Upload error:', err);
+            toast.error(`Upload failed: ${err?.message || 'Unknown error'}`, { duration: 6000 });
         } finally {
             setUploading(false);
         }
@@ -113,7 +120,6 @@ export default function ActiveWorkoutPage() {
         mr.start();
         mediaRecorderRef.current = mr;
         setIsRecording(true);
-        // Auto-stop after 30 seconds
         setTimeout(() => {
             if (mediaRecorderRef.current?.state === 'recording') {
                 mediaRecorderRef.current.stop();
@@ -142,17 +148,14 @@ export default function ActiveWorkoutPage() {
             completed.caloriesEstimate,
         );
 
-        // ✅ Navigate immediately — don't wait for Firestore
         toast.success('Workout complete! 🎉', { duration: 4000 });
         navigate('/', { replace: true });
 
-        // Save to Firestore in background
         saveWorkout(completed).catch(async () => {
             await enqueueAction({ type: 'workout', action: 'create', data: completed });
             toast('Saved offline — will sync when online', { icon: '📴' });
         });
 
-        // Offer share after a short delay
         setTimeout(() => {
             if (confirm('Share your workout? 💪')) {
                 shareWorkout(summary);
@@ -169,8 +172,16 @@ export default function ActiveWorkoutPage() {
 
     if (!activeSession) return null;
 
+    // Current phase info for guided mode
+    const currentPhase = isGuidedMode && activeTemplate ? activeTemplate.phases[currentPhaseIndex] : null;
+    const guidedExerciseIdx = isGuidedMode ? currentExerciseIndex : -1;
+    const totalPhases = activeTemplate?.phases.length || 0;
+
     return (
         <div className="max-w-lg mx-auto px-4 pt-4 pb-8 min-h-screen flex flex-col">
+            {/* Rest timer overlay */}
+            <RestTimer />
+
             {/* Timer header */}
             <div className="flex items-center justify-between mb-4">
                 <button onClick={handleCancel} className="text-text-muted text-sm font-medium px-3 py-2">
@@ -180,6 +191,11 @@ export default function ActiveWorkoutPage() {
                     <p className="text-3xl font-black tracking-wider font-mono gradient-text">
                         {formatDuration(timerSeconds)}
                     </p>
+                    {isGuidedMode && currentPhase && (
+                        <p className="text-xs text-accent font-medium mt-0.5">
+                            {currentPhase.name} • Phase {currentPhaseIndex + 1}/{totalPhases}
+                        </p>
+                    )}
                 </div>
                 <button
                     onClick={() => setTimerRunning(!isTimerRunning)}
@@ -189,25 +205,34 @@ export default function ActiveWorkoutPage() {
                 </button>
             </div>
 
-            {/* Camera toggle & media count */}
-            {import.meta.env.VITE_SUPABASE_URL && (
-                <div className="flex items-center gap-2 mb-4">
+            {/* Quick rest timer button */}
+            <div className="flex items-center gap-2 mb-4">
+                <button
+                    onClick={() => startRest(defaultRestSeconds)}
+                    className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-medium glass text-text-secondary active:scale-95 transition-transform"
+                >
+                    <Timer size={16} />
+                    Rest {defaultRestSeconds}s
+                </button>
+
+                {/* Camera toggle */}
+                {import.meta.env.VITE_SUPABASE_URL && (
                     <button
                         id="toggle-camera"
                         onClick={() => setShowCamera(!showCamera)}
-                        className={`flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-medium transition-all ${showCamera ? 'bg-accent text-white' : 'glass text-text-secondary'
-                            }`}
+                        className={`flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-medium transition-all ${showCamera ? 'bg-accent text-white' : 'glass text-text-secondary'}`}
                     >
                         <Camera size={16} />
                         Camera
                     </button>
-                    {activeSession.mediaUrls.length > 0 && (
-                        <span className="text-xs text-text-muted px-2 py-1 bg-bg-card rounded-lg">
-                            {activeSession.mediaUrls.length} media
-                        </span>
-                    )}
-                </div>
-            )}
+                )}
+
+                {activeSession.mediaUrls.length > 0 && (
+                    <span className="text-xs text-text-muted px-2 py-1 bg-bg-card rounded-lg">
+                        {activeSession.mediaUrls.length} media
+                    </span>
+                )}
+            </div>
 
             {/* Camera panel */}
             {showCamera && (
@@ -252,22 +277,80 @@ export default function ActiveWorkoutPage() {
                 </div>
             )}
 
+            {/* Guided mode navigation */}
+            {isGuidedMode && currentPhase && (
+                <div className="flex items-center justify-between glass rounded-xl px-4 py-3 mb-4 animate-fade-in">
+                    <button
+                        onClick={prevExercise}
+                        disabled={currentPhaseIndex === 0 && guidedExerciseIdx === 0}
+                        className="p-1 text-text-muted disabled:opacity-20"
+                    >
+                        <ChevronLeft size={20} />
+                    </button>
+                    <div className="text-center flex-1 min-w-0">
+                        <p className="text-xs text-accent font-semibold uppercase tracking-wider">{currentPhase.name}</p>
+                        {currentPhase.exercises[guidedExerciseIdx] && (
+                            <>
+                                <p className="text-sm font-bold truncate">{currentPhase.exercises[guidedExerciseIdx].name}</p>
+                                {currentPhase.exercises[guidedExerciseIdx].cue && (
+                                    <p className="text-[11px] text-text-secondary mt-0.5 flex items-center justify-center gap-1">
+                                        <MessageSquare size={10} />
+                                        {currentPhase.exercises[guidedExerciseIdx].cue}
+                                    </p>
+                                )}
+                            </>
+                        )}
+                    </div>
+                    <button
+                        onClick={nextExercise}
+                        disabled={
+                            currentPhaseIndex >= totalPhases - 1 &&
+                            guidedExerciseIdx >= (currentPhase?.exercises.length || 1) - 1
+                        }
+                        className="p-1 text-text-muted disabled:opacity-20"
+                    >
+                        <ChevronRight size={20} />
+                    </button>
+                </div>
+            )}
+
             {/* Exercise list */}
             <div className="flex-1 space-y-3">
                 {activeSession.exercises.map((exercise) => {
                     const isExpanded = expandedExercise === exercise.id;
                     const completedSets = exercise.sets.filter((s) => s.completed).length;
+                    const allDone = completedSets === exercise.sets.length && exercise.sets.length > 0;
                     return (
-                        <div key={exercise.id} className="glass rounded-2xl overflow-hidden animate-fade-in">
+                        <div key={exercise.id} className={`glass rounded-2xl overflow-hidden animate-fade-in ${allDone ? 'opacity-60' : ''}`}>
                             <button
                                 onClick={() => setExpandedExercise(isExpanded ? null : exercise.id)}
                                 className="w-full flex items-center gap-3 p-4"
                             >
                                 <div className="flex-1 text-left">
-                                    <p className="font-semibold text-sm">{exercise.name}</p>
-                                    <p className="text-xs text-text-muted">
-                                        {completedSets}/{exercise.sets.length} sets
-                                    </p>
+                                    <div className="flex items-center gap-2">
+                                        <p className="font-semibold text-sm">{exercise.name}</p>
+                                        {exercise.isWarmup && (
+                                            <span className="text-[10px] px-1.5 py-0.5 rounded bg-amber/10 text-amber font-medium">Warmup</span>
+                                        )}
+                                        {allDone && <Check size={14} className="text-green" />}
+                                    </div>
+                                    <div className="flex items-center gap-2 mt-0.5">
+                                        <p className="text-xs text-text-muted">
+                                            {completedSets}/{exercise.sets.length} sets
+                                        </p>
+                                        {exercise.plannedReps && (
+                                            <p className="text-xs text-accent">
+                                                Target: {exercise.plannedSets}×{exercise.plannedReps} @ {exercise.plannedWeight}kg
+                                            </p>
+                                        )}
+                                    </div>
+                                    {/* Coaching cue */}
+                                    {exercise.cue && isExpanded && (
+                                        <div className="flex items-start gap-1.5 mt-2 p-2 rounded-lg bg-accent/5 border border-accent/10">
+                                            <Zap size={12} className="text-accent mt-0.5 shrink-0" />
+                                            <p className="text-xs text-text-secondary">{exercise.cue}</p>
+                                        </div>
+                                    )}
                                 </div>
                                 <button
                                     onClick={(e) => { e.stopPropagation(); removeExercise(exercise.id); }}
@@ -281,17 +364,25 @@ export default function ActiveWorkoutPage() {
                             {isExpanded && (
                                 <div className="px-4 pb-4 space-y-2 animate-fade-in">
                                     {/* Sets header */}
-                                    <div className="grid grid-cols-[40px_1fr_1fr_40px] gap-2 text-xs text-text-muted font-medium px-1">
+                                    <div className="grid grid-cols-[40px_1fr_1fr_50px_40px] gap-2 text-xs text-text-muted font-medium px-1">
                                         <span>Set</span>
                                         <span>Weight (kg)</span>
                                         <span>Reps</span>
+                                        <span className="text-center">RPE</span>
                                         <span></span>
                                     </div>
 
                                     {exercise.sets.map((set, idx) => (
-                                        <div key={set.id} className="grid grid-cols-[40px_1fr_1fr_40px] gap-2 items-center">
+                                        <div key={set.id} className={`grid grid-cols-[40px_1fr_1fr_50px_40px] gap-2 items-center ${set.completed ? 'opacity-60' : ''}`}>
+                                            {/* Complete set button */}
                                             <button
-                                                onClick={() => toggleSetComplete(exercise.id, set.id)}
+                                                onClick={() => {
+                                                    if (!set.completed) {
+                                                        completeSet(exercise.id, set.id);
+                                                    } else {
+                                                        toggleSetComplete(exercise.id, set.id);
+                                                    }
+                                                }}
                                                 className="flex items-center justify-center"
                                             >
                                                 {set.completed ? (
@@ -307,7 +398,7 @@ export default function ActiveWorkoutPage() {
                                                 onChange={(e) =>
                                                     updateSet(exercise.id, set.id, { weight: parseFloat(e.target.value) || 0 })
                                                 }
-                                                placeholder="0"
+                                                placeholder={exercise.plannedWeight ? String(exercise.plannedWeight) : '0'}
                                                 className="bg-bg-input border border-border rounded-xl py-3 px-3 text-sm text-center focus:outline-none focus:border-accent/50"
                                             />
                                             <input
@@ -317,8 +408,22 @@ export default function ActiveWorkoutPage() {
                                                 onChange={(e) =>
                                                     updateSet(exercise.id, set.id, { reps: parseInt(e.target.value) || 0 })
                                                 }
-                                                placeholder="0"
+                                                placeholder={exercise.plannedReps ? String(exercise.plannedReps) : '0'}
                                                 className="bg-bg-input border border-border rounded-xl py-3 px-3 text-sm text-center focus:outline-none focus:border-accent/50"
+                                            />
+                                            {/* RPE input */}
+                                            <input
+                                                type="number"
+                                                inputMode="numeric"
+                                                min={1}
+                                                max={10}
+                                                value={set.rpe || ''}
+                                                onChange={(e) => {
+                                                    const val = parseInt(e.target.value);
+                                                    updateSet(exercise.id, set.id, { rpe: val >= 1 && val <= 10 ? val : undefined });
+                                                }}
+                                                placeholder="—"
+                                                className="bg-bg-input border border-border rounded-xl py-3 px-1 text-xs text-center focus:outline-none focus:border-accent/50"
                                             />
                                             <button
                                                 onClick={() => removeSet(exercise.id, set.id)}
@@ -329,12 +434,22 @@ export default function ActiveWorkoutPage() {
                                         </div>
                                     ))}
 
-                                    <button
-                                        onClick={() => addSet(exercise.id)}
-                                        className="w-full py-2.5 rounded-xl border border-dashed border-border text-text-muted text-xs font-medium hover:border-accent/50 hover:text-accent transition-colors"
-                                    >
-                                        + Add Set
-                                    </button>
+                                    {/* Add set + manual rest button */}
+                                    <div className="flex gap-2">
+                                        <button
+                                            onClick={() => addSet(exercise.id)}
+                                            className="flex-1 py-2.5 rounded-xl border border-dashed border-border text-text-muted text-xs font-medium hover:border-accent/50 hover:text-accent transition-colors"
+                                        >
+                                            + Add Set
+                                        </button>
+                                        <button
+                                            onClick={() => startRest(exercise.restSeconds || defaultRestSeconds)}
+                                            className="px-4 py-2.5 rounded-xl border border-dashed border-border text-text-muted text-xs font-medium hover:border-accent/50 hover:text-accent transition-colors flex items-center gap-1"
+                                        >
+                                            <Timer size={12} />
+                                            Rest {exercise.restSeconds || defaultRestSeconds}s
+                                        </button>
+                                    </div>
                                 </div>
                             )}
                         </div>
