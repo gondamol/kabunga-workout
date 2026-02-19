@@ -216,7 +216,7 @@ export const useWorkoutStore = create<WorkoutState>()(
             addExercise: (name, planned) => {
                 const { activeSession } = get();
                 if (!activeSession) return;
-                const numSets = planned?.sets || 3;
+                const numSets = planned?.sets || 1;   // Start with 1 set — user adds more
                 const exercise: Exercise = {
                     id: generateId(),
                     name,

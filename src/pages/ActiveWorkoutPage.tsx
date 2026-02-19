@@ -10,7 +10,7 @@ import { COMMON_EXERCISES } from '../lib/constants';
 import RestTimer from '../components/RestTimer';
 import toast from 'react-hot-toast';
 import {
-    Plus, X, Check, CheckSquare, Square,
+    Plus, X, Check, CheckSquare,
     Camera, Video, StopCircle, Pause, Play,
     Search, Timer, ChevronLeft, ChevronRight,
     Zap, MoreHorizontal, Trash2,
@@ -263,7 +263,8 @@ export default function ActiveWorkoutPage() {
                                 <h2 className="text-2xl font-black">{currentEx.name}</h2>
                                 {currentEx.plannedSets && (
                                     <p className="text-sm text-text-secondary mt-1">
-                                        Target: {currentEx.plannedSets} sets × {currentEx.plannedReps} reps
+                                        Target: {currentEx.plannedSets} sets
+                                        {currentEx.plannedReps ? ` × ${currentEx.plannedReps} reps` : ''}
                                         {currentEx.plannedWeight ? ` @ ${currentEx.plannedWeight}kg` : ''}
                                     </p>
                                 )}
@@ -333,12 +334,11 @@ export default function ActiveWorkoutPage() {
 
                     {/* ── Sets table ── */}
                     <div className="glass rounded-2xl overflow-hidden mb-4">
-                        {/* Header row */}
-                        <div className="grid grid-cols-[36px_1fr_1fr_44px_36px] gap-2 px-4 pt-3 pb-2 text-[11px] text-text-muted font-semibold uppercase tracking-wide">
+                        {/* Header row — 4 columns: Set | KG | Reps | Delete */}
+                        <div className="grid grid-cols-[44px_1fr_1fr_44px] gap-2 px-3 pt-3 pb-2 text-[11px] text-text-muted font-semibold uppercase tracking-wide">
                             <span className="text-center">Set</span>
-                            <span className="text-center">kg</span>
+                            <span className="text-center">Weight (kg)</span>
                             <span className="text-center">Reps</span>
-                            <span className="text-center">RPE</span>
                             <span />
                         </div>
 
@@ -346,7 +346,7 @@ export default function ActiveWorkoutPage() {
                             {currentEx.sets.map((set, idx) => (
                                 <div
                                     key={set.id}
-                                    className={`grid grid-cols-[36px_1fr_1fr_44px_36px] gap-2 items-center px-4 py-2 transition-colors ${set.completed ? 'bg-green/5' : ''}`}
+                                    className={`grid grid-cols-[44px_1fr_1fr_44px] gap-2 items-center px-3 py-2 transition-colors ${set.completed ? 'bg-green/5' : ''}`}
                                 >
                                     {/* Set number / complete toggle */}
                                     <button
@@ -354,12 +354,12 @@ export default function ActiveWorkoutPage() {
                                             ? toggleSetComplete(currentEx.id, set.id)
                                             : completeSet(currentEx.id, set.id)
                                         }
-                                        className="flex items-center justify-center"
+                                        className="flex items-center justify-center w-full h-11"
                                     >
                                         {set.completed
-                                            ? <CheckSquare size={20} className="text-green" />
-                                            : <div className="w-6 h-6 rounded-lg border-2 border-border flex items-center justify-center">
-                                                <span className="text-xs font-bold text-text-muted">{idx + 1}</span>
+                                            ? <CheckSquare size={22} className="text-green" />
+                                            : <div className="w-8 h-8 rounded-xl border-2 border-border flex items-center justify-center active:scale-90 transition-transform">
+                                                <span className="text-sm font-bold text-text-muted">{idx + 1}</span>
                                             </div>
                                         }
                                     </button>
@@ -382,24 +382,12 @@ export default function ActiveWorkoutPage() {
                                         className={`bg-bg-input border rounded-xl py-3 text-sm text-center focus:outline-none focus:border-accent/50 transition-colors ${set.completed ? 'border-green/20 text-text-muted' : 'border-border'}`}
                                     />
 
-                                    <input
-                                        type="number"
-                                        inputMode="numeric"
-                                        min={1} max={10}
-                                        value={set.rpe || ''}
-                                        onChange={e => {
-                                            const v = parseInt(e.target.value);
-                                            updateSet(currentEx.id, set.id, { rpe: v >= 1 && v <= 10 ? v : undefined });
-                                        }}
-                                        placeholder="—"
-                                        className={`bg-bg-input border rounded-xl py-3 text-xs text-center focus:outline-none focus:border-accent/50 ${set.completed ? 'border-green/20 text-text-muted' : 'border-border'}`}
-                                    />
-
+                                    {/* Delete set — large tap target */}
                                     <button
                                         onClick={() => removeSet(currentEx.id, set.id)}
-                                        className="flex items-center justify-center text-text-muted active:scale-90"
+                                        className="flex items-center justify-center w-full h-11 text-text-muted hover:text-red active:scale-90 transition-all"
                                     >
-                                        <X size={14} />
+                                        <X size={16} />
                                     </button>
                                 </div>
                             ))}
