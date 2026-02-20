@@ -4,6 +4,8 @@ import { useAuthStore } from '../stores/authStore';
 import { useWorkoutStore } from '../stores/workoutStore';
 import { BUILT_IN_TEMPLATES, getTemplateCategories } from '../lib/templates';
 import type { WorkoutTemplate } from '../lib/types';
+import { getOneRepMaxes } from '../lib/firestoreService';
+import { isIronTemplateId, normalizeOneRepMaxes, scaleTemplateForOneRepMaxes } from '../lib/ironProtocol';
 import { Dumbbell, Play, ChevronRight, Zap, Target, Heart, Clock, Filter } from 'lucide-react';
 import toast from 'react-hot-toast';
 
@@ -34,13 +36,25 @@ export default function TemplatesPage() {
         return BUILT_IN_TEMPLATES.filter(t => t.category === selectedCategory);
     }, [selectedCategory]);
 
-    const handleStart = (template: WorkoutTemplate) => {
+    const handleStart = async (template: WorkoutTemplate) => {
         if (!user) return;
         if (activeSession) {
             if (!confirm('You have an active workout. Start a new one?')) return;
         }
-        startFromTemplate(user.uid, template);
-        toast.success(`Starting ${template.title}! 💪`);
+        let selectedTemplate = template;
+        if (isIronTemplateId(template.id)) {
+            try {
+                const maxes = await getOneRepMaxes(user.uid);
+                selectedTemplate = scaleTemplateForOneRepMaxes(
+                    template,
+                    normalizeOneRepMaxes(user.uid, maxes)
+                );
+            } catch (error) {
+                console.warn('Failed to load 1RMs. Starting with default iron template:', error);
+            }
+        }
+        startFromTemplate(user.uid, selectedTemplate);
+        toast.success(`Starting ${selectedTemplate.title}! 💪`);
         navigate('/active-workout');
     };
 

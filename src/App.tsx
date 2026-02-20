@@ -12,6 +12,8 @@ import TemplatesPage from './pages/TemplatesPage';
 import ChallengesPage from './pages/ChallengesPage';
 import NutritionPage from './pages/NutritionPage';
 import ProfilePage from './pages/ProfilePage';
+import IronProtocolPage from './pages/IronProtocolPage';
+import HistoryPage from './pages/HistoryPage';
 import BottomNav from './components/BottomNav';
 import InstallPrompt from './components/InstallPrompt';
 import OfflineBanner from './components/OfflineBanner';
@@ -88,6 +90,12 @@ export default function App() {
                     } />
                     <Route path="/nutrition" element={
                         <ProtectedRoute><NutritionPage /></ProtectedRoute>
+                    } />
+                    <Route path="/iron-protocol" element={
+                        <ProtectedRoute><IronProtocolPage /></ProtectedRoute>
+                    } />
+                    <Route path="/history" element={
+                        <ProtectedRoute><HistoryPage /></ProtectedRoute>
                     } />
                     <Route path="/profile" element={
                         <ProtectedRoute><ProfilePage /></ProtectedRoute>

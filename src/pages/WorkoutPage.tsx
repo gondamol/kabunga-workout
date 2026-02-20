@@ -7,7 +7,7 @@ import type { WorkoutSession } from '../lib/types';
 import { useEffect, useState } from 'react';
 import { COMMON_EXERCISES } from '../lib/constants';
 import {
-    Play, Dumbbell, Clock, Plus, X, Search, History,
+    Play, Dumbbell, Clock, Plus, X, Search, History, Calendar,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 
@@ -191,6 +191,13 @@ export default function WorkoutPage() {
 
             {tab === 'history' && (
                 <div className="space-y-2 animate-fade-in">
+                    <button
+                        onClick={() => navigate('/history')}
+                        className="w-full py-3 rounded-2xl border border-border text-sm text-text-secondary flex items-center justify-center gap-2 mb-2"
+                    >
+                        <Calendar size={16} />
+                        Open Calendar View
+                    </button>
                     {history.length === 0 ? (
                         <div className="text-center py-16">
                             <History size={40} className="text-text-muted mx-auto mb-3" />

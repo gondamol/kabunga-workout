@@ -1,5 +1,11 @@
 import type { QueuedAction } from './types';
-import { saveWorkout, saveMeal, saveChallenge } from './firestoreService';
+import {
+    saveChallenge,
+    saveFitnessDailyLog,
+    saveMeal,
+    saveOneRepMaxes,
+    saveWorkout,
+} from './firestoreService';
 
 const DB_NAME = 'kabunga-offline';
 const STORE_NAME = 'queue';
@@ -72,6 +78,12 @@ export const processQueue = async (): Promise<number> => {
                     break;
                 case 'challenge':
                     await saveChallenge(action.data);
+                    break;
+                case 'oneRepMaxes':
+                    await saveOneRepMaxes(action.data.uid, action.data.maxes);
+                    break;
+                case 'fitnessDaily':
+                    await saveFitnessDailyLog(action.data.uid, action.data.date, action.data.log);
                     break;
             }
             await removeAction(action.id);

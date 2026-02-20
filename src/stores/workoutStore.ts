@@ -3,6 +3,7 @@ import { persist } from 'zustand/middleware';
 import type { Exercise, ExerciseSet, WorkoutSession, WorkoutTemplate, WorkoutPhase } from '../lib/types';
 import { CALORIES_PER_MINUTE } from '../lib/constants';
 import { playAlarm, playCountdownBeep, vibrateRestComplete, vibrateSetComplete, playCompletionChime } from '../lib/timerService';
+import { classifyIronPhase, isIronTemplateId } from '../lib/ironProtocol';
 
 interface WorkoutState {
     activeSession: WorkoutSession | null;
@@ -144,12 +145,14 @@ export const useWorkoutStore = create<WorkoutState>()(
                 const exercises: Exercise[] = [];
                 for (const phase of template.phases) {
                     for (const ex of phase.exercises) {
+                        const phaseType = classifyIronPhase(phase.name, ex.isWarmup);
                         const sets: ExerciseSet[] = Array.from({ length: ex.sets }, () => ({
                             id: generateId(),
                             reps: 0,
                             weight: ex.weight,
                             completed: false,
                             isWarmup: ex.isWarmup,
+                            setType: phaseType,
                         }));
                         exercises.push({
                             id: generateId(),
@@ -162,6 +165,8 @@ export const useWorkoutStore = create<WorkoutState>()(
                             restSeconds: ex.restSeconds,
                             cue: ex.cue,
                             isWarmup: ex.isWarmup,
+                            phaseName: phase.name,
+                            phaseType,
                         });
                     }
                 }
@@ -410,7 +415,19 @@ export const useWorkoutStore = create<WorkoutState>()(
                 const { activeSession, defaultRestSeconds } = get();
                 if (!activeSession) return;
                 const exercise = activeSession.exercises.find(e => e.id === exerciseId);
-                const restTime = exercise?.restSeconds || defaultRestSeconds;
+                const isIron = isIronTemplateId(activeSession.templateId);
+                let restTime: number | null = exercise?.restSeconds || defaultRestSeconds;
+                if (isIron) {
+                    if (exercise?.isWarmup || exercise?.phaseType === 'warmup') {
+                        restTime = null;
+                    } else if (exercise?.phaseType === 'heavy') {
+                        restTime = 180;
+                    } else if (exercise?.phaseType === 'working' || exercise?.phaseType === 'backoff') {
+                        restTime = 120;
+                    } else {
+                        restTime = exercise?.restSeconds || defaultRestSeconds;
+                    }
+                }
 
                 set({
                     activeSession: {
@@ -429,7 +446,9 @@ export const useWorkoutStore = create<WorkoutState>()(
                 });
 
                 vibrateSetComplete();
-                get().startRest(restTime);
+                if (restTime && restTime > 0) {
+                    get().startRest(restTime);
+                }
             },
 
             addMediaUrl: (url) => {

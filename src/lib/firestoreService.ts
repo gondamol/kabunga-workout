@@ -1,9 +1,16 @@
 import {
     collection, doc, setDoc, updateDoc, deleteDoc,
-    query, where, orderBy, limit, getDocs,
+    query, where, limit, getDocs, getDoc,
 } from 'firebase/firestore';
 import { db } from './firebase';
-import type { WorkoutSession, Challenge, Meal } from './types';
+import type {
+    Challenge,
+    ExerciseHistory,
+    FitnessDailyLog,
+    Meal,
+    OneRepMaxes,
+    WorkoutSession,
+} from './types';
 
 // ─── Workouts ───
 export const saveWorkout = async (workout: WorkoutSession): Promise<void> => {
@@ -44,6 +51,127 @@ export const getRecentWorkouts = async (
         .map((d) => d.data() as WorkoutSession)
         .filter((w) => w.startedAt >= since)
         .sort((a, b) => b.startedAt - a.startedAt);
+};
+
+// ─── One Rep Maxes ───
+export const saveOneRepMaxes = async (
+    uid: string,
+    maxes: Partial<OneRepMaxes>
+): Promise<void> => {
+    const payload: Partial<OneRepMaxes> = {
+        userId: uid,
+        ...maxes,
+        updatedAt: Date.now(),
+    };
+    await setDoc(doc(db, 'oneRepMaxes', uid), payload, { merge: true });
+};
+
+export const getOneRepMaxes = async (uid: string): Promise<OneRepMaxes | null> => {
+    const snap = await getDoc(doc(db, 'oneRepMaxes', uid));
+    if (!snap.exists()) return null;
+    return snap.data() as OneRepMaxes;
+};
+
+// ─── Fitness Dailies ───
+export const saveFitnessDailyLog = async (
+    uid: string,
+    date: string,
+    log: Partial<FitnessDailyLog>
+): Promise<void> => {
+    const payload: Partial<FitnessDailyLog> = {
+        userId: uid,
+        date,
+        ...log,
+        completedAt: Date.now(),
+    };
+    await setDoc(doc(db, 'fitnessDailies', uid, 'logs', date), payload, { merge: true });
+};
+
+export const getFitnessDailyLogs = async (
+    uid: string,
+    days: number
+): Promise<FitnessDailyLog[]> => {
+    const sinceDate = new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+    const q = query(
+        collection(db, 'fitnessDailies', uid, 'logs'),
+        limit(Math.max(days + 14, 30))
+    );
+    const snap = await getDocs(q);
+    return snap.docs
+        .map((d) => d.data() as FitnessDailyLog)
+        .filter((log) => log.date >= sinceDate)
+        .sort((a, b) => b.date.localeCompare(a.date));
+};
+
+// ─── Exercise History (Progressive Overload) ───
+const normalizeExerciseName = (name: string): string =>
+    name.trim().toLowerCase().replace(/\s+/g, ' ');
+
+const toBestSet = (sets: Array<{ reps: number; weight: number; rpe?: number }>) => {
+    return sets.reduce(
+        (best, setItem) => {
+            const bestScore = best.weight * best.reps;
+            const currentScore = setItem.weight * setItem.reps;
+            if (currentScore > bestScore) {
+                return { reps: setItem.reps, weight: setItem.weight };
+            }
+            if (currentScore === bestScore && setItem.weight > best.weight) {
+                return { reps: setItem.reps, weight: setItem.weight };
+            }
+            return best;
+        },
+        { reps: 0, weight: 0 }
+    );
+};
+
+export const getExerciseHistory = async (
+    uid: string,
+    exerciseName: string,
+    limitSessions = 8
+): Promise<ExerciseHistory | null> => {
+    const normalized = normalizeExerciseName(exerciseName);
+    const q = query(
+        collection(db, 'workouts'),
+        where('userId', '==', uid),
+        where('status', '==', 'completed'),
+        limit(250)
+    );
+    const snap = await getDocs(q);
+    const workouts = snap.docs
+        .map((d) => d.data() as WorkoutSession)
+        .sort((a, b) => b.startedAt - a.startedAt);
+
+    const sessions: ExerciseHistory['sessions'] = [];
+
+    for (const workout of workouts) {
+        if (sessions.length >= limitSessions) break;
+        const matchingExercises = workout.exercises.filter(
+            (exercise) => normalizeExerciseName(exercise.name) === normalized
+        );
+        for (const exercise of matchingExercises) {
+            if (sessions.length >= limitSessions) break;
+            const sets = exercise.sets
+                .filter((setItem) => setItem.reps > 0 || setItem.weight > 0)
+                .map((setItem) => ({
+                    reps: setItem.reps,
+                    weight: setItem.weight,
+                    rpe: setItem.rpe,
+                }));
+            if (sets.length === 0) continue;
+            sessions.push({
+                date: workout.startedAt,
+                sets,
+                bestSet: toBestSet(sets),
+            });
+        }
+    }
+
+    if (sessions.length === 0) return null;
+
+    return {
+        name: normalized,
+        sessions,
+    };
 };
 
 // ─── Challenges ───

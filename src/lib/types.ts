@@ -19,7 +19,30 @@ export interface UserPreferences {
     createdAt: number;
 }
 
+// ─── Iron Protocol 1RMs ───
+export interface OneRepMaxes {
+    userId: string;
+    benchPress: number;    // kg
+    backSquat: number;     // kg
+    overheadPress: number; // kg
+    bentOverRow: number;   // kg
+    romanianDL: number;    // kg
+    updatedAt: number;
+}
+
+// ─── Fitness Dailies Tracking ───
+export interface FitnessDailyLog {
+    userId: string;
+    date: string; // YYYY-MM-DD
+    legRaisesDone: boolean;
+    armCurlsDone: boolean;
+    barHangDone: boolean;
+    completedAt: number;
+}
+
 // ─── Workout ───
+export type IronSetType = 'warmup' | 'working' | 'heavy' | 'backoff' | 'accessories';
+
 export interface ExerciseSet {
     id: string;
     reps: number;
@@ -29,6 +52,8 @@ export interface ExerciseSet {
     restTaken?: number; // seconds of rest taken after this set
     completedAt?: number; // timestamp
     isWarmup?: boolean;
+    personalBest?: boolean;
+    setType?: IronSetType;
 }
 
 export interface Exercise {
@@ -43,6 +68,8 @@ export interface Exercise {
     restSeconds?: number; // per-exercise rest override
     cue?: string; // coaching cue text
     isWarmup?: boolean;
+    phaseName?: string;
+    phaseType?: IronSetType;
     // Tracking
     personalBest?: boolean;
     exerciseTime?: number; // seconds spent on this exercise
@@ -173,7 +200,7 @@ export interface DashboardStats {
 // ─── Offline Queue ───
 export interface QueuedAction {
     id: string;
-    type: 'workout' | 'meal' | 'challenge';
+    type: 'workout' | 'meal' | 'challenge' | 'oneRepMaxes' | 'fitnessDaily';
     action: 'create' | 'update' | 'delete';
     data: any;
     timestamp: number;

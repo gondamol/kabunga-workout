@@ -1,14 +1,15 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useWorkoutStore } from '../stores/workoutStore';
-import { saveWorkout } from '../lib/firestoreService';
+import dayjs from 'dayjs';
+import { getExerciseHistory, saveWorkout, uploadMedia } from '../lib/firestoreService';
 import { enqueueAction } from '../lib/offlineQueue';
 import { formatDuration, generateWorkoutSummary, shareWorkout, compressImage } from '../lib/utils';
-import { uploadMedia } from '../lib/firestoreService';
 import { useAuthStore } from '../stores/authStore';
 import { COMMON_EXERCISES } from '../lib/constants';
 import RestTimer from '../components/RestTimer';
 import toast from 'react-hot-toast';
+import type { ExerciseHistory, ExerciseSet, IronSetType } from '../lib/types';
 import {
     Plus, X, Check, CheckSquare,
     Camera, Video, StopCircle, Pause, Play,
@@ -16,6 +17,18 @@ import {
     Zap, MoreHorizontal, Trash2,
 } from 'lucide-react';
 import Webcam from 'react-webcam';
+import { isIronTemplateId } from '../lib/ironProtocol';
+
+const normalizeExerciseName = (name: string): string =>
+    name.toLowerCase().trim().replace(/\s+/g, ' ');
+
+const setTypeMeta: Record<IronSetType, { label: string; className: string }> = {
+    warmup: { label: 'Warm-Up', className: 'bg-bg-input text-text-muted border-border' },
+    working: { label: 'Working', className: 'bg-cyan/15 text-cyan border-cyan/30' },
+    heavy: { label: 'Heavy', className: 'bg-orange-600/20 text-orange-400 border-orange-500/40' },
+    backoff: { label: 'Back-Off', className: 'bg-green/15 text-green border-green/30' },
+    accessories: { label: 'Accessory', className: 'bg-bg-input text-text-muted border-border' },
+};
 
 export default function ActiveWorkoutPage() {
     const navigate = useNavigate();
@@ -35,6 +48,8 @@ export default function ActiveWorkoutPage() {
     const [isRecording, setIsRecording] = useState(false);
     const [showMenu, setShowMenu] = useState(false);
     const [uploading, setUploading] = useState(false);
+    const [historyByExercise, setHistoryByExercise] = useState<Record<string, ExerciseHistory | null>>({});
+    const [sessionBestScores, setSessionBestScores] = useState<Record<string, number>>({});
 
     const webcamRef = useRef<Webcam>(null);
     const mediaRecorderRef = useRef<MediaRecorder | null>(null);
@@ -51,6 +66,46 @@ export default function ActiveWorkoutPage() {
         if (!activeSession) navigate('/workout', { replace: true });
     }, [activeSession, navigate]);
 
+    useEffect(() => {
+        if (!user || !activeSession || !isIronTemplateId(activeSession.templateId)) {
+            setHistoryByExercise({});
+            return;
+        }
+        let cancelled = false;
+        const uniqueNames = Array.from(new Set(activeSession.exercises.map((exercise) => exercise.name)));
+
+        const loadHistory = async () => {
+            const entries = await Promise.all(
+                uniqueNames.map(async (name) => {
+                    try {
+                        const history = await getExerciseHistory(user.uid, name, 10);
+                        return [normalizeExerciseName(name), history] as const;
+                    } catch (error) {
+                        console.warn(`Failed to load history for ${name}:`, error);
+                        return [normalizeExerciseName(name), null] as const;
+                    }
+                })
+            );
+
+            if (cancelled) return;
+            setHistoryByExercise(
+                entries.reduce<Record<string, ExerciseHistory | null>>((acc, [key, value]) => {
+                    acc[key] = value;
+                    return acc;
+                }, {})
+            );
+        };
+
+        loadHistory();
+        return () => {
+            cancelled = true;
+        };
+    }, [user, activeSession]);
+
+    useEffect(() => {
+        setSessionBestScores({});
+    }, [activeSession?.id]);
+
     if (!activeSession) return null;
 
     const exercises = activeSession.exercises;
@@ -60,6 +115,54 @@ export default function ActiveWorkoutPage() {
     const completedSets = currentEx?.sets.filter(s => s.completed).length ?? 0;
     const totalSets = currentEx?.sets.length ?? 0;
     const allSetsComplete = totalSets > 0 && completedSets === totalSets;
+    const isIronSession = isIronTemplateId(activeSession.templateId);
+
+    const resolveSetType = (setItem?: ExerciseSet): IronSetType => {
+        if (setItem?.setType) return setItem.setType;
+        if (currentEx?.phaseType) return currentEx.phaseType;
+        if (setItem?.isWarmup || currentEx?.isWarmup) return 'warmup';
+        return 'accessories';
+    };
+
+    const currentPhaseType = resolveSetType(currentEx?.sets[0]);
+    const currentPhaseMeta = setTypeMeta[currentPhaseType];
+    const currentHistory = currentEx ? historyByExercise[normalizeExerciseName(currentEx.name)] ?? null : null;
+    const lastSession = currentHistory?.sessions[0];
+    const lastWeeksAgo = lastSession ? Math.max(0, dayjs().diff(dayjs(lastSession.date), 'week')) : null;
+
+    const getHistoricalBestScore = (history: ExerciseHistory | null): number => {
+        if (!history) return 0;
+        return history.sessions.reduce((best, session) => {
+            const candidate = session.sets.reduce((sessionBest, setItem) => {
+                return Math.max(sessionBest, setItem.weight * setItem.reps);
+            }, 0);
+            return Math.max(best, candidate);
+        }, 0);
+    };
+
+    const handleSetPress = (setItem: ExerciseSet) => {
+        if (!currentEx) return;
+        if (setItem.completed) {
+            toggleSetComplete(currentEx.id, setItem.id);
+            return;
+        }
+
+        completeSet(currentEx.id, setItem.id);
+
+        if (!isIronSession) return;
+
+        const key = normalizeExerciseName(currentEx.name);
+        const history = historyByExercise[key] ?? null;
+        const historicalBest = getHistoricalBestScore(history);
+        const sessionBest = sessionBestScores[key] ?? 0;
+        const candidateScore = setItem.weight * setItem.reps;
+
+        if (candidateScore > Math.max(historicalBest, sessionBest) && candidateScore > 0) {
+            updateSet(currentEx.id, setItem.id, { personalBest: true });
+            setSessionBestScores((prev) => ({ ...prev, [key]: candidateScore }));
+            toast.success('🔥 New PR!');
+        }
+    };
 
     // ─── Exercise picker ───
     const filtered = COMMON_EXERCISES.filter(e => e.toLowerCase().includes(search.toLowerCase()));
@@ -260,12 +363,24 @@ export default function ActiveWorkoutPage() {
                                 <p className="text-xs text-accent font-semibold uppercase tracking-wider mb-1">
                                     Exercise {currentExerciseIndex + 1} of {exercises.length}
                                 </p>
+                                {isIronSession && (
+                                    <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] uppercase tracking-wide border mb-1 ${currentPhaseMeta.className}`}>
+                                        {currentPhaseMeta.label}
+                                    </span>
+                                )}
                                 <h2 className="text-2xl font-black">{currentEx.name}</h2>
                                 {currentEx.plannedSets && (
                                     <p className="text-sm text-text-secondary mt-1">
                                         Target: {currentEx.plannedSets} sets
                                         {currentEx.plannedReps ? ` × ${currentEx.plannedReps} reps` : ''}
                                         {currentEx.plannedWeight ? ` @ ${currentEx.plannedWeight}kg` : ''}
+                                    </p>
+                                )}
+                                {isIronSession && (
+                                    <p className="text-xs text-text-secondary mt-1">
+                                        {lastSession
+                                            ? `Last time: ${lastSession.bestSet.weight} kg × ${lastSession.bestSet.reps} reps (${lastWeeksAgo} week${lastWeeksAgo === 1 ? '' : 's'} ago)`
+                                            : 'Last time: no history yet'}
                                     </p>
                                 )}
                             </div>
@@ -349,20 +464,30 @@ export default function ActiveWorkoutPage() {
                                     className={`grid grid-cols-[44px_1fr_1fr_44px] gap-2 items-center px-3 py-2 transition-colors ${set.completed ? 'bg-green/5' : ''}`}
                                 >
                                     {/* Set number / complete toggle */}
+                                    {(() => {
+                                        const setType = resolveSetType(set);
+                                        const setTypeBadge = setTypeMeta[setType];
+                                        return (
                                     <button
-                                        onClick={() => set.completed
-                                            ? toggleSetComplete(currentEx.id, set.id)
-                                            : completeSet(currentEx.id, set.id)
-                                        }
+                                        onClick={() => handleSetPress(set)}
                                         className="flex items-center justify-center w-full h-11"
                                     >
-                                        {set.completed
-                                            ? <CheckSquare size={22} className="text-green" />
-                                            : <div className="w-8 h-8 rounded-xl border-2 border-border flex items-center justify-center active:scale-90 transition-transform">
-                                                <span className="text-sm font-bold text-text-muted">{idx + 1}</span>
-                                            </div>
-                                        }
+                                        <div className="flex flex-col items-center gap-1">
+                                            {set.completed
+                                                ? <CheckSquare size={22} className="text-green" />
+                                                : <div className="w-8 h-8 rounded-xl border-2 border-border flex items-center justify-center active:scale-90 transition-transform">
+                                                    <span className="text-sm font-bold text-text-muted">{idx + 1}</span>
+                                                </div>
+                                            }
+                                            {isIronSession && (
+                                                <span className={`text-[9px] px-1 py-0.5 rounded border uppercase tracking-wide ${setTypeBadge.className}`}>
+                                                    {setTypeBadge.label}
+                                                </span>
+                                            )}
+                                        </div>
                                     </button>
+                                        );
+                                    })()}
 
                                     <input
                                         type="number"
