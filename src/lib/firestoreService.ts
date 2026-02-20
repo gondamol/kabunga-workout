@@ -12,16 +12,28 @@ import type {
     WorkoutSession,
 } from './types';
 
-// ─── Workouts ───
-export const saveWorkout = async (workout: WorkoutSession): Promise<void> => {
-    await setDoc(doc(db, 'workouts', workout.id), workout);
+const WORKOUT_CACHE_TTL_MS = 60 * 1000;
+const workoutCache = new Map<string, {
+    fetchedAt: number;
+    maxResults: number;
+    workouts: WorkoutSession[];
+}>();
+
+const getCachedWorkouts = (userId: string, maxResults: number): WorkoutSession[] | null => {
+    const cached = workoutCache.get(userId);
+    if (!cached) return null;
+    if (Date.now() - cached.fetchedAt > WORKOUT_CACHE_TTL_MS) return null;
+    if (cached.maxResults < maxResults) return null;
+    return cached.workouts.slice(0, maxResults);
 };
 
-export const getUserWorkouts = async (
+const fetchCompletedWorkouts = async (
     userId: string,
-    maxResults = 50
+    maxResults: number
 ): Promise<WorkoutSession[]> => {
-    // Simple query — no composite index needed
+    const fromCache = getCachedWorkouts(userId, maxResults);
+    if (fromCache) return fromCache;
+
     const q = query(
         collection(db, 'workouts'),
         where('userId', '==', userId),
@@ -29,9 +41,29 @@ export const getUserWorkouts = async (
         limit(maxResults)
     );
     const snap = await getDocs(q);
-    const results = snap.docs.map((d) => d.data() as WorkoutSession);
-    // Sort client-side to avoid needing a Firestore composite index
-    return results.sort((a, b) => b.startedAt - a.startedAt);
+    const workouts = snap.docs
+        .map((d) => d.data() as WorkoutSession)
+        .sort((a, b) => b.startedAt - a.startedAt);
+
+    workoutCache.set(userId, {
+        fetchedAt: Date.now(),
+        maxResults,
+        workouts,
+    });
+    return workouts;
+};
+
+// ─── Workouts ───
+export const saveWorkout = async (workout: WorkoutSession): Promise<void> => {
+    await setDoc(doc(db, 'workouts', workout.id), workout);
+    workoutCache.delete(workout.userId);
+};
+
+export const getUserWorkouts = async (
+    userId: string,
+    maxResults = 50
+): Promise<WorkoutSession[]> => {
+    return fetchCompletedWorkouts(userId, maxResults);
 };
 
 export const getRecentWorkouts = async (
@@ -39,16 +71,9 @@ export const getRecentWorkouts = async (
     days = 30
 ): Promise<WorkoutSession[]> => {
     const since = Date.now() - days * 24 * 60 * 60 * 1000;
-    // Query only by userId + status — sort client-side
-    const q = query(
-        collection(db, 'workouts'),
-        where('userId', '==', userId),
-        where('status', '==', 'completed'),
-        limit(200)
-    );
-    const snap = await getDocs(q);
-    return snap.docs
-        .map((d) => d.data() as WorkoutSession)
+    const maxResults = Math.max(80, Math.min(240, days * 8));
+    const workouts = await fetchCompletedWorkouts(userId, maxResults);
+    return workouts
         .filter((w) => w.startedAt >= since)
         .sort((a, b) => b.startedAt - a.startedAt);
 };
@@ -130,16 +155,7 @@ export const getExerciseHistory = async (
     limitSessions = 8
 ): Promise<ExerciseHistory | null> => {
     const normalized = normalizeExerciseName(exerciseName);
-    const q = query(
-        collection(db, 'workouts'),
-        where('userId', '==', uid),
-        where('status', '==', 'completed'),
-        limit(250)
-    );
-    const snap = await getDocs(q);
-    const workouts = snap.docs
-        .map((d) => d.data() as WorkoutSession)
-        .sort((a, b) => b.startedAt - a.startedAt);
+    const workouts = await fetchCompletedWorkouts(uid, 180);
 
     const sessions: ExerciseHistory['sessions'] = [];
 

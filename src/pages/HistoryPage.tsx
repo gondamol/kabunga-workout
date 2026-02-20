@@ -71,7 +71,7 @@ export default function HistoryPage() {
 
     useEffect(() => {
         if (!user) return;
-        getUserWorkouts(user.uid, 420)
+        getUserWorkouts(user.uid, 90)
             .then(setWorkouts)
             .catch((error) => console.warn('Failed to load workout history:', error));
     }, [user]);
@@ -112,6 +112,11 @@ export default function HistoryPage() {
 
     const selectedSessions = selectedDate ? (workoutsByDate[selectedDate] || []) : [];
     const selectedSummary = useMemo(() => getSessionSummary(selectedSessions), [selectedSessions]);
+    const oldestLoadedWorkoutDay = useMemo(() => {
+        if (workouts.length === 0) return null;
+        const oldest = workouts.reduce((min, workout) => Math.min(min, workout.startedAt), workouts[0].startedAt);
+        return dayjs(oldest).startOf('day');
+    }, [workouts]);
 
     const getDotClass = (date: Dayjs): string => {
         const key = getDateKey(date);
@@ -122,7 +127,11 @@ export default function HistoryPage() {
             return isPrimaryDay(date) ? 'bg-green' : 'bg-cyan';
         }
 
-        if (date.isBefore(dayjs(), 'day') && isPrimaryDay(date)) {
+        if (
+            date.isBefore(dayjs(), 'day') &&
+            isPrimaryDay(date) &&
+            (!oldestLoadedWorkoutDay || !date.isBefore(oldestLoadedWorkoutDay, 'day'))
+        ) {
             return 'bg-red';
         }
 

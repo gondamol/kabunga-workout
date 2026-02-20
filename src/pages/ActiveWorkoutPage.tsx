@@ -22,12 +22,12 @@ import { isIronTemplateId } from '../lib/ironProtocol';
 const normalizeExerciseName = (name: string): string =>
     name.toLowerCase().trim().replace(/\s+/g, ' ');
 
-const setTypeMeta: Record<IronSetType, { label: string; className: string }> = {
-    warmup: { label: 'Warm-Up', className: 'bg-bg-input text-text-muted border-border' },
-    working: { label: 'Working', className: 'bg-cyan/15 text-cyan border-cyan/30' },
-    heavy: { label: 'Heavy', className: 'bg-orange-600/20 text-orange-400 border-orange-500/40' },
-    backoff: { label: 'Back-Off', className: 'bg-green/15 text-green border-green/30' },
-    accessories: { label: 'Accessory', className: 'bg-bg-input text-text-muted border-border' },
+const setTypeMeta: Record<IronSetType, { label: string; shortLabel: string; className: string }> = {
+    warmup: { label: 'Warm-Up', shortLabel: 'WU', className: 'bg-bg-input text-text-muted border-border' },
+    working: { label: 'Working', shortLabel: 'WRK', className: 'bg-cyan/15 text-cyan border-cyan/30' },
+    heavy: { label: 'Heavy', shortLabel: 'HVY', className: 'bg-orange-600/20 text-orange-400 border-orange-500/40' },
+    backoff: { label: 'Back-Off', shortLabel: 'BO', className: 'bg-green/15 text-green border-green/30' },
+    accessories: { label: 'Accessory', shortLabel: 'ACC', className: 'bg-bg-input text-text-muted border-border' },
 };
 
 export default function ActiveWorkoutPage() {
@@ -237,13 +237,7 @@ export default function ActiveWorkoutPage() {
         const completed = endWorkout();
         if (!completed) return;
 
-        const totalSetsAll = completed.exercises.reduce((s, e) => s + e.sets.length, 0);
-        const summary = generateWorkoutSummary(
-            completed.duration,
-            completed.exercises.length,
-            totalSetsAll,
-            completed.caloriesEstimate,
-        );
+        const summary = generateWorkoutSummary(completed);
 
         toast.success('Workout complete! 🎉', { duration: 4000 });
         navigate('/', { replace: true });
@@ -450,7 +444,7 @@ export default function ActiveWorkoutPage() {
                     {/* ── Sets table ── */}
                     <div className="glass rounded-2xl overflow-hidden mb-4">
                         {/* Header row — 4 columns: Set | KG | Reps | Delete */}
-                        <div className="grid grid-cols-[44px_1fr_1fr_44px] gap-2 px-3 pt-3 pb-2 text-[11px] text-text-muted font-semibold uppercase tracking-wide">
+                        <div className="grid grid-cols-[56px_minmax(0,1fr)_minmax(0,1fr)_40px] gap-2 px-3 pt-3 pb-2 text-[11px] text-text-muted font-semibold uppercase tracking-wide">
                             <span className="text-center">Set</span>
                             <span className="text-center">Weight (kg)</span>
                             <span className="text-center">Reps</span>
@@ -461,7 +455,7 @@ export default function ActiveWorkoutPage() {
                             {currentEx.sets.map((set, idx) => (
                                 <div
                                     key={set.id}
-                                    className={`grid grid-cols-[44px_1fr_1fr_44px] gap-2 items-center px-3 py-2 transition-colors ${set.completed ? 'bg-green/5' : ''}`}
+                                    className={`grid grid-cols-[56px_minmax(0,1fr)_minmax(0,1fr)_40px] gap-2 items-center px-3 py-2 transition-colors ${set.completed ? 'bg-green/5' : ''}`}
                                 >
                                     {/* Set number / complete toggle */}
                                     {(() => {
@@ -480,8 +474,8 @@ export default function ActiveWorkoutPage() {
                                                 </div>
                                             }
                                             {isIronSession && (
-                                                <span className={`text-[9px] px-1 py-0.5 rounded border uppercase tracking-wide ${setTypeBadge.className}`}>
-                                                    {setTypeBadge.label}
+                                                <span className={`w-9 text-center text-[9px] px-1 py-0.5 rounded border uppercase tracking-wide ${setTypeBadge.className}`}>
+                                                    {setTypeBadge.shortLabel}
                                                 </span>
                                             )}
                                         </div>
@@ -495,7 +489,7 @@ export default function ActiveWorkoutPage() {
                                         value={set.weight || ''}
                                         onChange={e => updateSet(currentEx.id, set.id, { weight: parseFloat(e.target.value) || 0 })}
                                         placeholder={currentEx.plannedWeight ? String(currentEx.plannedWeight) : '0'}
-                                        className={`bg-bg-input border rounded-xl py-3 text-sm text-center focus:outline-none focus:border-accent/50 transition-colors ${set.completed ? 'border-green/20 text-text-muted' : 'border-border'}`}
+                                        className={`w-full min-w-0 bg-bg-input border rounded-xl py-3 px-1 text-base md:text-sm text-center focus:outline-none focus:border-accent/50 transition-colors ${set.completed ? 'border-green/20 text-text-muted' : 'border-border'}`}
                                     />
 
                                     <input
@@ -504,7 +498,7 @@ export default function ActiveWorkoutPage() {
                                         value={set.reps || ''}
                                         onChange={e => updateSet(currentEx.id, set.id, { reps: parseInt(e.target.value) || 0 })}
                                         placeholder={currentEx.plannedReps ? String(currentEx.plannedReps) : '0'}
-                                        className={`bg-bg-input border rounded-xl py-3 text-sm text-center focus:outline-none focus:border-accent/50 transition-colors ${set.completed ? 'border-green/20 text-text-muted' : 'border-border'}`}
+                                        className={`w-full min-w-0 bg-bg-input border rounded-xl py-3 px-1 text-base md:text-sm text-center focus:outline-none focus:border-accent/50 transition-colors ${set.completed ? 'border-green/20 text-text-muted' : 'border-border'}`}
                                     />
 
                                     {/* Delete set — large tap target */}

@@ -1,6 +1,7 @@
 import dayjs from 'dayjs';
 import relativeTime from 'dayjs/plugin/relativeTime';
 import duration from 'dayjs/plugin/duration';
+import type { WorkoutSession } from './types';
 
 dayjs.extend(relativeTime);
 dayjs.extend(duration);
@@ -109,11 +110,48 @@ export const copyToClipboard = async (text: string): Promise<boolean> => {
     }
 };
 
-export const generateWorkoutSummary = (
-    duration: number,
-    exerciseCount: number,
-    totalSets: number,
-    calories: number,
-): string => {
-    return `💪 Just crushed it with Kabunga!\n\n⏱ Duration: ${formatDurationHuman(duration)}\n🏋️ Exercises: ${exerciseCount}\n📊 Total Sets: ${totalSets}\n🔥 Calories: ~${calories} kcal\n\n#KabungaWorkout #FitnessGoals`;
+export const generateWorkoutSummary = (workout: WorkoutSession): string => {
+    const totalSets = workout.exercises.reduce((sum, exercise) => sum + exercise.sets.length, 0);
+    const totalReps = workout.exercises.reduce(
+        (sum, exercise) => sum + exercise.sets.reduce((setSum, setItem) => setSum + (setItem.reps || 0), 0),
+        0
+    );
+    const totalVolume = workout.exercises.reduce(
+        (sum, exercise) =>
+            sum + exercise.sets.reduce((setSum, setItem) => setSum + ((setItem.weight || 0) * (setItem.reps || 0)), 0),
+        0
+    );
+
+    const exerciseLines = workout.exercises
+        .slice(0, 4)
+        .map((exercise) => {
+            const setCount = exercise.sets.length;
+            const reps = exercise.sets.reduce((sum, setItem) => sum + (setItem.reps || 0), 0);
+            const volume = exercise.sets.reduce((sum, setItem) => sum + ((setItem.weight || 0) * (setItem.reps || 0)), 0);
+            return `- ${exercise.name}: ${setCount} sets, ${reps} reps, ${Math.round(volume)} volume`;
+        })
+        .join('\n');
+
+    const extraExercises = workout.exercises.length > 4
+        ? `\n- and ${workout.exercises.length - 4} more exercises finished strong`
+        : '';
+
+    const motivationalLine = 'Discipline is the quiet architecture of a stronger life. Show up, stack small victories, and become undeniable.';
+
+    return [
+        'Kabunga Session Complete.',
+        '',
+        `Duration: ${formatDurationHuman(workout.duration)}`,
+        `Exercises: ${workout.exercises.length}`,
+        `Sets: ${totalSets} | Reps: ${totalReps}`,
+        `Volume: ${Math.round(totalVolume)} total`,
+        `Calories: ~${workout.caloriesEstimate} kcal`,
+        '',
+        'Session Breakdown:',
+        `${exerciseLines}${extraExercises}`,
+        '',
+        motivationalLine,
+        '',
+        '#Kabunga #WorkoutComplete #ProgressiveOverload #Strength #Hypertrophy',
+    ].join('\n');
 };

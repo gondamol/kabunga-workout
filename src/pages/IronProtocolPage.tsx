@@ -65,7 +65,7 @@ const pickBestSet = (sessions: WorkoutSession[], exerciseNames: string[]): strin
     }
 
     if (bestScore <= 0) return '-';
-    return `${bestWeight}kg × ${bestReps}`;
+    return `${bestWeight}kg x ${bestReps}`;
 };
 
 const buildSixWeekRows = (sessions: WorkoutSession[]) => {
@@ -106,13 +106,13 @@ export default function IronProtocolPage() {
     useEffect(() => {
         if (!user) return;
         let cancelled = false;
+        setOneRepMaxes((prev) => prev ?? normalizeOneRepMaxes(user.uid, null));
 
-        const load = async () => {
+        const loadFast = async () => {
             try {
-                const [maxes, logs, history] = await Promise.all([
+                const [maxes, logs] = await Promise.all([
                     getOneRepMaxes(user.uid),
                     getFitnessDailyLogs(user.uid, 14),
-                    getUserWorkouts(user.uid, 260),
                 ]);
                 if (cancelled) return;
 
@@ -121,7 +121,6 @@ export default function IronProtocolPage() {
                     acc[log.date] = log;
                     return acc;
                 }, {}));
-                setWorkouts(history);
             } catch (error) {
                 console.warn('Failed to load Iron Protocol data:', error);
                 if (!cancelled) {
@@ -130,7 +129,17 @@ export default function IronProtocolPage() {
             }
         };
 
-        load();
+        const loadHistory = async () => {
+            try {
+                const history = await getUserWorkouts(user.uid, 90);
+                if (!cancelled) setWorkouts(history);
+            } catch (error) {
+                console.warn('Failed to load Iron history rows:', error);
+            }
+        };
+
+        loadFast();
+        loadHistory();
         return () => {
             cancelled = true;
         };
