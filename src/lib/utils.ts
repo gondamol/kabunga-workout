@@ -110,24 +110,69 @@ export const copyToClipboard = async (text: string): Promise<boolean> => {
     }
 };
 
+const WORKOUT_QUOTES: Array<{ text: string; author: string }> = [
+    { text: 'What stands in the way becomes the way.', author: 'Marcus Aurelius' },
+    { text: 'You have power over your mind - not outside events.', author: 'Marcus Aurelius' },
+    { text: 'We suffer more often in imagination than in reality.', author: 'Seneca' },
+    { text: 'Difficulties strengthen the mind, as labor does the body.', author: 'Seneca' },
+    { text: 'First say to yourself what you would be; then do what you have to do.', author: 'Epictetus' },
+    { text: 'No great thing is created suddenly.', author: 'Epictetus' },
+    { text: 'He who has a why to live can bear almost any how.', author: 'Friedrich Nietzsche' },
+    { text: 'Become who you are.', author: 'Friedrich Nietzsche' },
+    { text: 'Amor fati: love your fate and make it your strength.', author: 'Friedrich Nietzsche' },
+    { text: 'The individual has always had to struggle not to be overwhelmed by the tribe.', author: 'Friedrich Nietzsche' },
+];
+
+const pickWorkoutQuote = (workout: WorkoutSession): { text: string; author: string } => {
+    const seed = `${workout.id}:${workout.startedAt}:${workout.endedAt ?? 0}`;
+    let hash = 0;
+    for (let i = 0; i < seed.length; i++) {
+        hash = (hash * 31 + seed.charCodeAt(i)) >>> 0;
+    }
+    return WORKOUT_QUOTES[hash % WORKOUT_QUOTES.length];
+};
+
 export const generateWorkoutSummary = (workout: WorkoutSession): string => {
-    const totalSets = workout.exercises.reduce((sum, exercise) => sum + exercise.sets.length, 0);
+    const totalSets = workout.exercises.reduce((sum, exercise) => {
+        const completedSets = exercise.sets.filter((setItem) => setItem.completed).length;
+        return sum + (completedSets > 0 ? completedSets : exercise.sets.length);
+    }, 0);
     const totalReps = workout.exercises.reduce(
-        (sum, exercise) => sum + exercise.sets.reduce((setSum, setItem) => setSum + (setItem.reps || 0), 0),
+        (sum, exercise) => sum + exercise.sets.reduce(
+            (setSum, setItem) => setSum + (setItem.completed ? (setItem.reps || 0) : 0),
+            0
+        ),
         0
     );
     const totalVolume = workout.exercises.reduce(
         (sum, exercise) =>
-            sum + exercise.sets.reduce((setSum, setItem) => setSum + ((setItem.weight || 0) * (setItem.reps || 0)), 0),
+            sum + exercise.sets.reduce(
+                (setSum, setItem) => setSum + (setItem.completed ? ((setItem.weight || 0) * (setItem.reps || 0)) : 0),
+                0
+            ),
         0
     );
 
     const exerciseLines = workout.exercises
         .slice(0, 4)
         .map((exercise) => {
-            const setCount = exercise.sets.length;
-            const reps = exercise.sets.reduce((sum, setItem) => sum + (setItem.reps || 0), 0);
-            const volume = exercise.sets.reduce((sum, setItem) => sum + ((setItem.weight || 0) * (setItem.reps || 0)), 0);
+            const completedSets = exercise.sets.filter((setItem) => setItem.completed).length;
+            const setCount = completedSets > 0 ? completedSets : exercise.sets.length;
+            const reps = exercise.sets.reduce(
+                (sum, setItem) => sum + (setItem.completed ? (setItem.reps || 0) : 0),
+                0
+            );
+            const volume = exercise.sets.reduce(
+                (sum, setItem) => sum + (setItem.completed ? ((setItem.weight || 0) * (setItem.reps || 0)) : 0),
+                0
+            );
+
+            if (reps === 0 && volume === 0) {
+                return `- ${exercise.name}: ${setCount} sets completed`;
+            }
+            if (volume === 0) {
+                return `- ${exercise.name}: ${setCount} sets, ${reps} reps`;
+            }
             return `- ${exercise.name}: ${setCount} sets, ${reps} reps, ${Math.round(volume)} volume`;
         })
         .join('\n');
@@ -136,7 +181,13 @@ export const generateWorkoutSummary = (workout: WorkoutSession): string => {
         ? `\n- and ${workout.exercises.length - 4} more exercises finished strong`
         : '';
 
-    const motivationalLine = 'Discipline is the quiet architecture of a stronger life. Show up, stack small victories, and become undeniable.';
+    const quote = pickWorkoutQuote(workout);
+    const motivationalLine = `"${quote.text}" — ${quote.author}`;
+
+    const note = workout.notes.trim();
+    const noteLine = note.length > 0
+        ? `Notes: ${note.length > 180 ? `${note.slice(0, 177)}...` : note}`
+        : null;
 
     return [
         'Kabunga Session Complete.',
@@ -144,8 +195,9 @@ export const generateWorkoutSummary = (workout: WorkoutSession): string => {
         `Duration: ${formatDurationHuman(workout.duration)}`,
         `Exercises: ${workout.exercises.length}`,
         `Sets: ${totalSets} | Reps: ${totalReps}`,
-        `Volume: ${Math.round(totalVolume)} total`,
+        totalVolume > 0 ? `Volume: ${Math.round(totalVolume)} total` : 'Volume: bodyweight/timed focus',
         `Calories: ~${workout.caloriesEstimate} kcal`,
+        ...(noteLine ? [noteLine] : []),
         '',
         'Session Breakdown:',
         `${exerciseLines}${extraExercises}`,
