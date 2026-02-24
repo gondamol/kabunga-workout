@@ -1,10 +1,11 @@
 import { useEffect, useMemo, useState } from 'react';
 import dayjs, { type Dayjs } from 'dayjs';
-import { Calendar, Check, ChevronLeft, ChevronRight, Flame } from 'lucide-react';
+import { Calendar, ChevronLeft, ChevronRight, Flame, Trash2 } from 'lucide-react';
 import { useAuthStore } from '../stores/authStore';
-import { getUserWorkouts } from '../lib/firestoreService';
-import type { WorkoutSession } from '../lib/types';
+import { deleteWorkout, getUserWorkouts } from '../lib/firestoreService';
+import type { Exercise, WorkoutSession } from '../lib/types';
 import { formatDurationHuman } from '../lib/utils';
+import toast from 'react-hot-toast';
 
 const weekHeaders = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 
@@ -32,35 +33,16 @@ const buildCalendarDays = (month: Dayjs): Array<Dayjs | null> => {
     return days;
 };
 
-const getSessionSummary = (sessions: WorkoutSession[]) => {
-    const exerciseNames = Array.from(new Set(sessions.flatMap((session) => session.exercises.map((exercise) => exercise.name))));
-    const totalVolume = sessions.reduce(
-        (sum, session) =>
-            sum + session.exercises.reduce(
-                (exerciseSum, exercise) =>
-                    exerciseSum + exercise.sets.reduce((setSum, setItem) => setSum + setItem.weight * setItem.reps, 0),
-                0
-            ),
-        0
-    );
-    const totalDuration = sessions.reduce((sum, session) => sum + session.duration, 0);
-    const prs = sessions.reduce(
-        (sum, session) =>
-            sum + session.exercises.reduce(
-                (exerciseSum, exercise) => exerciseSum + exercise.sets.filter((setItem) => setItem.personalBest).length,
-                0
-            ),
-        0
-    );
-    const notes = sessions.map((session) => session.notes).filter((note) => note.trim());
+const getSessionSetCount = (session: WorkoutSession): number => {
+    return session.exercises.reduce((sum, exercise) => sum + exercise.sets.length, 0);
+};
 
-    return {
-        exerciseNames,
-        totalVolume,
-        totalDuration,
-        prs,
-        notes: notes.length > 0 ? notes.join(' • ') : '',
-    };
+const getExerciseVolume = (exercise: Exercise): number => {
+    return exercise.sets.reduce((sum, setItem) => sum + setItem.weight * setItem.reps, 0);
+};
+
+const getSessionVolume = (session: WorkoutSession): number => {
+    return session.exercises.reduce((sum, exercise) => sum + getExerciseVolume(exercise), 0);
 };
 
 export default function HistoryPage() {
@@ -68,21 +50,42 @@ export default function HistoryPage() {
     const [month, setMonth] = useState(dayjs().startOf('month'));
     const [workouts, setWorkouts] = useState<WorkoutSession[]>([]);
     const [selectedDate, setSelectedDate] = useState<string | null>(null);
+    const [selectedSessionId, setSelectedSessionId] = useState<string | null>(null);
+    const [loadingHistory, setLoadingHistory] = useState(true);
+    const [deletingSessionId, setDeletingSessionId] = useState<string | null>(null);
 
     useEffect(() => {
-        if (!user) return;
-        getUserWorkouts(user.uid, 90)
-            .then(setWorkouts)
-            .catch((error) => console.warn('Failed to load workout history:', error));
+        if (!user) return undefined;
+        let cancelled = false;
+        setLoadingHistory(true);
+        getUserWorkouts(user.uid, 120)
+            .then((sessions) => {
+                if (cancelled) return;
+                setWorkouts(sessions);
+            })
+            .catch((error) => {
+                if (cancelled) return;
+                console.warn('Failed to load workout history:', error);
+                toast.error('Could not load workout history');
+            })
+            .finally(() => {
+                if (!cancelled) setLoadingHistory(false);
+            });
+
+        return () => {
+            cancelled = true;
+        };
     }, [user]);
 
     const workoutsByDate = useMemo(() => {
-        return workouts.reduce<Record<string, WorkoutSession[]>>((acc, workout) => {
+        const grouped = workouts.reduce<Record<string, WorkoutSession[]>>((acc, workout) => {
             const key = dayjs(workout.startedAt).format('YYYY-MM-DD');
             if (!acc[key]) acc[key] = [];
             acc[key].push(workout);
             return acc;
         }, {});
+        Object.values(grouped).forEach((sessions) => sessions.sort((a, b) => b.startedAt - a.startedAt));
+        return grouped;
     }, [workouts]);
 
     const currentTrainingStreak = useMemo(() => {
@@ -111,12 +114,49 @@ export default function HistoryPage() {
     const days = useMemo(() => buildCalendarDays(month), [month]);
 
     const selectedSessions = selectedDate ? (workoutsByDate[selectedDate] || []) : [];
-    const selectedSummary = useMemo(() => getSessionSummary(selectedSessions), [selectedSessions]);
+    const selectedSession = useMemo(() => {
+        if (selectedSessions.length === 0) return null;
+        if (!selectedSessionId) return selectedSessions[0];
+        return selectedSessions.find((session) => session.id === selectedSessionId) ?? selectedSessions[0];
+    }, [selectedSessions, selectedSessionId]);
+
+    useEffect(() => {
+        if (!selectedDate) {
+            setSelectedSessionId(null);
+            return;
+        }
+        if (selectedSessions.length === 0) {
+            setSelectedSessionId(null);
+            return;
+        }
+        if (!selectedSessionId || !selectedSessions.some((session) => session.id === selectedSessionId)) {
+            setSelectedSessionId(selectedSessions[0].id);
+        }
+    }, [selectedDate, selectedSessions, selectedSessionId]);
+
     const oldestLoadedWorkoutDay = useMemo(() => {
         if (workouts.length === 0) return null;
         const oldest = workouts.reduce((min, workout) => Math.min(min, workout.startedAt), workouts[0].startedAt);
         return dayjs(oldest).startOf('day');
     }, [workouts]);
+
+    const handleDeleteWorkout = async (session: WorkoutSession) => {
+        if (!user) return;
+        const shouldDelete = confirm('Delete this workout from history? This cannot be undone.');
+        if (!shouldDelete) return;
+
+        setDeletingSessionId(session.id);
+        try {
+            await deleteWorkout(session.id, user.uid);
+            setWorkouts((current) => current.filter((workout) => workout.id !== session.id));
+            toast.success('Workout deleted');
+        } catch (error) {
+            console.warn('Failed to delete workout:', error);
+            toast.error('Failed to delete workout');
+        } finally {
+            setDeletingSessionId(null);
+        }
+    };
 
     const getDotClass = (date: Dayjs): string => {
         const key = getDateKey(date);
@@ -145,6 +185,9 @@ export default function HistoryPage() {
                     <div>
                         <p className="text-xs uppercase tracking-wide text-text-muted">Calendar History</p>
                         <h1 className="text-2xl font-black mt-1">Training Calendar</h1>
+                        {loadingHistory && (
+                            <p className="text-xs text-text-muted mt-1">Loading sessions...</p>
+                        )}
                     </div>
                     <Calendar size={22} className="text-accent" />
                 </div>
@@ -239,37 +282,99 @@ export default function HistoryPage() {
                         ) : (
                             <div className="space-y-4">
                                 <div className="rounded-2xl bg-bg-card p-4">
-                                    <p className="text-xs text-text-muted uppercase tracking-wide mb-2">Exercises Completed</p>
-                                    <p className="text-sm">{selectedSummary.exerciseNames.join(', ')}</p>
-                                </div>
-
-                                <div className="grid grid-cols-2 gap-3">
-                                    <div className="rounded-2xl bg-bg-card p-3">
-                                        <p className="text-xs text-text-muted">Total Volume</p>
-                                        <p className="text-sm font-semibold mt-1">{Math.round(selectedSummary.totalVolume)} kg·reps</p>
+                                    <p className="text-xs text-text-muted uppercase tracking-wide mb-2">Sessions</p>
+                                    <div className="space-y-2">
+                                        {selectedSessions.map((session) => {
+                                            const isSelected = selectedSession?.id === session.id;
+                                            const exerciseNames = session.exercises.map((exercise) => exercise.name).join(', ');
+                                            return (
+                                                <div
+                                                    key={session.id}
+                                                    className={`rounded-xl border transition-colors ${isSelected ? 'border-accent bg-accent/10' : 'border-border bg-bg-surface'}`}
+                                                >
+                                                    <div className="flex items-center gap-2 p-2">
+                                                        <button
+                                                            onClick={() => setSelectedSessionId(session.id)}
+                                                            className="flex-1 text-left"
+                                                        >
+                                                            <p className="text-sm font-semibold">
+                                                                {dayjs(session.startedAt).format('h:mm A')} • {formatDurationHuman(session.duration)}
+                                                            </p>
+                                                            <p className="text-xs text-text-secondary mt-1">
+                                                                {session.exercises.length} exercises • {getSessionSetCount(session)} sets
+                                                            </p>
+                                                            <p className="text-xs text-text-muted mt-1 line-clamp-1">
+                                                                {exerciseNames || 'No exercises logged'}
+                                                            </p>
+                                                        </button>
+                                                        <button
+                                                            onClick={() => { void handleDeleteWorkout(session); }}
+                                                            disabled={deletingSessionId === session.id}
+                                                            className="w-9 h-9 rounded-lg border border-red/30 text-red hover:bg-red/10 disabled:opacity-40 flex items-center justify-center"
+                                                            aria-label="Delete workout"
+                                                        >
+                                                            <Trash2 size={14} />
+                                                        </button>
+                                                    </div>
+                                                </div>
+                                            );
+                                        })}
                                     </div>
-                                    <div className="rounded-2xl bg-bg-card p-3">
-                                        <p className="text-xs text-text-muted">Duration</p>
-                                        <p className="text-sm font-semibold mt-1">{formatDurationHuman(selectedSummary.totalDuration)}</p>
-                                    </div>
                                 </div>
 
-                                <div className="rounded-2xl bg-bg-card p-4">
-                                    <p className="text-xs text-text-muted uppercase tracking-wide mb-2">PRs Hit</p>
-                                    <p className="text-sm font-semibold flex items-center gap-2">
-                                        <Check size={14} className="text-green" />
-                                        {selectedSummary.prs}
-                                    </p>
-                                </div>
+                                {selectedSession && (
+                                    <>
+                                        <div className="grid grid-cols-3 gap-3">
+                                            <div className="rounded-2xl bg-bg-card p-3">
+                                                <p className="text-xs text-text-muted">Duration</p>
+                                                <p className="text-sm font-semibold mt-1">{formatDurationHuman(selectedSession.duration)}</p>
+                                            </div>
+                                            <div className="rounded-2xl bg-bg-card p-3">
+                                                <p className="text-xs text-text-muted">Exercises</p>
+                                                <p className="text-sm font-semibold mt-1">{selectedSession.exercises.length}</p>
+                                            </div>
+                                            <div className="rounded-2xl bg-bg-card p-3">
+                                                <p className="text-xs text-text-muted">Volume</p>
+                                                <p className="text-sm font-semibold mt-1">{Math.round(getSessionVolume(selectedSession))}</p>
+                                            </div>
+                                        </div>
 
-                                <div className="rounded-2xl bg-bg-card p-4">
-                                    <p className="text-xs text-text-muted uppercase tracking-wide mb-2">Notes</p>
-                                    <textarea
-                                        readOnly
-                                        value={selectedSummary.notes || 'No notes'}
-                                        className="w-full h-24 bg-bg-input border border-border rounded-xl p-3 text-sm text-text-secondary resize-none"
-                                    />
-                                </div>
+                                        <div className="rounded-2xl bg-bg-card p-4 space-y-3">
+                                            <p className="text-xs text-text-muted uppercase tracking-wide">Exercise Details</p>
+                                            {selectedSession.exercises.length === 0 ? (
+                                                <p className="text-sm text-text-secondary">No exercises logged for this session.</p>
+                                            ) : (
+                                                selectedSession.exercises.map((exercise) => (
+                                                    <div key={exercise.id} className="rounded-xl bg-bg-surface p-3 border border-border">
+                                                        <div className="flex items-center justify-between gap-2">
+                                                            <p className="text-sm font-semibold">{exercise.name}</p>
+                                                            <p className="text-xs text-text-muted">
+                                                                {exercise.sets.length} sets • {Math.round(getExerciseVolume(exercise))} kg·reps
+                                                            </p>
+                                                        </div>
+                                                        <div className="mt-2 space-y-1">
+                                                            {exercise.sets.map((setItem, index) => (
+                                                                <p key={setItem.id} className="text-xs text-text-secondary">
+                                                                    Set {index + 1}: {setItem.weight || 0} kg × {setItem.reps || 0}
+                                                                    {setItem.completed ? ' ✓' : ''}
+                                                                </p>
+                                                            ))}
+                                                        </div>
+                                                    </div>
+                                                ))
+                                            )}
+                                        </div>
+
+                                        <div className="rounded-2xl bg-bg-card p-4">
+                                            <p className="text-xs text-text-muted uppercase tracking-wide mb-2">Session Notes</p>
+                                            <textarea
+                                                readOnly
+                                                value={selectedSession.notes?.trim() || 'No notes'}
+                                                className="w-full h-24 bg-bg-input border border-border rounded-xl p-3 text-sm text-text-secondary resize-none"
+                                            />
+                                        </div>
+                                    </>
+                                )}
                             </div>
                         )}
                     </div>

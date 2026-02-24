@@ -33,3 +33,6 @@ IMPLEMENTATION_PLAN.md
 
 # ─── Agent/AI config ───
 .agent/
+
+# ─── Firebase local cache ───
+.firebase/

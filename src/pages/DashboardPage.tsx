@@ -1,4 +1,4 @@
-import { useEffect, useState, useMemo } from 'react';
+import { useEffect, useState, useMemo, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuthStore } from '../stores/authStore';
 import { useWorkoutStore } from '../stores/workoutStore';
@@ -18,6 +18,8 @@ export default function DashboardPage() {
     const [challenges, setChallenges] = useState<Challenge[]>([]);
     const [todayMeals, setTodayMeals] = useState<Meal[]>([]);
     const [loadingWorkouts, setLoadingWorkouts] = useState(true);
+    const chartContainerRef = useRef<HTMLDivElement>(null);
+    const [isChartReady, setIsChartReady] = useState(false);
 
     useEffect(() => {
         if (!user) return;
@@ -39,6 +41,26 @@ export default function DashboardPage() {
         };
         load();
     }, [user]);
+
+    useEffect(() => {
+        const el = chartContainerRef.current;
+        if (!el) return;
+
+        const updateReady = () => {
+            const { width, height } = el.getBoundingClientRect();
+            setIsChartReady(width > 0 && height > 0);
+        };
+
+        updateReady();
+        const raf = requestAnimationFrame(updateReady);
+        const observer = typeof ResizeObserver !== 'undefined' ? new ResizeObserver(updateReady) : null;
+        observer?.observe(el);
+
+        return () => {
+            cancelAnimationFrame(raf);
+            observer?.disconnect();
+        };
+    }, []);
 
     const stats = useMemo(() => {
         const totalDuration = workouts.reduce((sum, w) => sum + w.duration, 0);
@@ -142,33 +164,37 @@ export default function DashboardPage() {
             </div>
 
             {/* Weekly Chart */}
-            <div className="glass rounded-2xl p-4 animate-fade-in stagger-2">
+            <div className="glass rounded-2xl p-4 animate-fade-in stagger-2 min-w-0">
                 <h3 className="text-sm font-semibold text-text-secondary mb-4">This Week</h3>
-                <div className="h-36">
-                    <ResponsiveContainer width="100%" height="100%">
-                        <BarChart data={chartData} barSize={28}>
-                            <XAxis dataKey="day" axisLine={false} tickLine={false} />
-                            <YAxis hide allowDecimals={false} />
-                            <Tooltip
-                                cursor={false}
-                                contentStyle={{
-                                    background: '#1a1a3e',
-                                    border: '1px solid rgba(139,92,246,0.2)',
-                                    borderRadius: '12px',
-                                    fontSize: '12px',
-                                    color: '#f1f5f9',
-                                }}
-                            />
-                            <Bar dataKey="count" radius={[8, 8, 0, 0]} name="Workouts">
-                                {chartData.map((entry, i) => (
-                                    <Cell
-                                        key={i}
-                                        fill={entry.count > 0 ? '#8b5cf6' : 'rgba(139,92,246,0.15)'}
-                                    />
-                                ))}
-                            </Bar>
-                        </BarChart>
-                    </ResponsiveContainer>
+                <div ref={chartContainerRef} className="h-36 w-full min-w-0">
+                    {isChartReady ? (
+                        <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={1}>
+                            <BarChart data={chartData} barSize={28}>
+                                <XAxis dataKey="day" axisLine={false} tickLine={false} />
+                                <YAxis hide allowDecimals={false} />
+                                <Tooltip
+                                    cursor={false}
+                                    contentStyle={{
+                                        background: '#1a1a3e',
+                                        border: '1px solid rgba(139,92,246,0.2)',
+                                        borderRadius: '12px',
+                                        fontSize: '12px',
+                                        color: '#f1f5f9',
+                                    }}
+                                />
+                                <Bar dataKey="count" radius={[8, 8, 0, 0]} name="Workouts">
+                                    {chartData.map((entry, i) => (
+                                        <Cell
+                                            key={i}
+                                            fill={entry.count > 0 ? '#8b5cf6' : 'rgba(139,92,246,0.15)'}
+                                        />
+                                    ))}
+                                </Bar>
+                            </BarChart>
+                        </ResponsiveContainer>
+                    ) : (
+                        <div className="h-full w-full rounded-xl bg-bg-card/50" />
+                    )}
                 </div>
             </div>
 

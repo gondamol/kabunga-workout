@@ -1,6 +1,6 @@
 import {
     collection, doc, setDoc, updateDoc, deleteDoc,
-    query, where, limit, getDocs, getDoc,
+    query, where, limit, getDocs, getDoc, orderBy,
 } from 'firebase/firestore';
 import { db } from './firebase';
 import type {
@@ -12,19 +12,135 @@ import type {
     WorkoutSession,
 } from './types';
 
-const WORKOUT_CACHE_TTL_MS = 60 * 1000;
+const WORKOUT_CACHE_TTL_MS = 5 * 60 * 1000;
+const WORKOUT_PERSISTED_CACHE_TTL_MS = 60 * 60 * 1000;
+const WORKOUT_CACHE_KEY_PREFIX = 'kabunga:workouts:';
+let hasWarnedAboutWorkoutIndex = false;
+
 const workoutCache = new Map<string, {
     fetchedAt: number;
     maxResults: number;
     workouts: WorkoutSession[];
 }>();
 
+const getWorkoutCacheKey = (userId: string): string => `${WORKOUT_CACHE_KEY_PREFIX}${userId}`;
+
+const isWorkoutSession = (value: unknown): value is WorkoutSession => {
+    if (!value || typeof value !== 'object') return false;
+    const candidate = value as Partial<WorkoutSession>;
+    return (
+        typeof candidate.id === 'string' &&
+        typeof candidate.userId === 'string' &&
+        typeof candidate.startedAt === 'number' &&
+        Array.isArray(candidate.exercises) &&
+        candidate.status === 'completed'
+    );
+};
+
+const readPersistedWorkoutCache = (userId: string): {
+    fetchedAt: number;
+    maxResults: number;
+    workouts: WorkoutSession[];
+} | null => {
+    if (typeof window === 'undefined') return null;
+
+    try {
+        const raw = window.localStorage.getItem(getWorkoutCacheKey(userId));
+        if (!raw) return null;
+        const parsed = JSON.parse(raw) as {
+            fetchedAt?: number;
+            maxResults?: number;
+            workouts?: unknown[];
+        };
+        if (
+            typeof parsed.fetchedAt !== 'number' ||
+            typeof parsed.maxResults !== 'number' ||
+            !Array.isArray(parsed.workouts)
+        ) {
+            return null;
+        }
+
+        const workouts = parsed.workouts.filter(isWorkoutSession);
+        if (Date.now() - parsed.fetchedAt > WORKOUT_PERSISTED_CACHE_TTL_MS) return null;
+
+        return {
+            fetchedAt: parsed.fetchedAt,
+            maxResults: parsed.maxResults,
+            workouts: workouts.sort((a, b) => b.startedAt - a.startedAt),
+        };
+    } catch {
+        return null;
+    }
+};
+
+const writePersistedWorkoutCache = (
+    userId: string,
+    entry: { fetchedAt: number; maxResults: number; workouts: WorkoutSession[] }
+): void => {
+    if (typeof window === 'undefined') return;
+    try {
+        window.localStorage.setItem(getWorkoutCacheKey(userId), JSON.stringify(entry));
+    } catch {
+        // Ignore storage quota / serialization errors
+    }
+};
+
+const clearPersistedWorkoutCache = (userId: string): void => {
+    if (typeof window === 'undefined') return;
+    try {
+        window.localStorage.removeItem(getWorkoutCacheKey(userId));
+    } catch {
+        // Ignore storage errors
+    }
+};
+
+const setWorkoutCache = (
+    userId: string,
+    entry: { fetchedAt: number; maxResults: number; workouts: WorkoutSession[] }
+): void => {
+    const normalized = {
+        ...entry,
+        workouts: [...entry.workouts].sort((a, b) => b.startedAt - a.startedAt),
+    };
+    workoutCache.set(userId, normalized);
+    writePersistedWorkoutCache(userId, normalized);
+};
+
+const updateWorkoutCache = (
+    userId: string,
+    updater: (current: WorkoutSession[]) => WorkoutSession[]
+): void => {
+    const existing = workoutCache.get(userId) ?? readPersistedWorkoutCache(userId);
+    if (!existing) return;
+    const nextWorkouts = updater(existing.workouts)
+        .filter((workout) => workout.status === 'completed')
+        .sort((a, b) => b.startedAt - a.startedAt);
+    setWorkoutCache(userId, {
+        fetchedAt: Date.now(),
+        maxResults: Math.max(existing.maxResults, nextWorkouts.length),
+        workouts: nextWorkouts,
+    });
+};
+
+const clearWorkoutCache = (userId: string): void => {
+    workoutCache.delete(userId);
+    clearPersistedWorkoutCache(userId);
+};
+
 const getCachedWorkouts = (userId: string, maxResults: number): WorkoutSession[] | null => {
-    const cached = workoutCache.get(userId);
+    const cached = workoutCache.get(userId) ?? readPersistedWorkoutCache(userId);
     if (!cached) return null;
+    workoutCache.set(userId, cached);
     if (Date.now() - cached.fetchedAt > WORKOUT_CACHE_TTL_MS) return null;
     if (cached.maxResults < maxResults) return null;
     return cached.workouts.slice(0, maxResults);
+};
+
+const shouldFallbackToUnindexedQuery = (error: unknown): boolean => {
+    if (!error || typeof error !== 'object') return false;
+    const maybeError = error as { code?: string; message?: string };
+    if (maybeError.code === 'failed-precondition') return true;
+    return typeof maybeError.message === 'string' && maybeError.message.toLowerCase().includes('index');
 };
 
 const fetchCompletedWorkouts = async (
@@ -34,18 +150,36 @@ const fetchCompletedWorkouts = async (
     const fromCache = getCachedWorkouts(userId, maxResults);
     if (fromCache) return fromCache;
 
-    const q = query(
-        collection(db, 'workouts'),
-        where('userId', '==', userId),
-        where('status', '==', 'completed'),
-        limit(maxResults)
-    );
-    const snap = await getDocs(q);
-    const workouts = snap.docs
-        .map((d) => d.data() as WorkoutSession)
-        .sort((a, b) => b.startedAt - a.startedAt);
+    let workouts: WorkoutSession[] = [];
+    try {
+        const indexedQuery = query(
+            collection(db, 'workouts'),
+            where('userId', '==', userId),
+            where('status', '==', 'completed'),
+            orderBy('startedAt', 'desc'),
+            limit(maxResults)
+        );
+        const snap = await getDocs(indexedQuery);
+        workouts = snap.docs.map((d) => d.data() as WorkoutSession);
+    } catch (error) {
+        if (!shouldFallbackToUnindexedQuery(error)) throw error;
+        if (!hasWarnedAboutWorkoutIndex) {
+            console.warn('Missing Firestore workouts index. Falling back to slower client-side sorting.');
+            hasWarnedAboutWorkoutIndex = true;
+        }
+        const fallbackQuery = query(
+            collection(db, 'workouts'),
+            where('userId', '==', userId)
+        );
+        const snap = await getDocs(fallbackQuery);
+        workouts = snap.docs
+            .map((d) => d.data() as WorkoutSession)
+            .filter((workout) => workout.status === 'completed')
+            .sort((a, b) => b.startedAt - a.startedAt)
+            .slice(0, maxResults);
+    }
 
-    workoutCache.set(userId, {
+    setWorkoutCache(userId, {
         fetchedAt: Date.now(),
         maxResults,
         workouts,
@@ -56,7 +190,21 @@ const fetchCompletedWorkouts = async (
 // ─── Workouts ───
 export const saveWorkout = async (workout: WorkoutSession): Promise<void> => {
     await setDoc(doc(db, 'workouts', workout.id), workout);
-    workoutCache.delete(workout.userId);
+    updateWorkoutCache(workout.userId, (current) => {
+        const withoutCurrent = current.filter((session) => session.id !== workout.id);
+        return [workout, ...withoutCurrent];
+    });
+};
+
+export const deleteWorkout = async (
+    workoutId: string,
+    userId: string
+): Promise<void> => {
+    await deleteDoc(doc(db, 'workouts', workoutId));
+    updateWorkoutCache(userId, (current) => current.filter((session) => session.id !== workoutId));
+    if (!workoutCache.get(userId)) {
+        clearWorkoutCache(userId);
+    }
 };
 
 export const getUserWorkouts = async (

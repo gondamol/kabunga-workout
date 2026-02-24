@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, useCallback } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useWorkoutStore } from '../stores/workoutStore';
 import dayjs from 'dayjs';
@@ -48,6 +48,7 @@ export default function ActiveWorkoutPage() {
     const [isRecording, setIsRecording] = useState(false);
     const [showMenu, setShowMenu] = useState(false);
     const [uploading, setUploading] = useState(false);
+    const [finishingWorkout, setFinishingWorkout] = useState(false);
     const [historyByExercise, setHistoryByExercise] = useState<Record<string, ExerciseHistory | null>>({});
     const [sessionBestScores, setSessionBestScores] = useState<Record<string, number>>({});
 
@@ -181,7 +182,7 @@ export default function ActiveWorkoutPage() {
     };
 
     // ─── Camera ───
-    const capturePhoto = useCallback(async () => {
+    const capturePhoto = async () => {
         if (!webcamRef.current || !user) return;
         const src = webcamRef.current.getScreenshot();
         if (!src) return;
@@ -196,9 +197,9 @@ export default function ActiveWorkoutPage() {
         } catch (err: any) {
             toast.error(`Upload failed: ${err?.message || 'Unknown error'}`);
         } finally { setUploading(false); }
-    }, [user, addMediaUrl]);
+    };
 
-    const startRecording = useCallback(() => {
+    const startRecording = () => {
         if (!webcamRef.current?.stream) return;
         chunksRef.current = [];
         const mr = new MediaRecorder(webcamRef.current.stream, { mimeType: 'video/webm' });
@@ -223,33 +224,41 @@ export default function ActiveWorkoutPage() {
                 setIsRecording(false);
             }
         }, 30000);
-    }, [user, addMediaUrl]);
+    };
 
-    const stopRecording = useCallback(() => {
+    const stopRecording = () => {
         if (mediaRecorderRef.current?.state === 'recording') {
             mediaRecorderRef.current.stop();
             setIsRecording(false);
         }
-    }, []);
+    };
 
     // ─── End workout ───
     const handleEnd = async () => {
+        if (finishingWorkout) return;
         const completed = endWorkout();
         if (!completed) return;
+        setFinishingWorkout(true);
 
         const summary = generateWorkoutSummary(completed);
-
-        toast.success('Workout complete! 🎉', { duration: 4000 });
-        navigate('/', { replace: true });
-
-        saveWorkout(completed).catch(async () => {
-            await enqueueAction({ type: 'workout', action: 'create', data: completed });
-            toast('Saved offline — will sync when online', { icon: '📴' });
-        });
-
-        setTimeout(() => {
-            if (confirm('Share your workout? 💪')) shareWorkout(summary);
-        }, 800);
+        try {
+            await saveWorkout(completed);
+            toast.success('Workout complete! 🎉', { duration: 4000 });
+        } catch {
+            try {
+                await enqueueAction({ type: 'workout', action: 'create', data: completed });
+                toast('Saved offline — will sync when online', { icon: '📴' });
+            } catch (queueError) {
+                console.warn('Failed to save workout and enqueue fallback:', queueError);
+                toast.error('Could not save workout. Check connection and retry.');
+            }
+        } finally {
+            setFinishingWorkout(false);
+            navigate('/', { replace: true });
+            setTimeout(() => {
+                if (confirm('Share your workout? 💪')) shareWorkout(summary);
+            }, 800);
+        }
     };
 
     const handleCancel = () => {
@@ -308,6 +317,7 @@ export default function ActiveWorkoutPage() {
                     </button>
                     <button
                         onClick={() => { handleEnd(); setShowMenu(false); }}
+                        disabled={finishingWorkout}
                         className="w-full text-left px-5 py-3 text-sm text-red hover:bg-red/10 flex items-center gap-3"
                     >
                         <Check size={16} /> Finish Workout
@@ -549,10 +559,11 @@ export default function ActiveWorkoutPage() {
                         <button
                             id="finish-workout-btn"
                             onClick={handleEnd}
+                            disabled={finishingWorkout}
                             className="w-full py-5 rounded-3xl gradient-green text-white font-bold text-lg flex items-center justify-center gap-3 active:scale-[0.97] transition-transform shadow-lg shadow-green/20"
                         >
                             <Check size={22} />
-                            Finish Workout 🎉
+                            {finishingWorkout ? 'Saving Workout...' : 'Finish Workout 🎉'}
                         </button>
                     )}
 

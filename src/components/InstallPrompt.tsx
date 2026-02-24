@@ -13,13 +13,16 @@ export default function InstallPrompt() {
     });
 
     useEffect(() => {
+        if (dismissed) return;
         const handler = (e: Event) => {
+            const promptEvent = e as BeforeInstallPromptEvent;
+            if (typeof promptEvent.prompt !== 'function') return;
             e.preventDefault();
-            setDeferredPrompt(e as BeforeInstallPromptEvent);
+            setDeferredPrompt((current) => current ?? promptEvent);
         };
         window.addEventListener('beforeinstallprompt', handler);
         return () => window.removeEventListener('beforeinstallprompt', handler);
-    }, []);
+    }, [dismissed]);
 
     const handleInstall = async () => {
         if (!deferredPrompt) return;

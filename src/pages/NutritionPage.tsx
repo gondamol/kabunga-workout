@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useAuthStore } from '../stores/authStore';
 import { saveMeal, deleteMeal, getMealsByDate } from '../lib/firestoreService';
 import { enqueueAction } from '../lib/offlineQueue';
@@ -17,6 +17,8 @@ export default function NutritionPage() {
     const [loading, setLoading] = useState(true);
     const [showAdd, setShowAdd] = useState(false);
     const [searchQuery, setSearchQuery] = useState('');
+    const macroChartContainerRef = useRef<HTMLDivElement>(null);
+    const [isMacroChartReady, setIsMacroChartReady] = useState(false);
 
     // Manual entry state
     const [mealName, setMealName] = useState('');
@@ -34,6 +36,26 @@ export default function NutritionPage() {
             .catch(console.warn)
             .finally(() => setLoading(false));
     }, [user, date]);
+
+    useEffect(() => {
+        const el = macroChartContainerRef.current;
+        if (!el) return;
+
+        const updateReady = () => {
+            const { width, height } = el.getBoundingClientRect();
+            setIsMacroChartReady(width > 0 && height > 0);
+        };
+
+        updateReady();
+        const raf = requestAnimationFrame(updateReady);
+        const observer = typeof ResizeObserver !== 'undefined' ? new ResizeObserver(updateReady) : null;
+        observer?.observe(el);
+
+        return () => {
+            cancelAnimationFrame(raf);
+            observer?.disconnect();
+        };
+    }, []);
 
     const totals = {
         calories: meals.reduce((s, m) => s + m.calories, 0),
@@ -145,9 +167,9 @@ export default function NutritionPage() {
             <div className="glass rounded-2xl p-4 animate-fade-in stagger-1">
                 <div className="flex items-center gap-4">
                     {/* Pie chart */}
-                    <div className="w-24 h-24 shrink-0">
-                        {macroData.length > 0 ? (
-                            <ResponsiveContainer width="100%" height="100%">
+                    <div ref={macroChartContainerRef} className="w-24 h-24 shrink-0 min-w-0">
+                        {macroData.length > 0 && isMacroChartReady ? (
+                            <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={1}>
                                 <PieChart>
                                     <Pie
                                         data={macroData}
