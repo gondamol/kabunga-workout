@@ -372,14 +372,6 @@ export default function HistoryPage() {
                                             )}
                                         </div>
 
-                                        <div className="rounded-2xl bg-bg-card p-4">
-                                            <p className="text-xs text-text-muted uppercase tracking-wide mb-2">Session Notes</p>
-                                            <textarea
-                                                readOnly
-                                                value={selectedSession.notes?.trim() || 'No notes'}
-                                                className="w-full h-24 bg-bg-input border border-border rounded-xl p-3 text-sm text-text-secondary resize-none"
-                                            />
-                                        </div>
                                     </>
                                 )}
                             </div>
