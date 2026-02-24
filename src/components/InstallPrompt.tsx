@@ -9,7 +9,11 @@ interface BeforeInstallPromptEvent extends Event {
 export default function InstallPrompt() {
     const [deferredPrompt, setDeferredPrompt] = useState<BeforeInstallPromptEvent | null>(null);
     const [dismissed, setDismissed] = useState(() => {
-        return localStorage.getItem('kabunga-install-dismissed') === 'true';
+        try {
+            return localStorage.getItem('kabunga-install-dismissed') === 'true';
+        } catch {
+            return false;
+        }
     });
 
     useEffect(() => {
@@ -35,7 +39,11 @@ export default function InstallPrompt() {
 
     const handleDismiss = () => {
         setDismissed(true);
-        localStorage.setItem('kabunga-install-dismissed', 'true');
+        try {
+            localStorage.setItem('kabunga-install-dismissed', 'true');
+        } catch {
+            // Ignore storage restrictions (e.g. private mode)
+        }
     };
 
     if (!deferredPrompt || dismissed) return null;

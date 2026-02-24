@@ -8,13 +8,31 @@ import {
     persistentMultipleTabManager,
 } from 'firebase/firestore';
 
-const firebaseConfig = {
+const FALLBACK_FIREBASE_CONFIG = {
+    apiKey: 'REDACTED_FIREBASE_API_KEY',
+    authDomain: 'kabunga-workout-7e5aa.firebaseapp.com',
+    projectId: 'kabunga-workout-7e5aa',
+    storageBucket: 'kabunga-workout-7e5aa.firebasestorage.app',
+    messagingSenderId: '196886329829',
+    appId: '1:196886329829:web:b49ee6e329029f2120170c',
+};
+
+const envConfig = {
     apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
     authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN,
     projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID,
     storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET,
     messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_ID,
     appId: import.meta.env.VITE_FIREBASE_APP_ID,
+};
+
+const firebaseConfig = {
+    apiKey: envConfig.apiKey,
+    authDomain: envConfig.authDomain,
+    projectId: envConfig.projectId,
+    storageBucket: envConfig.storageBucket,
+    messagingSenderId: envConfig.messagingSenderId,
+    appId: envConfig.appId,
 };
 
 const isPlaceholderValue = (value: string | undefined): boolean => {
@@ -30,16 +48,38 @@ const isPlaceholderValue = (value: string | undefined): boolean => {
 };
 
 const assertFirebaseConfig = (): void => {
+    const fallbackUsed: string[] = [];
+    const applyConfig = <K extends keyof typeof firebaseConfig>(key: K, envValue: string | undefined): void => {
+        const normalized = envValue?.trim();
+        if (isPlaceholderValue(normalized)) {
+            firebaseConfig[key] = FALLBACK_FIREBASE_CONFIG[key];
+            fallbackUsed.push(key);
+        } else {
+            firebaseConfig[key] = normalized as string;
+        }
+    };
+
+    applyConfig('apiKey', envConfig.apiKey);
+    applyConfig('authDomain', envConfig.authDomain);
+    applyConfig('projectId', envConfig.projectId);
+    applyConfig('storageBucket', envConfig.storageBucket);
+    applyConfig('messagingSenderId', envConfig.messagingSenderId);
+    applyConfig('appId', envConfig.appId);
+
+    if (fallbackUsed.length > 0) {
+        console.warn(`Firebase env vars missing/invalid. Using built-in fallback config for: ${fallbackUsed.join(', ')}`);
+    }
+
     const missing = [
-        ['VITE_FIREBASE_API_KEY', firebaseConfig.apiKey],
-        ['VITE_FIREBASE_AUTH_DOMAIN', firebaseConfig.authDomain],
-        ['VITE_FIREBASE_PROJECT_ID', firebaseConfig.projectId],
-        ['VITE_FIREBASE_STORAGE_BUCKET', firebaseConfig.storageBucket],
-        ['VITE_FIREBASE_APP_ID', firebaseConfig.appId],
+        ['apiKey', firebaseConfig.apiKey],
+        ['authDomain', firebaseConfig.authDomain],
+        ['projectId', firebaseConfig.projectId],
+        ['storageBucket', firebaseConfig.storageBucket],
+        ['appId', firebaseConfig.appId],
     ].filter(([, value]) => isPlaceholderValue(value)).map(([key]) => key);
 
     if (missing.length > 0) {
-        throw new Error(`Invalid Firebase config. Check env vars: ${missing.join(', ')}`);
+        throw new Error(`Invalid Firebase config after fallback. Missing: ${missing.join(', ')}`);
     }
 };
 
