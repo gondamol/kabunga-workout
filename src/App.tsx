@@ -14,6 +14,9 @@ import NutritionPage from './pages/NutritionPage';
 import ProfilePage from './pages/ProfilePage';
 import IronProtocolPage from './pages/IronProtocolPage';
 import HistoryPage from './pages/HistoryPage';
+import CoachHubPage from './pages/CoachHubPage';
+import CommunityPage from './pages/CommunityPage';
+import SciencePage from './pages/SciencePage';
 import BottomNav from './components/BottomNav';
 import InstallPrompt from './components/InstallPrompt';
 import OfflineBanner from './components/OfflineBanner';
@@ -96,6 +99,15 @@ export default function App() {
                     } />
                     <Route path="/history" element={
                         <ProtectedRoute><HistoryPage /></ProtectedRoute>
+                    } />
+                    <Route path="/coach" element={
+                        <ProtectedRoute><CoachHubPage /></ProtectedRoute>
+                    } />
+                    <Route path="/community" element={
+                        <ProtectedRoute><CommunityPage /></ProtectedRoute>
+                    } />
+                    <Route path="/science" element={
+                        <ProtectedRoute><SciencePage /></ProtectedRoute>
                     } />
                     <Route path="/profile" element={
                         <ProtectedRoute><ProfilePage /></ProtectedRoute>

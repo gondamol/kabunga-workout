@@ -4,6 +4,63 @@ export interface UserProfile {
     email: string;
     displayName: string;
     photoURL: string | null;
+    role?: UserRole;
+    coachCode?: string | null;
+    createdAt: number;
+    updatedAt: number;
+}
+
+export type UserRole = 'athlete' | 'coach';
+
+export interface CoachCode {
+    code: string;
+    coachId: string;
+    coachName: string;
+    coachEmail: string;
+    createdAt: number;
+    updatedAt: number;
+}
+
+export interface CoachAthleteLink {
+    athleteId: string;
+    athleteName: string;
+    athleteEmail: string;
+    coachId: string;
+    coachName: string;
+    coachEmail: string;
+    coachCode: string;
+    status: 'active' | 'paused';
+    createdAt: number;
+    updatedAt: number;
+}
+
+export interface CoachPlanExercise {
+    name: string;
+    sets: number;
+    reps: number;
+    weight: number;
+    restSeconds: number;
+    cue: string;
+}
+
+export interface CoachWorkoutPlan {
+    id: string;
+    coachId: string;
+    coachName: string;
+    athleteId: string;
+    athleteName: string;
+    title: string;
+    scheduledDate: string; // YYYY-MM-DD
+    notes: string;
+    exercises: CoachPlanExercise[];
+    status: 'scheduled' | 'completed' | 'cancelled';
+    completedWorkoutId?: string;
+    completedAt?: number;
+    progressCompletedSets?: number;
+    progressTotalSets?: number;
+    progressCurrentExercise?: string;
+    progressUpdatedAt?: number;
+    athleteInSession?: boolean;
     createdAt: number;
     updatedAt: number;
 }
@@ -80,6 +137,7 @@ export interface WorkoutSession {
     userId: string;
     templateId?: string; // which template was used
     scheduledWorkoutId?: string; // link to scheduled workout
+    coachNotes?: string; // immutable notes from assigned coach plan
     startedAt: number;
     endedAt: number | null;
     duration: number; // seconds
@@ -162,6 +220,44 @@ export interface Challenge {
     endDate: number;
     completed: boolean;
     createdAt: number;
+}
+
+// ─── Community ───
+export type CommunityGroupKind = 'women' | 'men' | 'mixed' | 'coach';
+
+export interface CommunityGroup {
+    id: string;
+    name: string;
+    description: string;
+    kind: CommunityGroupKind;
+    ownerId: string;
+    ownerName: string;
+    isPublic: boolean;
+    inviteCode?: string;
+    memberIds: string[];
+    createdAt: number;
+    updatedAt: number;
+}
+
+export interface CommunityInvite {
+    code: string;
+    groupId: string;
+    groupName: string;
+    ownerId: string;
+    ownerName: string;
+    status: 'active' | 'revoked';
+    createdAt: number;
+    updatedAt: number;
+}
+
+export interface CommunityMessage {
+    id: string;
+    groupId: string;
+    userId: string;
+    userName: string;
+    text: string;
+    createdAt: number;
+    updatedAt: number;
 }
 
 // ─── Nutrition ───

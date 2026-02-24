@@ -1,10 +1,12 @@
 import { useAuthStore } from '../stores/authStore';
 import { formatDate } from '../lib/utils';
 import toast from 'react-hot-toast';
-import { User, LogOut, Shield, Smartphone, Moon, Bell, ChevronRight, Github } from 'lucide-react';
+import { LogOut, Shield, Smartphone, Moon, Bell, ChevronRight, Github, Users, FlaskConical } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
 
 export default function ProfilePage() {
     const { user, profile, logout } = useAuthStore();
+    const navigate = useNavigate();
 
     const handleLogout = async () => {
         try {
@@ -54,6 +56,26 @@ export default function ProfilePage() {
                 <SettingRow icon={<Smartphone size={18} />} label="Install App" sub="Add to home screen" action onClick={() => {
                     toast('Look for the install banner at the top!', { icon: '📲' });
                 }}>
+                    <ChevronRight size={16} className="text-text-muted" />
+                </SettingRow>
+
+                <SettingRow
+                    icon={<Users size={18} />}
+                    label="Coach Hub"
+                    sub={profile?.role === 'coach' ? 'Manage athletes and plans' : 'Connect with your coach'}
+                    action
+                    onClick={() => navigate('/coach')}
+                >
+                    <ChevronRight size={16} className="text-text-muted" />
+                </SettingRow>
+
+                <SettingRow
+                    icon={<FlaskConical size={18} />}
+                    label="Training Science"
+                    sub="Evidence behind Kabunga plans"
+                    action
+                    onClick={() => navigate('/science')}
+                >
                     <ChevronRight size={16} className="text-text-muted" />
                 </SettingRow>
             </div>

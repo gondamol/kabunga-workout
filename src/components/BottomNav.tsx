@@ -1,19 +1,30 @@
 import { NavLink } from 'react-router-dom';
-import { Home, Play, LayoutGrid, Dumbbell, User } from 'lucide-react';
+import { Home, Play, Dumbbell, User, Users, MessagesSquare } from 'lucide-react';
+import { useAuthStore } from '../stores/authStore';
 
 const navItems = [
     { to: '/', icon: Home, label: 'Home' },
     { to: '/workout', icon: Play, label: 'Workout' },
-    { to: '/templates', icon: LayoutGrid, label: 'Templates' },
+    { to: '/community', icon: MessagesSquare, label: 'Community' },
     { to: '/iron-protocol', icon: Dumbbell, label: 'Iron' },
+    { to: '/coach', icon: Users, label: 'Coach' },
     { to: '/profile', icon: User, label: 'Profile' },
 ];
 
 export default function BottomNav() {
+    const profile = useAuthStore((state) => state.profile);
+    const items = navItems.map((item) => {
+        if (item.to !== '/coach') return item;
+        return {
+            ...item,
+            label: profile?.role === 'coach' ? 'Athletes' : 'Coach',
+        };
+    });
+
     return (
         <nav className="fixed bottom-0 left-0 right-0 z-50 glass-strong safe-bottom" id="bottom-nav">
             <div className="max-w-lg mx-auto flex items-center justify-around px-2 pt-2 pb-1">
-                {navItems.map(({ to, icon: Icon, label }) => (
+                {items.map(({ to, icon: Icon, label }) => (
                     <NavLink
                         key={to}
                         to={to}

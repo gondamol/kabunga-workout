@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
-import type { Exercise, ExerciseSet, WorkoutSession, WorkoutTemplate, WorkoutPhase } from '../lib/types';
+import type { CoachPlanExercise, Exercise, ExerciseSet, WorkoutSession, WorkoutTemplate } from '../lib/types';
 import { CALORIES_PER_MINUTE } from '../lib/constants';
 import { playAlarm, playCountdownBeep, vibrate, vibrateRestComplete, vibrateSetComplete, playCompletionChime } from '../lib/timerService';
 import { classifyIronPhase, isIronTemplateId } from '../lib/ironProtocol';
@@ -29,6 +29,7 @@ interface WorkoutState {
     startWorkout: (userId: string) => void;       // Start timer on existing or new session
     initFromTemplatePlan: (userId: string, template: WorkoutTemplate) => void;
     startFromTemplate: (userId: string, template: WorkoutTemplate) => void;
+    loadCoachPlan: (userId: string, planId: string, planTitle: string, notes: string, exercises: CoachPlanExercise[]) => void;
     endWorkout: () => WorkoutSession | null;
     cancelWorkout: () => void;
 
@@ -119,6 +120,26 @@ const createTemplateExercises = (template: WorkoutTemplate): Exercise[] => {
     return exercises;
 };
 
+const createCoachPlanExercises = (items: CoachPlanExercise[]): Exercise[] => {
+    return items.map((item) => ({
+        id: generateId(),
+        name: item.name,
+        sets: Array.from({ length: Math.max(1, item.sets) }, () => ({
+            id: generateId(),
+            reps: Math.max(0, item.reps),
+            weight: Math.max(0, item.weight),
+            completed: false,
+        })),
+        notes: '',
+        plannedSets: Math.max(1, item.sets),
+        plannedReps: Math.max(0, item.reps),
+        plannedWeight: Math.max(0, item.weight),
+        restSeconds: Math.max(0, item.restSeconds),
+        cue: item.cue || '',
+        isWarmup: false,
+    }));
+};
+
 export const useWorkoutStore = create<WorkoutState>()(
     persist(
         (set, get) => ({
@@ -201,6 +222,26 @@ export const useWorkoutStore = create<WorkoutState>()(
                     isTimerRunning: true,
                     isGuidedMode: true,
                     activeTemplate: template,
+                    currentExerciseIndex: 0,
+                    restSeconds: 0,
+                    isResting: false,
+                });
+            },
+
+            loadCoachPlan: (userId, planId, planTitle, notes, exercises) => {
+                const mapped = createCoachPlanExercises(exercises);
+                set({
+                    activeSession: {
+                        ...blankSession(userId),
+                        scheduledWorkoutId: planId,
+                        coachNotes: notes || '',
+                        exercises: mapped,
+                        notes: '',
+                    },
+                    timerSeconds: 0,
+                    isTimerRunning: false,
+                    isGuidedMode: false,
+                    activeTemplate: null,
                     currentExerciseIndex: 0,
                     restSeconds: 0,
                     isResting: false,

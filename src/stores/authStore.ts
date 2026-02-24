@@ -59,6 +59,8 @@ export const useAuthStore = create<AuthState>((set) => ({
                 email: cred.user.email!,
                 displayName: name,
                 photoURL: null,
+                role: 'athlete',
+                coachCode: null,
                 createdAt: Date.now(),
                 updatedAt: Date.now(),
             };
@@ -87,6 +89,8 @@ export const useAuthStore = create<AuthState>((set) => ({
                 email: cred.user.email!,
                 displayName: cred.user.displayName || 'User',
                 photoURL: cred.user.photoURL,
+                role: 'athlete',
+                coachCode: null,
                 createdAt: Date.now(),
                 updatedAt: Date.now(),
             };

@@ -1,14 +1,22 @@
 import {
     collection, doc, setDoc, updateDoc, deleteDoc,
-    query, where, limit, getDocs, getDoc, orderBy,
+    query, where, limit, getDocs, getDoc, orderBy, arrayUnion, arrayRemove,
 } from 'firebase/firestore';
 import { db } from './firebase';
 import type {
     Challenge,
+    CoachAthleteLink,
+    CoachCode,
+    CoachWorkoutPlan,
+    CommunityGroup,
+    CommunityGroupKind,
+    CommunityInvite,
+    CommunityMessage,
     ExerciseHistory,
     FitnessDailyLog,
     Meal,
     OneRepMaxes,
+    UserRole,
     WorkoutSession,
 } from './types';
 
@@ -143,6 +151,32 @@ const shouldFallbackToUnindexedQuery = (error: unknown): boolean => {
     return typeof maybeError.message === 'string' && maybeError.message.toLowerCase().includes('index');
 };
 
+const normalizeCoachCode = (code: string): string =>
+    code.trim().toUpperCase().replace(/[^A-Z0-9]/g, '');
+
+const buildCoachCode = (coachId: string, coachName: string): string => {
+    const alpha = coachName
+        .toUpperCase()
+        .replace(/[^A-Z]/g, '')
+        .slice(0, 3)
+        .padEnd(3, 'X');
+    const suffix = coachId.slice(-5).toUpperCase();
+    return `${alpha}${suffix}`;
+};
+
+const normalizeCommunityInviteCode = (code: string): string =>
+    code.trim().toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 16);
+
+const buildCommunityInviteCode = async (): Promise<string> => {
+    for (let attempt = 0; attempt < 6; attempt++) {
+        const randomPart = Math.random().toString(36).toUpperCase().replace(/[^A-Z0-9]/g, '').slice(2, 8);
+        const candidate = `KBG${randomPart}`;
+        const snap = await getDoc(doc(db, 'communityInvites', candidate));
+        if (!snap.exists()) return candidate;
+    }
+    return `KBG${Date.now().toString(36).toUpperCase()}`.slice(0, 16);
+};
+
 const fetchCompletedWorkouts = async (
     userId: string,
     maxResults: number
@@ -194,6 +228,21 @@ export const saveWorkout = async (workout: WorkoutSession): Promise<void> => {
         const withoutCurrent = current.filter((session) => session.id !== workout.id);
         return [workout, ...withoutCurrent];
     });
+
+    if (workout.scheduledWorkoutId) {
+        try {
+            await updateDoc(doc(db, 'coachPlans', workout.scheduledWorkoutId), {
+                status: 'completed',
+                completedWorkoutId: workout.id,
+                completedAt: workout.endedAt ?? Date.now(),
+                athleteInSession: false,
+                progressCurrentExercise: null,
+                updatedAt: Date.now(),
+            });
+        } catch (error) {
+            console.warn('Could not update coach plan completion status:', error);
+        }
+    }
 };
 
 export const deleteWorkout = async (
@@ -224,6 +273,403 @@ export const getRecentWorkouts = async (
     return workouts
         .filter((w) => w.startedAt >= since)
         .sort((a, b) => b.startedAt - a.startedAt);
+};
+
+// ─── Coach / Athlete Collaboration ───
+export const setUserRole = async (
+    uid: string,
+    role: UserRole,
+    profile: { displayName: string; email: string; existingCoachCode?: string | null }
+): Promise<{ role: UserRole; coachCode: string | null }> => {
+    const now = Date.now();
+    let coachCode = profile.existingCoachCode ? normalizeCoachCode(profile.existingCoachCode) : null;
+
+    if (role === 'coach') {
+        if (!coachCode) coachCode = buildCoachCode(uid, profile.displayName || 'COACH');
+
+        const coachCodeDoc: CoachCode = {
+            code: coachCode,
+            coachId: uid,
+            coachName: profile.displayName || 'Coach',
+            coachEmail: profile.email,
+            createdAt: now,
+            updatedAt: now,
+        };
+
+        const existing = await getDoc(doc(db, 'coachCodes', coachCode));
+        if (existing.exists()) {
+            const existingData = existing.data() as CoachCode;
+            coachCodeDoc.createdAt = existingData.createdAt || now;
+        }
+        await setDoc(doc(db, 'coachCodes', coachCode), coachCodeDoc, { merge: true });
+    }
+
+    await setDoc(
+        doc(db, 'users', uid),
+        {
+            role,
+            coachCode,
+            updatedAt: now,
+        },
+        { merge: true }
+    );
+
+    return { role, coachCode };
+};
+
+export const getCoachCodeInfo = async (coachCode: string): Promise<CoachCode | null> => {
+    const normalized = normalizeCoachCode(coachCode);
+    if (!normalized) return null;
+    const snap = await getDoc(doc(db, 'coachCodes', normalized));
+    if (!snap.exists()) return null;
+    return snap.data() as CoachCode;
+};
+
+export const linkAthleteToCoach = async (input: {
+    athleteId: string;
+    athleteName: string;
+    athleteEmail: string;
+    coachCode: string;
+}): Promise<CoachAthleteLink> => {
+    const coach = await getCoachCodeInfo(input.coachCode);
+    if (!coach) throw new Error('Coach code not found');
+    if (coach.coachId === input.athleteId) throw new Error('You cannot connect to your own coach code');
+
+    const now = Date.now();
+    const linkRef = doc(db, 'coachAthletes', input.athleteId);
+    const existing = await getDoc(linkRef);
+
+    const link: CoachAthleteLink = {
+        athleteId: input.athleteId,
+        athleteName: input.athleteName || 'Athlete',
+        athleteEmail: input.athleteEmail,
+        coachId: coach.coachId,
+        coachName: coach.coachName,
+        coachEmail: coach.coachEmail,
+        coachCode: coach.code,
+        status: 'active',
+        createdAt: now,
+        updatedAt: now,
+    };
+
+    if (existing.exists()) {
+        const existingLink = existing.data() as CoachAthleteLink;
+        link.createdAt = existingLink.createdAt || now;
+    }
+
+    await setDoc(linkRef, link, { merge: true });
+    return link;
+};
+
+export const unlinkAthleteCoach = async (athleteId: string): Promise<void> => {
+    await deleteDoc(doc(db, 'coachAthletes', athleteId));
+};
+
+export const getAthleteCoachLink = async (athleteId: string): Promise<CoachAthleteLink | null> => {
+    const snap = await getDoc(doc(db, 'coachAthletes', athleteId));
+    if (!snap.exists()) return null;
+    return snap.data() as CoachAthleteLink;
+};
+
+export const getCoachAthletes = async (coachId: string): Promise<CoachAthleteLink[]> => {
+    const q = query(
+        collection(db, 'coachAthletes'),
+        where('coachId', '==', coachId),
+        limit(200)
+    );
+    const snap = await getDocs(q);
+    return snap.docs
+        .map((d) => d.data() as CoachAthleteLink)
+        .filter((link) => link.status === 'active')
+        .sort((a, b) => a.athleteName.localeCompare(b.athleteName));
+};
+
+export const saveCoachPlan = async (plan: CoachWorkoutPlan): Promise<void> => {
+    await setDoc(doc(db, 'coachPlans', plan.id), plan);
+};
+
+export const updateCoachPlan = async (
+    planId: string,
+    data: Partial<CoachWorkoutPlan>
+): Promise<void> => {
+    await updateDoc(doc(db, 'coachPlans', planId), {
+        ...data,
+        updatedAt: Date.now(),
+    });
+};
+
+export const updateCoachPlanProgress = async (
+    planId: string,
+    data: Partial<Pick<
+        CoachWorkoutPlan,
+        'progressCompletedSets' | 'progressTotalSets' | 'progressCurrentExercise' | 'athleteInSession'
+    >>
+): Promise<void> => {
+    await updateDoc(doc(db, 'coachPlans', planId), {
+        ...data,
+        progressUpdatedAt: Date.now(),
+        updatedAt: Date.now(),
+    });
+};
+
+export const deleteCoachPlan = async (planId: string): Promise<void> => {
+    await deleteDoc(doc(db, 'coachPlans', planId));
+};
+
+export const getAthleteCoachPlans = async (
+    athleteId: string,
+    daysAhead = 21,
+    daysBack = 14
+): Promise<CoachWorkoutPlan[]> => {
+    const q = query(
+        collection(db, 'coachPlans'),
+        where('athleteId', '==', athleteId),
+        limit(Math.max(daysAhead * 6, 80))
+    );
+    const snap = await getDocs(q);
+
+    const startDate = new Date(Date.now() - daysBack * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+    const endDate = new Date(Date.now() + daysAhead * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+
+    return snap.docs
+        .map((d) => d.data() as CoachWorkoutPlan)
+        .filter((plan) => (
+            plan.status !== 'cancelled' &&
+            plan.scheduledDate >= startDate &&
+            plan.scheduledDate <= endDate
+        ))
+        .sort((a, b) => (
+            a.scheduledDate.localeCompare(b.scheduledDate) ||
+            b.createdAt - a.createdAt
+        ));
+};
+
+export const getCoachPlansByCoach = async (
+    coachId: string,
+    athleteId?: string
+): Promise<CoachWorkoutPlan[]> => {
+    const q = query(
+        collection(db, 'coachPlans'),
+        where('coachId', '==', coachId),
+        limit(240)
+    );
+    const snap = await getDocs(q);
+    return snap.docs
+        .map((d) => d.data() as CoachWorkoutPlan)
+        .filter((plan) => !athleteId || plan.athleteId === athleteId)
+        .sort((a, b) => (
+            a.scheduledDate.localeCompare(b.scheduledDate) ||
+            a.title.localeCompare(b.title)
+        ));
+};
+
+export const getCoachVisibleWorkouts = async (
+    coachId: string,
+    athleteId: string,
+    maxResults = 40
+): Promise<WorkoutSession[]> => {
+    const linkSnap = await getDoc(doc(db, 'coachAthletes', athleteId));
+    if (!linkSnap.exists()) return [];
+
+    const link = linkSnap.data() as CoachAthleteLink;
+    if (link.coachId !== coachId || link.status !== 'active') return [];
+
+    return fetchCompletedWorkouts(athleteId, maxResults);
+};
+
+// ─── Community ───
+export const getPublicCommunityGroups = async (): Promise<CommunityGroup[]> => {
+    const q = query(
+        collection(db, 'communityGroups'),
+        where('isPublic', '==', true),
+        limit(80)
+    );
+    const snap = await getDocs(q);
+    return snap.docs
+        .map((d) => d.data() as CommunityGroup)
+        .sort((a, b) => a.name.localeCompare(b.name));
+};
+
+export const getMyCommunityGroups = async (userId: string): Promise<CommunityGroup[]> => {
+    const q = query(
+        collection(db, 'communityGroups'),
+        where('memberIds', 'array-contains', userId),
+        limit(120)
+    );
+    const snap = await getDocs(q);
+    return snap.docs
+        .map((d) => d.data() as CommunityGroup)
+        .sort((a, b) => a.name.localeCompare(b.name));
+};
+
+export const saveCommunityGroup = async (group: CommunityGroup): Promise<void> => {
+    await setDoc(doc(db, 'communityGroups', group.id), group);
+};
+
+const saveCommunityInvite = async (invite: CommunityInvite): Promise<void> => {
+    await setDoc(doc(db, 'communityInvites', invite.code), invite);
+};
+
+export const createCommunityGroup = async (input: {
+    id: string;
+    name: string;
+    description: string;
+    kind: CommunityGroupKind;
+    ownerId: string;
+    ownerName: string;
+    isPublic: boolean;
+    memberIds: string[];
+}): Promise<CommunityGroup> => {
+    const now = Date.now();
+    const normalizedMembers = Array.from(new Set([input.ownerId, ...input.memberIds]));
+    const inviteCode = await buildCommunityInviteCode();
+    const payload: CommunityGroup = {
+        id: input.id,
+        name: input.name.trim(),
+        description: input.description.trim(),
+        kind: input.kind,
+        ownerId: input.ownerId,
+        ownerName: input.ownerName,
+        isPublic: input.isPublic,
+        inviteCode,
+        memberIds: normalizedMembers,
+        createdAt: now,
+        updatedAt: now,
+    };
+    const invite: CommunityInvite = {
+        code: inviteCode,
+        groupId: payload.id,
+        groupName: payload.name,
+        ownerId: payload.ownerId,
+        ownerName: payload.ownerName,
+        status: 'active',
+        createdAt: now,
+        updatedAt: now,
+    };
+    await saveCommunityGroup(payload);
+    await saveCommunityInvite(invite);
+    return payload;
+};
+
+export const joinCommunityGroup = async (groupId: string, userId: string): Promise<void> => {
+    await updateDoc(doc(db, 'communityGroups', groupId), {
+        memberIds: arrayUnion(userId),
+        updatedAt: Date.now(),
+    });
+};
+
+export const leaveCommunityGroup = async (groupId: string, userId: string): Promise<void> => {
+    await updateDoc(doc(db, 'communityGroups', groupId), {
+        memberIds: arrayRemove(userId),
+        updatedAt: Date.now(),
+    });
+};
+
+export const joinCommunityGroupByInviteCode = async (
+    rawInviteCode: string,
+    userId: string
+): Promise<CommunityGroup> => {
+    const inviteCode = normalizeCommunityInviteCode(rawInviteCode);
+    if (!inviteCode) throw new Error('Enter a valid invite code');
+
+    const inviteSnap = await getDoc(doc(db, 'communityInvites', inviteCode));
+    if (!inviteSnap.exists()) throw new Error('Invite code not found');
+
+    const invite = inviteSnap.data() as CommunityInvite;
+    if (invite.status !== 'active') throw new Error('Invite code is no longer active');
+
+    const groupRef = doc(db, 'communityGroups', invite.groupId);
+    await updateDoc(groupRef, {
+        memberIds: arrayUnion(userId),
+        updatedAt: Date.now(),
+    });
+
+    const groupSnap = await getDoc(groupRef);
+    if (!groupSnap.exists()) throw new Error('Group no longer exists');
+    return groupSnap.data() as CommunityGroup;
+};
+
+export const addMembersToCommunityGroup = async (
+    groupId: string,
+    memberIds: string[]
+): Promise<void> => {
+    const uniqueMembers = Array.from(new Set(memberIds.map((id) => id.trim()).filter(Boolean)));
+    if (uniqueMembers.length === 0) return;
+    await updateDoc(doc(db, 'communityGroups', groupId), {
+        memberIds: arrayUnion(...uniqueMembers),
+        updatedAt: Date.now(),
+    });
+};
+
+export const regenerateCommunityGroupInviteCode = async (
+    groupId: string,
+    ownerId: string
+): Promise<string> => {
+    const groupRef = doc(db, 'communityGroups', groupId);
+    const groupSnap = await getDoc(groupRef);
+    if (!groupSnap.exists()) throw new Error('Group not found');
+
+    const group = groupSnap.data() as CommunityGroup;
+    if (group.ownerId !== ownerId) throw new Error('Only the group owner can regenerate invite code');
+
+    const now = Date.now();
+    const nextInviteCode = await buildCommunityInviteCode();
+    const oldInviteCode = normalizeCommunityInviteCode(group.inviteCode || '');
+
+    const nextInvite: CommunityInvite = {
+        code: nextInviteCode,
+        groupId: group.id,
+        groupName: group.name,
+        ownerId: group.ownerId,
+        ownerName: group.ownerName,
+        status: 'active',
+        createdAt: now,
+        updatedAt: now,
+    };
+
+    const writes: Array<Promise<void>> = [
+        updateDoc(groupRef, {
+            inviteCode: nextInviteCode,
+            updatedAt: now,
+        }),
+        saveCommunityInvite(nextInvite),
+    ];
+
+    if (oldInviteCode) {
+        writes.push(
+            setDoc(doc(db, 'communityInvites', oldInviteCode), {
+                code: oldInviteCode,
+                groupId: group.id,
+                groupName: group.name,
+                ownerId: group.ownerId,
+                ownerName: group.ownerName,
+                status: 'revoked',
+                updatedAt: now,
+            }, { merge: true })
+        );
+    }
+
+    await Promise.all(writes);
+    return nextInviteCode;
+};
+
+export const saveCommunityMessage = async (message: CommunityMessage): Promise<void> => {
+    await setDoc(doc(db, 'communityMessages', message.id), message);
+};
+
+export const getCommunityMessages = async (
+    groupId: string,
+    maxResults = 120
+): Promise<CommunityMessage[]> => {
+    const q = query(
+        collection(db, 'communityMessages'),
+        where('groupId', '==', groupId),
+        limit(maxResults)
+    );
+    const snap = await getDocs(q);
+    return snap.docs
+        .map((d) => d.data() as CommunityMessage)
+        .sort((a, b) => a.createdAt - b.createdAt);
 };
 
 // ─── One Rep Maxes ───

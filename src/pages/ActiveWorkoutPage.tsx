@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useWorkoutStore } from '../stores/workoutStore';
 import dayjs from 'dayjs';
-import { getExerciseHistory, saveWorkout, uploadMedia } from '../lib/firestoreService';
+import { getExerciseHistory, saveWorkout, updateCoachPlanProgress, uploadMedia } from '../lib/firestoreService';
 import { enqueueAction } from '../lib/offlineQueue';
 import { formatDuration, generateWorkoutSummary, shareWorkout, compressImage } from '../lib/utils';
 import { useAuthStore } from '../stores/authStore';
@@ -14,7 +14,7 @@ import {
     Plus, X, Check, CheckSquare,
     Camera, Video, StopCircle, Pause, Play,
     Search, Timer, ChevronLeft, ChevronRight,
-    Zap, MoreHorizontal, Trash2, Bell,
+    Zap, MoreHorizontal, Trash2, Bell, ClipboardList,
 } from 'lucide-react';
 import Webcam from 'react-webcam';
 import { isIronTemplateId } from '../lib/ironProtocol';
@@ -106,6 +106,41 @@ export default function ActiveWorkoutPage() {
     useEffect(() => {
         setSessionBestScores({});
     }, [activeSession?.id]);
+
+    useEffect(() => {
+        if (!user || !activeSession?.scheduledWorkoutId) return;
+
+        const totalSets = activeSession.exercises.reduce((sum, exercise) => sum + exercise.sets.length, 0);
+        const completedSets = activeSession.exercises.reduce(
+            (sum, exercise) => sum + exercise.sets.filter((setItem) => setItem.completed).length,
+            0
+        );
+        const currentExerciseName = activeSession.exercises[currentExerciseIndex]?.name || '';
+        const timeout = window.setTimeout(() => {
+            updateCoachPlanProgress(activeSession.scheduledWorkoutId!, {
+                progressCompletedSets: completedSets,
+                progressTotalSets: totalSets,
+                progressCurrentExercise: currentExerciseName,
+                athleteInSession: true,
+            }).catch((error) => {
+                console.warn('Could not sync coach plan progress:', error);
+            });
+        }, 600);
+
+        return () => window.clearTimeout(timeout);
+    }, [user, activeSession?.scheduledWorkoutId, activeSession?.exercises, currentExerciseIndex]);
+
+    useEffect(() => {
+        if (!user || !activeSession?.scheduledWorkoutId) return;
+        const planId = activeSession.scheduledWorkoutId;
+        return () => {
+            updateCoachPlanProgress(planId, {
+                athleteInSession: false,
+            }).catch(() => {
+                // Ignore transient offline/permission errors on cleanup.
+            });
+        };
+    }, [user, activeSession?.scheduledWorkoutId]);
 
     if (!activeSession) return null;
 
@@ -446,6 +481,15 @@ export default function ActiveWorkoutPage() {
                     </div>
 
                     <div className="glass rounded-2xl p-4 mb-4">
+                        {activeSession.scheduledWorkoutId && (activeSession.coachNotes || '').trim().length > 0 && (
+                            <div className="rounded-xl border border-accent/30 bg-accent/10 p-3 mb-3">
+                                <p className="text-xs uppercase tracking-wide text-accent mb-1 flex items-center gap-1">
+                                    <ClipboardList size={12} />
+                                    Coach Brief
+                                </p>
+                                <p className="text-sm text-text-primary whitespace-pre-wrap">{activeSession.coachNotes}</p>
+                            </div>
+                        )}
                         <p className="text-xs uppercase tracking-wide text-text-muted mb-2">Workout Notes</p>
                         <textarea
                             value={activeSession.notes}

@@ -1,13 +1,15 @@
 import { useNavigate } from 'react-router-dom';
 import { useAuthStore } from '../stores/authStore';
 import { useWorkoutStore } from '../stores/workoutStore';
-import { getUserWorkouts } from '../lib/firestoreService';
+import { getAthleteCoachPlans, getOneRepMaxes, getUserWorkouts } from '../lib/firestoreService';
 import { formatDurationHuman, formatRelativeTime } from '../lib/utils';
-import type { WorkoutSession } from '../lib/types';
-import { useEffect, useState } from 'react';
+import type { CoachWorkoutPlan, WorkoutSession, WorkoutTemplate } from '../lib/types';
+import { useEffect, useMemo, useState } from 'react';
 import { COMMON_EXERCISES } from '../lib/constants';
+import { BUILT_IN_TEMPLATES, getTemplateCategories } from '../lib/templates';
+import { isIronTemplateId, normalizeOneRepMaxes, scaleTemplateForOneRepMaxes } from '../lib/ironProtocol';
 import {
-    Play, Dumbbell, Clock, Plus, X, Search, History, Calendar,
+    Play, Dumbbell, Clock, Plus, X, Search, History, Calendar, Users, ClipboardList, LayoutGrid,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 
@@ -15,23 +17,37 @@ export default function WorkoutPage() {
     const { user } = useAuthStore();
     const {
         startWorkout, activeSession, addExercise, initPlan,
-        isTimerRunning, updateExercisePlan, removeExercise,
+        isTimerRunning, updateExercisePlan, removeExercise, loadCoachPlan, initFromTemplatePlan,
     } = useWorkoutStore();
     const navigate = useNavigate();
 
     const [history, setHistory] = useState<WorkoutSession[]>([]);
+    const [coachPlans, setCoachPlans] = useState<CoachWorkoutPlan[]>([]);
     const [showPicker, setShowPicker] = useState(false);
+    const [showTemplatePicker, setShowTemplatePicker] = useState(false);
+    const [templateCategory, setTemplateCategory] = useState('All');
     const [search, setSearch] = useState('');
     const [custom, setCustom] = useState('');
     const [tab, setTab] = useState<'plan' | 'history'>('plan');
 
     // Queue = exercises already in the active session
     const queue = activeSession?.exercises ?? [];
+    const todayKey = new Date().toISOString().slice(0, 10);
+    const todayCoachPlans = coachPlans.filter((plan) => plan.scheduledDate === todayKey);
+    const loadedCoachPlan = activeSession?.scheduledWorkoutId
+        ? coachPlans.find((plan) => plan.id === activeSession.scheduledWorkoutId) ?? null
+        : null;
 
     useEffect(() => {
         if (!user) return;
-        getUserWorkouts(user.uid, 20)
-            .then((data) => { if (data.length > 0) setHistory(data); })
+        Promise.all([
+            getUserWorkouts(user.uid, 20),
+            getAthleteCoachPlans(user.uid, 30),
+        ])
+            .then(([workoutHistory, plans]) => {
+                if (workoutHistory.length > 0) setHistory(workoutHistory);
+                setCoachPlans(plans);
+            })
             .catch(console.warn);
     }, [user]);
 
@@ -63,9 +79,51 @@ export default function WorkoutPage() {
         if (custom.trim()) handleAddExercise(custom.trim());
     };
 
+    const handleLoadCoachPlan = (plan: CoachWorkoutPlan) => {
+        if (!user) return;
+        if (activeSession && queue.length > 0 && !confirm('Replace your current plan with this coach-assigned plan?')) {
+            return;
+        }
+        loadCoachPlan(user.uid, plan.id, plan.title, plan.notes, plan.exercises);
+        toast.success('Coach plan loaded. Review and tap Start Workout.');
+    };
+
     const filtered = COMMON_EXERCISES.filter(e =>
         e.toLowerCase().includes(search.toLowerCase())
     );
+
+    const templateCategories = useMemo(
+        () => ['All', ...getTemplateCategories(BUILT_IN_TEMPLATES)],
+        []
+    );
+    const filteredTemplates = useMemo(() => {
+        if (templateCategory === 'All') return BUILT_IN_TEMPLATES;
+        return BUILT_IN_TEMPLATES.filter((template) => template.category === templateCategory);
+    }, [templateCategory]);
+
+    const handleLoadTemplate = async (template: WorkoutTemplate) => {
+        if (!user) return;
+        if (activeSession && queue.length > 0 && !confirm('Replace your current plan with this template?')) {
+            return;
+        }
+
+        let selectedTemplate = template;
+        if (isIronTemplateId(template.id)) {
+            try {
+                const maxes = await getOneRepMaxes(user.uid);
+                selectedTemplate = scaleTemplateForOneRepMaxes(
+                    template,
+                    normalizeOneRepMaxes(user.uid, maxes)
+                );
+            } catch (error) {
+                console.warn('Failed to load 1RMs for template scaling:', error);
+            }
+        }
+
+        initFromTemplatePlan(user.uid, selectedTemplate);
+        setShowTemplatePicker(false);
+        toast.success(`${selectedTemplate.title} loaded in planner`);
+    };
 
     return (
         <div className="max-w-lg mx-auto px-4 pt-6 pb-24 space-y-5">
@@ -95,6 +153,65 @@ export default function WorkoutPage() {
                         Set up your exercises below — sets, reps, weight — then tap <strong className="text-text-primary">Start Workout</strong>. You'll move straight to doing them one by one.
                     </p>
 
+                    {activeSession?.scheduledWorkoutId && (
+                        <div className="glass rounded-2xl p-4 animate-fade-in">
+                            <div className="flex items-center gap-2 mb-2">
+                                <ClipboardList size={15} className="text-accent" />
+                                <p className="text-sm font-semibold">Coach Plan Loaded</p>
+                            </div>
+                            <p className="text-xs text-text-secondary">
+                                {loadedCoachPlan?.title || 'Assigned session'} - sets/reps/weight targets are prefilled. You can still adjust before starting.
+                            </p>
+                            {(activeSession.coachNotes || '').trim().length > 0 && (
+                                <div className="mt-2 rounded-lg border border-accent/25 bg-accent/10 p-2">
+                                    <p className="text-[10px] uppercase tracking-wide text-accent mb-1">Coach Notes</p>
+                                    <p className="text-xs text-text-secondary whitespace-pre-wrap">{activeSession.coachNotes}</p>
+                                </div>
+                            )}
+                        </div>
+                    )}
+
+                    {todayCoachPlans.length > 0 && (
+                        <div className="glass rounded-2xl p-4 animate-fade-in">
+                            <div className="flex items-center justify-between gap-2 mb-2">
+                                <p className="text-sm font-semibold flex items-center gap-2">
+                                    <Users size={15} className="text-accent" />
+                                    Coach Plan For Today
+                                </p>
+                                <span className="text-xs text-text-muted">{todayCoachPlans.length} assigned</span>
+                            </div>
+                            <div className="space-y-2">
+                                {todayCoachPlans.map((plan) => (
+                                    <div key={plan.id} className="rounded-xl bg-bg-card border border-border p-3">
+                                        <p className="text-sm font-semibold">{plan.title}</p>
+                                        <p className="text-xs text-text-secondary mt-1">
+                                            {plan.exercises.length} exercises
+                                        </p>
+                                        {plan.notes && (
+                                            <p className="text-xs text-text-muted mt-1 line-clamp-2">Coach notes: {plan.notes}</p>
+                                        )}
+                                        <div className="mt-2 space-y-1">
+                                            {plan.exercises.slice(0, 2).map((exercise, index) => (
+                                                <p key={`${plan.id}-preview-${index}`} className="text-xs text-text-secondary">
+                                                    <span className="font-medium text-text-primary">{exercise.name}:</span> {exercise.sets} x {exercise.reps} {exercise.weight > 0 ? `@ ${exercise.weight}kg` : '(bodyweight)'}
+                                                </p>
+                                            ))}
+                                            {plan.exercises.length > 2 && (
+                                                <p className="text-xs text-text-muted">+{plan.exercises.length - 2} more exercises</p>
+                                            )}
+                                        </div>
+                                        <button
+                                            onClick={() => handleLoadCoachPlan(plan)}
+                                            className="mt-2 w-full py-2 rounded-lg border border-accent/50 text-accent text-xs font-semibold"
+                                        >
+                                            Load Coach Plan
+                                        </button>
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+                    )}
+
                     {/* Exercise Queue */}
                     <div className="space-y-3 animate-fade-in stagger-1">
                         {queue.length === 0 ? (
@@ -111,6 +228,13 @@ export default function WorkoutPage() {
                                     className="px-6 py-3 rounded-xl gradient-primary text-white font-semibold text-sm active:scale-[0.97] transition-transform"
                                 >
                                     + Add First Exercise
+                                </button>
+                                <button
+                                    onClick={() => setShowTemplatePicker(true)}
+                                    className="mt-2 px-6 py-3 rounded-xl border border-border text-text-secondary font-semibold text-sm active:scale-[0.97] transition-transform"
+                                >
+                                    <LayoutGrid size={14} className="inline mr-1" />
+                                    Add From Template
                                 </button>
                             </div>
                         ) : (
@@ -134,6 +258,13 @@ export default function WorkoutPage() {
                                     className="w-full py-3 rounded-2xl border-2 border-dashed border-border text-text-muted text-sm font-medium flex items-center justify-center gap-2 hover:border-accent/40 hover:text-accent transition-colors"
                                 >
                                     <Plus size={18} /> Add Exercise
+                                </button>
+                                <button
+                                    onClick={() => setShowTemplatePicker(true)}
+                                    className="w-full py-3 rounded-2xl border border-border text-text-muted text-sm font-medium flex items-center justify-center gap-2 hover:border-accent/40 hover:text-accent transition-colors"
+                                >
+                                    <LayoutGrid size={16} />
+                                    Add From Template
                                 </button>
                             </>
                         )}
@@ -290,6 +421,56 @@ export default function WorkoutPage() {
                                     <Plus size={16} className="text-text-muted opacity-0 group-hover:opacity-100 transition-opacity" />
                                 </button>
                             ))}
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {showTemplatePicker && (
+                <div
+                    className="fixed inset-0 z-[110] bg-black/60 flex items-end"
+                    onClick={() => setShowTemplatePicker(false)}
+                >
+                    <div
+                        className="w-full max-w-lg mx-auto bg-bg-surface rounded-t-3xl p-6 max-h-[85vh] flex flex-col animate-slide-up"
+                        onClick={(event) => event.stopPropagation()}
+                    >
+                        <div className="flex items-center justify-between mb-4">
+                            <h3 className="text-lg font-bold">Load Template</h3>
+                            <button onClick={() => setShowTemplatePicker(false)} className="p-2 text-text-muted">
+                                <X size={20} />
+                            </button>
+                        </div>
+                        <div className="flex gap-2 overflow-x-auto pb-2 mb-3">
+                            {templateCategories.map((category) => (
+                                <button
+                                    key={category}
+                                    onClick={() => setTemplateCategory(category)}
+                                    className={`px-3 py-1.5 rounded-lg text-xs font-semibold whitespace-nowrap ${templateCategory === category
+                                        ? 'bg-accent text-white'
+                                        : 'bg-bg-card text-text-secondary border border-border'
+                                        }`}
+                                >
+                                    {category}
+                                </button>
+                            ))}
+                        </div>
+                        <div className="overflow-y-auto space-y-2">
+                            {filteredTemplates.map((template) => {
+                                const exerciseCount = template.phases.reduce((sum, phase) => sum + phase.exercises.length, 0);
+                                return (
+                                    <button
+                                        key={template.id}
+                                        onClick={() => { void handleLoadTemplate(template); }}
+                                        className="w-full text-left rounded-xl border border-border bg-bg-card p-3 hover:border-accent/40 transition-colors"
+                                    >
+                                        <p className="text-sm font-semibold">{template.title}</p>
+                                        <p className="text-xs text-text-secondary mt-1">
+                                            {template.category} • {exerciseCount} exercises
+                                        </p>
+                                    </button>
+                                );
+                            })}
                         </div>
                     </div>
                 </div>
