@@ -81,6 +81,62 @@ export default function DashboardPage() {
         return { totalWorkouts: workouts.length, totalDuration, totalCalories, weeklyWorkouts, streak };
     }, [workouts]);
 
+    const trendInsights = useMemo(() => {
+        const now = Date.now();
+        const weekMs = 7 * 24 * 60 * 60 * 1000;
+        const monthMs = 30 * 24 * 60 * 60 * 1000;
+        const calcSessionVolume = (session: WorkoutSession): number => {
+            return session.exercises.reduce((exerciseSum, exercise) => {
+                return exerciseSum + exercise.sets.reduce((setSum, setItem) => setSum + setItem.weight * setItem.reps, 0);
+            }, 0);
+        };
+        const calcVolume = (sessions: WorkoutSession[]): number => sessions.reduce((sum, session) => sum + calcSessionVolume(session), 0);
+        const averageDuration = (sessions: WorkoutSession[]): number => {
+            if (sessions.length === 0) return 0;
+            return Math.round(sessions.reduce((sum, session) => sum + session.duration, 0) / sessions.length);
+        };
+
+        const last7 = workouts.filter((session) => session.startedAt >= now - weekMs);
+        const previous7 = workouts.filter(
+            (session) => session.startedAt < now - weekMs && session.startedAt >= now - (2 * weekMs)
+        );
+
+        const recent30 = workouts.filter((session) => session.startedAt >= now - monthMs);
+        const exerciseVolume = new Map<string, number>();
+        for (const session of recent30) {
+            for (const exercise of session.exercises) {
+                const key = exercise.name.trim() || 'Unnamed';
+                const volume = exercise.sets.reduce((sum, setItem) => sum + setItem.weight * setItem.reps, 0);
+                exerciseVolume.set(key, (exerciseVolume.get(key) || 0) + volume);
+            }
+        }
+        const topExerciseEntry = Array.from(exerciseVolume.entries()).sort((a, b) => b[1] - a[1])[0];
+        const topExerciseName = topExerciseEntry?.[0] || 'No lift data yet';
+        const topExerciseVolume = Math.round(topExerciseEntry?.[1] || 0);
+
+        const lastVolume = calcVolume(last7);
+        const prevVolume = calcVolume(previous7);
+        const volumeDeltaPct = prevVolume > 0
+            ? Math.round(((lastVolume - prevVolume) / prevVolume) * 100)
+            : (lastVolume > 0 ? 100 : 0);
+
+        const currentAvgDuration = averageDuration(last7);
+        const previousAvgDuration = averageDuration(previous7);
+        const durationDeltaPct = previousAvgDuration > 0
+            ? Math.round(((currentAvgDuration - previousAvgDuration) / previousAvgDuration) * 100)
+            : (currentAvgDuration > 0 ? 100 : 0);
+
+        return {
+            last7Count: last7.length,
+            lastVolume: Math.round(lastVolume),
+            volumeDeltaPct,
+            currentAvgDuration,
+            durationDeltaPct,
+            topExerciseName,
+            topExerciseVolume,
+        };
+    }, [workouts]);
+
     const chartData = useMemo(() => {
         const days = getDaysInRange(7);
         return days.map((day) => {
@@ -195,6 +251,34 @@ export default function DashboardPage() {
                     ) : (
                         <div className="h-full w-full rounded-xl bg-bg-card/50" />
                     )}
+                </div>
+            </div>
+
+            <div className="glass rounded-2xl p-4 animate-fade-in stagger-2">
+                <div className="flex items-center justify-between mb-3">
+                    <h3 className="text-sm font-semibold text-text-secondary">Strength Trends</h3>
+                    <span className="text-xs text-text-muted">{trendInsights.last7Count}/7 sessions</span>
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                    <div className="rounded-xl bg-bg-card p-3">
+                        <p className="text-[11px] uppercase tracking-wide text-text-muted">Volume (7d)</p>
+                        <p className="text-lg font-bold mt-1">{trendInsights.lastVolume}</p>
+                        <p className={`text-xs mt-1 ${trendInsights.volumeDeltaPct >= 0 ? 'text-green' : 'text-red'}`}>
+                            {trendInsights.volumeDeltaPct >= 0 ? '+' : ''}{trendInsights.volumeDeltaPct}% vs prior week
+                        </p>
+                    </div>
+                    <div className="rounded-xl bg-bg-card p-3">
+                        <p className="text-[11px] uppercase tracking-wide text-text-muted">Avg Duration</p>
+                        <p className="text-lg font-bold mt-1">{formatDurationHuman(trendInsights.currentAvgDuration)}</p>
+                        <p className={`text-xs mt-1 ${trendInsights.durationDeltaPct >= 0 ? 'text-amber' : 'text-cyan'}`}>
+                            {trendInsights.durationDeltaPct >= 0 ? '+' : ''}{trendInsights.durationDeltaPct}% vs prior week
+                        </p>
+                    </div>
+                </div>
+                <div className="rounded-xl bg-bg-card p-3 mt-3">
+                    <p className="text-[11px] uppercase tracking-wide text-text-muted">Top Lift (30d by volume)</p>
+                    <p className="text-sm font-semibold mt-1">{trendInsights.topExerciseName}</p>
+                    <p className="text-xs text-text-secondary mt-1">{trendInsights.topExerciseVolume} kg·reps</p>
                 </div>
             </div>
 

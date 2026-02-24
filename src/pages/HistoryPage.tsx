@@ -339,6 +339,13 @@ export default function HistoryPage() {
                                             </div>
                                         </div>
 
+                                        <div className="rounded-2xl bg-bg-card p-4">
+                                            <p className="text-xs text-text-muted uppercase tracking-wide mb-1">Session Notes</p>
+                                            <p className="text-sm text-text-secondary whitespace-pre-wrap">
+                                                {selectedSession.notes?.trim() || 'No notes saved for this session.'}
+                                            </p>
+                                        </div>
+
                                         <div className="rounded-2xl bg-bg-card p-4 space-y-3">
                                             <p className="text-xs text-text-muted uppercase tracking-wide">Exercise Details</p>
                                             {selectedSession.exercises.length === 0 ? (

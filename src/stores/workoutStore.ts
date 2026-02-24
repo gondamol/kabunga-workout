@@ -2,13 +2,14 @@ import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import type { Exercise, ExerciseSet, WorkoutSession, WorkoutTemplate, WorkoutPhase } from '../lib/types';
 import { CALORIES_PER_MINUTE } from '../lib/constants';
-import { playAlarm, playCountdownBeep, vibrateRestComplete, vibrateSetComplete, playCompletionChime } from '../lib/timerService';
+import { playAlarm, playCountdownBeep, vibrate, vibrateRestComplete, vibrateSetComplete, playCompletionChime } from '../lib/timerService';
 import { classifyIronPhase, isIronTemplateId } from '../lib/ironProtocol';
 
 interface WorkoutState {
     activeSession: WorkoutSession | null;
     timerSeconds: number;
     isTimerRunning: boolean;
+    timerAlarmMinutes: number;
 
     // Which exercise is currently "on screen" during a live session
     currentExerciseIndex: number;
@@ -26,6 +27,7 @@ interface WorkoutState {
     // Actions
     initPlan: (userId: string) => void;          // Create session in planning state (no timer)
     startWorkout: (userId: string) => void;       // Start timer on existing or new session
+    initFromTemplatePlan: (userId: string, template: WorkoutTemplate) => void;
     startFromTemplate: (userId: string, template: WorkoutTemplate) => void;
     endWorkout: () => WorkoutSession | null;
     cancelWorkout: () => void;
@@ -36,6 +38,7 @@ interface WorkoutState {
     }) => void;
     removeExercise: (exerciseId: string) => void;
     updateExerciseNotes: (exerciseId: string, notes: string) => void;
+    updateSessionNotes: (notes: string) => void;
     /** Edit the planned sets/reps/weight/label on an exercise in the queue */
     updateExercisePlan: (exerciseId: string, patch: {
         plannedSets?: number;
@@ -64,6 +67,7 @@ interface WorkoutState {
     startRest: (seconds?: number) => void;
     stopRest: () => void;
     setDefaultRest: (seconds: number) => void;
+    setTimerAlarmMinutes: (minutes: number) => void;
 }
 
 const generateId = () => Math.random().toString(36).slice(2, 10) + Date.now().toString(36);
@@ -83,12 +87,45 @@ const blankSession = (userId: string): WorkoutSession => ({
     updatedAt: Date.now(),
 });
 
+const createTemplateExercises = (template: WorkoutTemplate): Exercise[] => {
+    const exercises: Exercise[] = [];
+    for (const phase of template.phases) {
+        for (const ex of phase.exercises) {
+            const phaseType = classifyIronPhase(phase.name, ex.isWarmup);
+            const sets: ExerciseSet[] = Array.from({ length: ex.sets }, () => ({
+                id: generateId(),
+                reps: 0,
+                weight: ex.weight,
+                completed: false,
+                isWarmup: ex.isWarmup,
+                setType: phaseType,
+            }));
+            exercises.push({
+                id: generateId(),
+                name: ex.name,
+                sets,
+                notes: '',
+                plannedSets: ex.sets,
+                plannedReps: ex.reps,
+                plannedWeight: ex.weight,
+                restSeconds: ex.restSeconds,
+                cue: ex.cue,
+                isWarmup: ex.isWarmup,
+                phaseName: phase.name,
+                phaseType,
+            });
+        }
+    }
+    return exercises;
+};
+
 export const useWorkoutStore = create<WorkoutState>()(
     persist(
         (set, get) => ({
             activeSession: null,
             timerSeconds: 0,
             isTimerRunning: false,
+            timerAlarmMinutes: 0,
             currentExerciseIndex: 0,
 
             restSeconds: 0,
@@ -140,36 +177,23 @@ export const useWorkoutStore = create<WorkoutState>()(
                 }
             },
 
+            initFromTemplatePlan: (userId: string, template: WorkoutTemplate) => {
+                const exercises = createTemplateExercises(template);
+                set({
+                    activeSession: { ...blankSession(userId), templateId: template.id, exercises },
+                    timerSeconds: 0,
+                    isTimerRunning: false,
+                    isGuidedMode: true,
+                    activeTemplate: template,
+                    currentExerciseIndex: 0,
+                    restSeconds: 0,
+                    isResting: false,
+                });
+            },
+
             // ─── startFromTemplate ───
             startFromTemplate: (userId: string, template: WorkoutTemplate) => {
-                const exercises: Exercise[] = [];
-                for (const phase of template.phases) {
-                    for (const ex of phase.exercises) {
-                        const phaseType = classifyIronPhase(phase.name, ex.isWarmup);
-                        const sets: ExerciseSet[] = Array.from({ length: ex.sets }, () => ({
-                            id: generateId(),
-                            reps: 0,
-                            weight: ex.weight,
-                            completed: false,
-                            isWarmup: ex.isWarmup,
-                            setType: phaseType,
-                        }));
-                        exercises.push({
-                            id: generateId(),
-                            name: ex.name,
-                            sets,
-                            notes: '',
-                            plannedSets: ex.sets,
-                            plannedReps: ex.reps,
-                            plannedWeight: ex.weight,
-                            restSeconds: ex.restSeconds,
-                            cue: ex.cue,
-                            isWarmup: ex.isWarmup,
-                            phaseName: phase.name,
-                            phaseType,
-                        });
-                    }
-                }
+                const exercises = createTemplateExercises(template);
 
                 set({
                     activeSession: { ...blankSession(userId), templateId: template.id, exercises },
@@ -276,6 +300,18 @@ export const useWorkoutStore = create<WorkoutState>()(
                         exercises: activeSession.exercises.map(e =>
                             e.id === exerciseId ? { ...e, notes } : e
                         ),
+                        updatedAt: Date.now(),
+                    },
+                });
+            },
+
+            updateSessionNotes: (notes) => {
+                const { activeSession } = get();
+                if (!activeSession) return;
+                set({
+                    activeSession: {
+                        ...activeSession,
+                        notes,
                         updatedAt: Date.now(),
                     },
                 });
@@ -459,9 +495,14 @@ export const useWorkoutStore = create<WorkoutState>()(
 
             // ─── Timer ───
             tick: () => {
-                const { isTimerRunning, isResting, restSeconds } = get();
+                const { isTimerRunning, isResting, restSeconds, timerAlarmMinutes, timerSeconds } = get();
                 if (isTimerRunning) {
-                    set(state => ({ timerSeconds: state.timerSeconds + 1 }));
+                    const nextSeconds = timerSeconds + 1;
+                    set({ timerSeconds: nextSeconds });
+                    if (timerAlarmMinutes > 0 && nextSeconds % (timerAlarmMinutes * 60) === 0) {
+                        playAlarm();
+                        vibrate([120, 80, 120]);
+                    }
                 }
                 if (isResting && restSeconds > 0) {
                     const newRest = restSeconds - 1;
@@ -509,6 +550,8 @@ export const useWorkoutStore = create<WorkoutState>()(
             stopRest: () => set({ isResting: false, restSeconds: 0 }),
 
             setDefaultRest: (seconds) => set({ defaultRestSeconds: seconds }),
+
+            setTimerAlarmMinutes: (minutes) => set({ timerAlarmMinutes: Math.max(0, minutes) }),
         }),
         {
             name: 'kabunga-workout-session',
@@ -516,6 +559,7 @@ export const useWorkoutStore = create<WorkoutState>()(
                 activeSession: state.activeSession,
                 timerSeconds: state.timerSeconds,
                 isTimerRunning: state.isTimerRunning,
+                timerAlarmMinutes: state.timerAlarmMinutes,
                 currentExerciseIndex: state.currentExerciseIndex,
                 isGuidedMode: state.isGuidedMode,
                 activeTemplate: state.activeTemplate,

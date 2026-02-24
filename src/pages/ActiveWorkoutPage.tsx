@@ -14,7 +14,7 @@ import {
     Plus, X, Check, CheckSquare,
     Camera, Video, StopCircle, Pause, Play,
     Search, Timer, ChevronLeft, ChevronRight,
-    Zap, MoreHorizontal, Trash2,
+    Zap, MoreHorizontal, Trash2, Bell,
 } from 'lucide-react';
 import Webcam from 'react-webcam';
 import { isIronTemplateId } from '../lib/ironProtocol';
@@ -34,10 +34,10 @@ export default function ActiveWorkoutPage() {
     const navigate = useNavigate();
     const { user } = useAuthStore();
     const {
-        activeSession, timerSeconds, isTimerRunning,
+        activeSession, timerSeconds, isTimerRunning, timerAlarmMinutes,
         currentExerciseIndex, goToExercise, nextExercise, prevExercise,
         addExercise, removeExercise, addSet, removeSet, updateSet, completeSet, toggleSetComplete,
-        endWorkout, cancelWorkout, tick, setTimerRunning, addMediaUrl,
+        endWorkout, cancelWorkout, tick, setTimerRunning, setTimerAlarmMinutes, addMediaUrl, updateSessionNotes,
         startRest, defaultRestSeconds, isResting,
     } = useWorkoutStore();
 
@@ -268,6 +268,20 @@ export default function ActiveWorkoutPage() {
         }
     };
 
+    const cycleTimerAlarm = () => {
+        const options = [0, 5, 10, 15, 20];
+        const currentIndex = options.indexOf(timerAlarmMinutes);
+        const nextValue = options[(currentIndex + 1) % options.length];
+        setTimerAlarmMinutes(nextValue);
+        if (nextValue === 0) {
+            toast('Workout timer alarm off');
+        } else {
+            toast(`Workout timer alarm every ${nextValue} min`);
+        }
+    };
+
+    const timerAlarmLabel = timerAlarmMinutes > 0 ? `Alarm ${timerAlarmMinutes}m` : 'Alarm off';
+
     return (
         <div className="max-w-lg mx-auto flex flex-col min-h-screen px-4 pt-4 pb-6">
             {/* Rest timer overlay */}
@@ -293,9 +307,9 @@ export default function ActiveWorkoutPage() {
                 <button
                     onClick={() => setShowMenu(!showMenu)}
                     className="p-2 text-text-muted"
-                >
-                    <MoreHorizontal size={22} />
-                </button>
+                    >
+                        <MoreHorizontal size={22} />
+                    </button>
             </div>
 
             {/* Overflow menu */}
@@ -314,6 +328,15 @@ export default function ActiveWorkoutPage() {
                         className="w-full text-left px-5 py-3 text-sm hover:bg-bg-card flex items-center gap-3"
                     >
                         <Timer size={16} className="text-text-muted" /> Rest Timer
+                    </button>
+                    <button
+                        onClick={() => { cycleTimerAlarm(); setShowMenu(false); }}
+                        className="w-full text-left px-5 py-3 text-sm hover:bg-bg-card flex items-center justify-between gap-3"
+                    >
+                        <span className="flex items-center gap-3">
+                            <Bell size={16} className="text-text-muted" /> Workout Alarm
+                        </span>
+                        <span className="text-xs text-text-muted">{timerAlarmLabel}</span>
                     </button>
                     <button
                         onClick={() => { handleEnd(); setShowMenu(false); }}
@@ -387,6 +410,9 @@ export default function ActiveWorkoutPage() {
                                             : 'Last time: no history yet'}
                                     </p>
                                 )}
+                                <p className="text-[11px] text-text-muted mt-1">
+                                    Timer: {timerAlarmLabel}
+                                </p>
                             </div>
                             <button
                                 onClick={nextExercise}
@@ -417,6 +443,17 @@ export default function ActiveWorkoutPage() {
                                 {completedSets}/{totalSets} sets
                             </span>
                         </div>
+                    </div>
+
+                    <div className="glass rounded-2xl p-4 mb-4">
+                        <p className="text-xs uppercase tracking-wide text-text-muted mb-2">Workout Notes</p>
+                        <textarea
+                            value={activeSession.notes}
+                            onChange={(event) => updateSessionNotes(event.target.value)}
+                            placeholder="How did this session feel? PR attempts, energy, pain points..."
+                            rows={3}
+                            className="w-full bg-bg-input border border-border rounded-xl px-3 py-2 text-sm text-text-primary placeholder:text-text-muted focus:outline-none focus:border-accent/50 resize-none"
+                        />
                     </div>
 
                     {/* Camera panel */}

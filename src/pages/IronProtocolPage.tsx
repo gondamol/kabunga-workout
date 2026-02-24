@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import dayjs, { type Dayjs } from 'dayjs';
 import { useNavigate } from 'react-router-dom';
 import toast from 'react-hot-toast';
-import { Calendar, Check, ChevronRight, Dumbbell, Flame, TrendingUp } from 'lucide-react';
+import { Calendar, Check, ChevronRight, Dumbbell, Eye, Flame, TrendingUp } from 'lucide-react';
 import { useAuthStore } from '../stores/authStore';
 import { useWorkoutStore } from '../stores/workoutStore';
 import {
@@ -21,6 +21,7 @@ import {
     IRON_WEEKLY_SCHEDULE,
     normalizeOneRepMaxes,
     scaleTemplateForOneRepMaxes,
+    type IronScheduleDay,
 } from '../lib/ironProtocol';
 
 const dailyTasks = [
@@ -90,7 +91,7 @@ const buildSixWeekRows = (sessions: WorkoutSession[]) => {
 export default function IronProtocolPage() {
     const navigate = useNavigate();
     const { user } = useAuthStore();
-    const { activeSession, startFromTemplate } = useWorkoutStore();
+    const { activeSession, initFromTemplatePlan, startFromTemplate } = useWorkoutStore();
 
     const [oneRepMaxes, setOneRepMaxes] = useState<OneRepMaxes | null>(null);
     const [dailyLogs, setDailyLogs] = useState<Record<string, FitnessDailyLog>>({});
@@ -102,6 +103,7 @@ export default function IronProtocolPage() {
     const today = dayjs();
     const todayKey = today.format('YYYY-MM-DD');
     const todaySchedule = getIronScheduleForDate(today);
+    const [selectedWeekday, setSelectedWeekday] = useState<number>(today.day());
 
     useEffect(() => {
         if (!user) return;
@@ -182,18 +184,37 @@ export default function IronProtocolPage() {
         return scaleTemplateForOneRepMaxes(template, oneRepMaxes);
     }, [oneRepMaxes, todaySchedule.templateId]);
 
-    const todayTargetWeights = useMemo(() => {
-        if (!todayTemplate) return [];
-        const primaryKeyword = todaySchedule.primaryLift.toLowerCase().split(' ')[0];
+    const selectedSchedule = useMemo<IronScheduleDay>(() => {
+        return IRON_WEEKLY_SCHEDULE.find((entry) => entry.weekday === selectedWeekday) ?? todaySchedule;
+    }, [selectedWeekday, todaySchedule]);
+
+    const selectedTemplate = useMemo(() => {
+        if (!oneRepMaxes || !selectedSchedule.templateId) return null;
+        const template = getIronTemplateById(selectedSchedule.templateId);
+        if (!template) return null;
+        return scaleTemplateForOneRepMaxes(template, oneRepMaxes);
+    }, [oneRepMaxes, selectedSchedule.templateId]);
+
+    const getTargetWeights = (template: typeof todayTemplate, primaryLift: string): number[] => {
+        if (!template) return [];
+        const primaryKeyword = primaryLift.toLowerCase().split(' ')[0];
         return Array.from(
             new Set(
-                todayTemplate.phases
+                template.phases
                     .flatMap((phase) => phase.exercises)
                     .filter((exercise) => exercise.weight > 0 && exercise.name.toLowerCase().includes(primaryKeyword))
                     .map((exercise) => exercise.weight)
             )
         ).sort((a, b) => a - b);
+    };
+
+    const todayTargetWeights = useMemo(() => {
+        return getTargetWeights(todayTemplate, todaySchedule.primaryLift);
     }, [todayTemplate, todaySchedule.primaryLift]);
+
+    const selectedTargetWeights = useMemo(() => {
+        return getTargetWeights(selectedTemplate, selectedSchedule.primaryLift);
+    }, [selectedTemplate, selectedSchedule.primaryLift]);
 
     const updateMax = (key: keyof Omit<OneRepMaxes, 'userId' | 'updatedAt'>, value: number) => {
         setOneRepMaxes((prev) => {
@@ -254,17 +275,40 @@ export default function IronProtocolPage() {
         }
     };
 
-    const handleStartToday = () => {
-        if (!user || !oneRepMaxes || !todaySchedule.templateId) return;
-        const template = getIronTemplateById(todaySchedule.templateId);
+    const resolveScaledTemplate = (schedule: IronScheduleDay) => {
+        if (!oneRepMaxes || !schedule.templateId) return null;
+        const template = getIronTemplateById(schedule.templateId);
         if (!template) {
+            return null;
+        }
+        return scaleTemplateForOneRepMaxes(template, oneRepMaxes);
+    };
+
+    const handleStartSchedule = (schedule: IronScheduleDay) => {
+        if (!user || !schedule.templateId) return;
+        const scaledTemplate = resolveScaledTemplate(schedule);
+        if (!scaledTemplate) {
             toast.error('Template not found');
             return;
         }
         if (activeSession && !confirm('You already have an active workout. Start a new one?')) return;
 
-        startFromTemplate(user.uid, scaleTemplateForOneRepMaxes(template, oneRepMaxes));
+        startFromTemplate(user.uid, scaledTemplate);
         navigate('/active-workout');
+    };
+
+    const handlePreviewSchedule = (schedule: IronScheduleDay) => {
+        if (!user || !schedule.templateId) return;
+        const scaledTemplate = resolveScaledTemplate(schedule);
+        if (!scaledTemplate) {
+            toast.error('Template not found');
+            return;
+        }
+        if (activeSession && !confirm('You already have an active workout. Replace it with this planned session?')) return;
+
+        initFromTemplatePlan(user.uid, scaledTemplate);
+        toast.success('Workout loaded in planner. Adjust sets/reps/weights, then start.');
+        navigate('/workout');
     };
 
     if (!oneRepMaxes) {
@@ -295,22 +339,24 @@ export default function IronProtocolPage() {
                 <div className="grid grid-cols-7 gap-1.5">
                     {IRON_WEEKLY_SCHEDULE.map((day) => {
                         const isToday = today.day() === day.weekday;
+                        const isSelected = selectedSchedule.weekday === day.weekday;
                         return (
-                            <div
+                            <button
                                 key={day.shortLabel}
-                                className="rounded-xl p-2 border text-center"
+                                onClick={() => setSelectedWeekday(day.weekday)}
+                                className="rounded-xl p-2 border text-center transition-colors"
                                 style={{
-                                    borderColor: isToday ? '#E8630A' : '#2D5F8A',
-                                    background: isToday ? 'rgba(232, 99, 10, 0.18)' : '#12263A',
+                                    borderColor: isSelected ? '#22d3ee' : isToday ? '#E8630A' : '#2D5F8A',
+                                    background: isSelected ? 'rgba(34, 211, 238, 0.15)' : isToday ? 'rgba(232, 99, 10, 0.18)' : '#12263A',
                                 }}
                             >
-                                <p className="text-[11px] font-semibold" style={{ color: isToday ? '#E8630A' : '#D6E4F0' }}>
+                                <p className="text-[11px] font-semibold" style={{ color: isSelected ? '#22d3ee' : isToday ? '#E8630A' : '#D6E4F0' }}>
                                     {day.shortLabel}
                                 </p>
                                 <p className="text-[10px] leading-tight mt-1 text-white">
                                     {day.sessionType === 'rest' ? 'Rest' : day.title.split(' ')[0]}
                                 </p>
-                            </div>
+                            </button>
                         );
                     })}
                 </div>
@@ -342,7 +388,7 @@ export default function IronProtocolPage() {
                 </div>
 
                 <button
-                    onClick={handleStartToday}
+                    onClick={() => handleStartSchedule(todaySchedule)}
                     disabled={!todaySchedule.templateId}
                     className="mt-4 w-full py-4 rounded-2xl text-white font-semibold flex items-center justify-center gap-2 disabled:opacity-40"
                     style={{ background: '#E8630A' }}
@@ -351,6 +397,88 @@ export default function IronProtocolPage() {
                     Start Today&apos;s Workout
                     <ChevronRight size={18} />
                 </button>
+                <button
+                    onClick={() => handlePreviewSchedule(todaySchedule)}
+                    disabled={!todaySchedule.templateId}
+                    className="mt-2 w-full py-3 rounded-2xl border border-border text-sm text-text-secondary font-medium flex items-center justify-center gap-2 disabled:opacity-40"
+                >
+                    <Eye size={16} />
+                    Preview & Edit Today
+                </button>
+            </div>
+
+            <div className="glass rounded-3xl p-5" style={{ borderColor: '#2D5F8A' }}>
+                <p className="text-xs uppercase tracking-wide text-text-muted">Selected Day</p>
+                <h2 className="text-xl font-black mt-1 text-white">
+                    {selectedSchedule.shortLabel} — {selectedSchedule.title}
+                </h2>
+                <p className="text-sm mt-1" style={{ color: '#D6E4F0' }}>
+                    Primary lift: <span className="font-semibold text-white">{selectedSchedule.primaryLift}</span>
+                </p>
+
+                {selectedSchedule.sessionType === 'rest' || !selectedTemplate ? (
+                    <div className="mt-3 rounded-xl bg-bg-card p-3 text-sm text-text-secondary">
+                        Recovery day. Mobility + light walk + hydration.
+                    </div>
+                ) : (
+                    <>
+                        <div className="mt-3 flex flex-wrap gap-2">
+                            {selectedTargetWeights.length > 0 ? (
+                                selectedTargetWeights.map((weight) => (
+                                    <span
+                                        key={weight}
+                                        className="px-2.5 py-1 rounded-lg text-xs font-semibold"
+                                        style={{ background: 'rgba(45,95,138,0.35)', color: '#D6E4F0' }}
+                                    >
+                                        {weight}kg target
+                                    </span>
+                                ))
+                            ) : (
+                                <span className="px-2.5 py-1 rounded-lg text-xs font-semibold bg-bg-card text-text-secondary">
+                                    Bodyweight progression focus
+                                </span>
+                            )}
+                        </div>
+
+                        <div className="mt-3 space-y-2 max-h-[280px] overflow-y-auto pr-1">
+                            {selectedTemplate.phases.map((phase, phaseIndex) => (
+                                <div key={`${phase.name}-${phaseIndex}`} className="rounded-xl bg-bg-card p-3">
+                                    <p className="text-xs uppercase tracking-wide text-text-muted mb-2">{phase.name}</p>
+                                    <div className="space-y-1.5">
+                                        {phase.exercises.map((exercise, exerciseIndex) => (
+                                            <div key={`${phase.name}-${exercise.name}-${exerciseIndex}`} className="text-xs text-text-secondary">
+                                                <p className="font-semibold text-text-primary">{exercise.name}</p>
+                                                <p>
+                                                    {exercise.sets} sets × {exercise.reps} reps
+                                                    {exercise.weight > 0 ? ` @ ${exercise.weight}kg` : ''}
+                                                    {exercise.restSeconds > 0 ? ` • rest ${exercise.restSeconds}s` : ''}
+                                                </p>
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+
+                        <div className="mt-4 grid grid-cols-2 gap-2">
+                            <button
+                                onClick={() => handlePreviewSchedule(selectedSchedule)}
+                                className="py-3 rounded-xl border border-border text-sm text-text-secondary font-medium flex items-center justify-center gap-2"
+                            >
+                                <Eye size={15} />
+                                Preview & Edit
+                            </button>
+                            <button
+                                onClick={() => handleStartSchedule(selectedSchedule)}
+                                className="py-3 rounded-xl text-white text-sm font-semibold flex items-center justify-center gap-2"
+                                style={{ background: '#E8630A' }}
+                            >
+                                <Dumbbell size={15} />
+                                Start Session
+                            </button>
+                        </div>
+                    </>
+                )}
             </div>
 
             <div className="glass rounded-2xl overflow-hidden">
@@ -385,6 +513,9 @@ export default function IronProtocolPage() {
                     </div>
                     <span className="text-xs text-text-muted">{scaledTemplateCount}/6 templates updated</span>
                 </div>
+                <p className="text-xs text-text-secondary">
+                    Weights in Iron sessions auto-update from these values for each user.
+                </p>
 
                 <div className="grid grid-cols-2 gap-2">
                     <label className="text-xs text-text-secondary">
