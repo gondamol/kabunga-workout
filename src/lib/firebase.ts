@@ -8,15 +8,6 @@ import {
     persistentMultipleTabManager,
 } from 'firebase/firestore';
 
-const FALLBACK_FIREBASE_CONFIG = {
-    apiKey: 'REDACTED_FIREBASE_API_KEY',
-    authDomain: 'kabunga-workout-7e5aa.firebaseapp.com',
-    projectId: 'kabunga-workout-7e5aa',
-    storageBucket: 'kabunga-workout-7e5aa.firebasestorage.app',
-    messagingSenderId: '196886329829',
-    appId: '1:196886329829:web:b49ee6e329029f2120170c',
-};
-
 const envConfig = {
     apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
     authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN,
@@ -47,40 +38,23 @@ const isPlaceholderValue = (value: string | undefined): boolean => {
     );
 };
 
+const requireFirebaseEnv = (key: keyof typeof envConfig): string => {
+    const value = envConfig[key]?.trim();
+    if (isPlaceholderValue(value)) {
+        throw new Error(
+            `Missing Firebase config: ${key}. Set VITE_FIREBASE_* values in .env (local) and hosting environment variables (deployment).`
+        );
+    }
+    return value;
+};
+
 const assertFirebaseConfig = (): void => {
-    const fallbackUsed: string[] = [];
-    const applyConfig = <K extends keyof typeof firebaseConfig>(key: K, envValue: string | undefined): void => {
-        const normalized = envValue?.trim();
-        if (isPlaceholderValue(normalized)) {
-            firebaseConfig[key] = FALLBACK_FIREBASE_CONFIG[key];
-            fallbackUsed.push(key);
-        } else {
-            firebaseConfig[key] = normalized as string;
-        }
-    };
-
-    applyConfig('apiKey', envConfig.apiKey);
-    applyConfig('authDomain', envConfig.authDomain);
-    applyConfig('projectId', envConfig.projectId);
-    applyConfig('storageBucket', envConfig.storageBucket);
-    applyConfig('messagingSenderId', envConfig.messagingSenderId);
-    applyConfig('appId', envConfig.appId);
-
-    if (fallbackUsed.length > 0) {
-        console.warn(`Firebase env vars missing/invalid. Using built-in fallback config for: ${fallbackUsed.join(', ')}`);
-    }
-
-    const missing = [
-        ['apiKey', firebaseConfig.apiKey],
-        ['authDomain', firebaseConfig.authDomain],
-        ['projectId', firebaseConfig.projectId],
-        ['storageBucket', firebaseConfig.storageBucket],
-        ['appId', firebaseConfig.appId],
-    ].filter(([, value]) => isPlaceholderValue(value)).map(([key]) => key);
-
-    if (missing.length > 0) {
-        throw new Error(`Invalid Firebase config after fallback. Missing: ${missing.join(', ')}`);
-    }
+    firebaseConfig.apiKey = requireFirebaseEnv('apiKey');
+    firebaseConfig.authDomain = requireFirebaseEnv('authDomain');
+    firebaseConfig.projectId = requireFirebaseEnv('projectId');
+    firebaseConfig.storageBucket = requireFirebaseEnv('storageBucket');
+    firebaseConfig.messagingSenderId = requireFirebaseEnv('messagingSenderId');
+    firebaseConfig.appId = requireFirebaseEnv('appId');
 };
 
 assertFirebaseConfig();
