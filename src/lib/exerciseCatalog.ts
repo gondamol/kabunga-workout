@@ -46,14 +46,27 @@ const writeCache = (query: string, limit: number, items: ExerciseCatalogItem[]):
     }
 };
 
+const normalizeCatalogText = (value: string): string => {
+    return value
+        .replace(/â€™/g, "'")
+        .replace(/â€œ/g, '"')
+        .replace(/â€[\x9c\x9d]/g, '"')
+        .replace(/â€“/g, '-')
+        .replace(/â€”/g, '-')
+        .replace(/Â/g, '')
+        .trim();
+};
+
 const splitInstructions = (value: unknown): string[] => {
     if (Array.isArray(value)) {
-        return value.filter((entry): entry is string => typeof entry === 'string' && entry.trim().length > 0);
+        return value
+            .filter((entry): entry is string => typeof entry === 'string' && entry.trim().length > 0)
+            .map(normalizeCatalogText);
     }
 
     if (typeof value !== 'string' || value.trim().length === 0) return [];
 
-    return value
+    return normalizeCatalogText(value)
         .split(/(?<=[.!?])\s+/)
         .map((entry) => entry.trim())
         .filter(Boolean);
@@ -263,23 +276,23 @@ const normalizeApiItem = (item: unknown): ExerciseCatalogItem | null => {
     if (!item || typeof item !== 'object') return null;
 
     const record = item as Record<string, unknown>;
-    const name = typeof record.name === 'string' ? record.name.trim() : '';
+    const name = typeof record.name === 'string' ? normalizeCatalogText(record.name) : '';
     if (!name) return null;
 
     const equipmentList = Array.isArray(record.equipments)
         ? record.equipments.filter((entry): entry is string => typeof entry === 'string' && entry.trim().length > 0)
         : (typeof record.equipment === 'string' && record.equipment.trim().length > 0 ? [record.equipment.trim()] : []);
 
-    const targetMuscle = String(record.targetMuscle || record.target_muscle || record.target || record.muscle || 'general').trim();
-    const bodyPart = String(record.bodyPart || record.body_part || targetMuscle || 'general').trim();
+    const targetMuscle = normalizeCatalogText(String(record.targetMuscle || record.target_muscle || record.target || record.muscle || 'general'));
+    const bodyPart = normalizeCatalogText(String(record.bodyPart || record.body_part || targetMuscle || 'general'));
     const exerciseType = typeof record.exerciseType === 'string'
-        ? record.exerciseType
-        : (typeof record.type === 'string' ? record.type : null);
-    const difficulty = typeof record.difficulty === 'string' ? record.difficulty : null;
+        ? normalizeCatalogText(record.exerciseType)
+        : (typeof record.type === 'string' ? normalizeCatalogText(record.type) : null);
+    const difficulty = typeof record.difficulty === 'string' ? normalizeCatalogText(record.difficulty) : null;
     const gifUrl = typeof record.gifUrl === 'string' && record.gifUrl.trim().length > 0 ? record.gifUrl : null;
     const safetyInfo = typeof record.safetyInfo === 'string'
-        ? record.safetyInfo
-        : (typeof record.safety_info === 'string' ? record.safety_info : null);
+        ? normalizeCatalogText(record.safetyInfo)
+        : (typeof record.safety_info === 'string' ? normalizeCatalogText(record.safety_info) : null);
 
     return {
         id: String(record.id || record.exerciseId || `api:${name.toLowerCase().replace(/\s+/g, '-')}`),
