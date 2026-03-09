@@ -1,4 +1,5 @@
 import { COMMON_EXERCISES } from './constants';
+import { resolveExerciseEquipment } from './exerciseRules';
 import type { ExerciseCatalogItem } from './types';
 
 const EXERCISE_CACHE_KEY_PREFIX = 'kabunga:exercise-catalog:';
@@ -12,6 +13,7 @@ interface CachedCatalogEntry {
 }
 
 const normalizeQuery = (query: string): string => query.trim().toLowerCase().replace(/\s+/g, ' ');
+const compactQuery = (query: string): string => normalizeQuery(query).replace(/[^a-z0-9]/g, '');
 
 const toCacheKey = (query: string, limit: number): string => `${EXERCISE_CACHE_KEY_PREFIX}${normalizeQuery(query)}:${limit}`;
 
@@ -201,19 +203,37 @@ const buildMuscleImageUrl = (primaryMuscle: string): string | null => {
     return buildLocalMuscleFocusImage(normalized);
 };
 
+const inferLocalExerciseProfile = (name: string): { bodyPart: string; targetMuscle: string } => {
+    const normalizedName = normalizeQuery(name);
+
+    if (/(bench|press|push-up|push up|dip|chest fly|tricep)/.test(normalizedName)) {
+        return { bodyPart: 'upper body', targetMuscle: 'chest' };
+    }
+    if (/(pull-up|pull up|chin-up|chin up|row|lat pulldown|dead hang)/.test(normalizedName)) {
+        return { bodyPart: 'upper body', targetMuscle: 'back' };
+    }
+    if (/(squat|lunge|leg|calf|glute bridge|hip thrust|hamstring)/.test(normalizedName)) {
+        return { bodyPart: 'legs', targetMuscle: 'quadriceps' };
+    }
+    if (/(plank|leg raise|hollow|sit-up|sit up|crunch)/.test(normalizedName)) {
+        return { bodyPart: 'core', targetMuscle: 'abdominals' };
+    }
+    if (/(burpee|mountain climber|jumping jack)/.test(normalizedName)) {
+        return { bodyPart: 'full body', targetMuscle: 'general' };
+    }
+
+    return { bodyPart: 'full body', targetMuscle: 'general' };
+};
+
 const buildLocalItem = (name: string): ExerciseCatalogItem => {
-    const normalizedName = name.toLowerCase();
-    const bodyPart = normalizedName.includes('squat') || normalizedName.includes('leg') ? 'legs' : 'full body';
-    const targetMuscle = normalizedName.includes('bench') || normalizedName.includes('press') ? 'chest' : 'general';
+    const { bodyPart, targetMuscle } = inferLocalExerciseProfile(name);
 
     return {
         id: `local:${name.toLowerCase().replace(/\s+/g, '-')}`,
         name,
         bodyPart,
         targetMuscle,
-        equipment: normalizedName.includes('pull-up') || normalizedName.includes('push-up') || normalizedName.includes('plank')
-            ? 'bodyweight'
-            : 'gym',
+        equipment: resolveExerciseEquipment(name),
         equipmentList: [],
         exerciseType: null,
         difficulty: null,
@@ -227,10 +247,14 @@ const buildLocalItem = (name: string): ExerciseCatalogItem => {
 
 export const getLocalExerciseMatches = (query: string, limit = 8): ExerciseCatalogItem[] => {
     const normalized = normalizeQuery(query);
+    const compact = compactQuery(query);
     if (!normalized) return [];
 
     return COMMON_EXERCISES
-        .filter((name) => name.toLowerCase().includes(normalized))
+        .filter((name) => {
+            const lowered = normalizeQuery(name);
+            return lowered.includes(normalized) || compactQuery(name).includes(compact);
+        })
         .slice(0, limit)
         .map(buildLocalItem);
 };
@@ -262,7 +286,7 @@ const normalizeApiItem = (item: unknown): ExerciseCatalogItem | null => {
         name,
         bodyPart,
         targetMuscle,
-        equipment: equipmentList[0] || 'bodyweight',
+        equipment: resolveExerciseEquipment(name, equipmentList),
         equipmentList,
         exerciseType,
         difficulty,

@@ -9,7 +9,7 @@ import { COMMON_EXERCISES } from '../lib/constants';
 import { BUILT_IN_TEMPLATES, getTemplateCategories } from '../lib/templates';
 import { isIronTemplateId, scaleTemplateForUserOneRepMaxes } from '../lib/ironProtocol';
 import { searchExerciseCatalog } from '../lib/exerciseCatalog';
-import { getProgressionSuggestionFromWorkouts, type ProgressionInsight } from '../lib/progressionInsights';
+import { formatProgressionInsightTarget, getProgressionSuggestionFromWorkouts, type ProgressionInsight } from '../lib/progressionInsights';
 import {
     Play, Dumbbell, Clock, Plus, X, Search, History, Calendar, Users, ClipboardList, LayoutGrid, Sparkles, LoaderCircle, Shield,
 } from 'lucide-react';
@@ -166,6 +166,7 @@ export default function WorkoutPage() {
         if (queue.length === 0 || history.length === 0) return {};
 
         return queue.reduce<Record<string, ProgressionInsight>>((acc, exercise) => {
+            if (exercise.isWarmup || exercise.phaseType === 'warmup') return acc;
             const suggestion = getProgressionSuggestionFromWorkouts(
                 history,
                 exercise.name,
@@ -895,9 +896,7 @@ function ExerciseCard({ index, name, plannedSets, plannedReps, plannedWeight, su
             {suggestion && (
                 <div className="mt-3 rounded-xl border border-cyan/20 bg-cyan/10 p-3">
                     <p className="text-[10px] uppercase tracking-wide text-cyan font-semibold">Suggested Next Load</p>
-                    <p className="text-sm font-semibold mt-1">
-                        {suggestion.weight}kg x {suggestion.reps}
-                    </p>
+                    <p className="text-sm font-semibold mt-1">{formatProgressionInsightTarget(suggestion)}</p>
                     <p className="text-xs text-text-secondary mt-1">{suggestion.reason}</p>
                 </div>
             )}

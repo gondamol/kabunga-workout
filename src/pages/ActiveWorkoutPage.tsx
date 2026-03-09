@@ -10,7 +10,8 @@ import { COMMON_EXERCISES } from '../lib/constants';
 import RestTimer from '../components/RestTimer';
 import toast from 'react-hot-toast';
 import type { ExerciseHistory, ExerciseSet, IronSetType } from '../lib/types';
-import { getProgressionSuggestionFromHistory } from '../lib/progressionInsights';
+import { formatProgressionInsightTarget, getProgressionSuggestionFromHistory } from '../lib/progressionInsights';
+import { formatLoadLabel, formatSetPerformance } from '../lib/exerciseRules';
 import {
     Plus, X, Check, CheckSquare,
     Camera, Video, StopCircle, Pause, Play,
@@ -445,13 +446,13 @@ export default function ActiveWorkoutPage() {
                                     <p className="text-sm text-text-secondary mt-1">
                                         Target: {currentEx.plannedSets} sets
                                         {currentEx.plannedReps ? ` × ${currentEx.plannedReps} reps` : ''}
-                                        {currentEx.plannedWeight ? ` @ ${currentEx.plannedWeight}kg` : ''}
+                                        {` • ${formatLoadLabel(currentEx.plannedWeight)}`}
                                     </p>
                                 )}
                                 {isIronSession && (
                                     <p className="text-xs text-text-secondary mt-1">
                                         {lastSession
-                                            ? `Last time: ${lastSession.bestSet.weight} kg × ${lastSession.bestSet.reps} reps (${lastWeeksAgo} week${lastWeeksAgo === 1 ? '' : 's'} ago)`
+                                            ? `Last time: ${formatSetPerformance(lastSession.bestSet.weight, lastSession.bestSet.reps)} (${lastWeeksAgo} week${lastWeeksAgo === 1 ? '' : 's'} ago)`
                                             : 'Last time: no history yet'}
                                     </p>
                                 )}
@@ -483,7 +484,7 @@ export default function ActiveWorkoutPage() {
                                     <span className="text-[11px] text-text-muted">{currentSuggestion.sourceSessions} history sessions</span>
                                 </div>
                                 <p className="text-sm font-semibold text-text-primary mt-1">
-                                    {currentSuggestion.weight}kg x {currentSuggestion.reps}
+                                    {formatProgressionInsightTarget(currentSuggestion)}
                                 </p>
                                 <p className="text-xs text-text-secondary mt-1">{currentSuggestion.reason}</p>
                             </div>

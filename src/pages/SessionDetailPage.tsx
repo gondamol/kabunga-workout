@@ -13,20 +13,23 @@ import {
     TrendingUp,
 } from 'lucide-react';
 import { useAuthStore } from '../stores/authStore';
-import { getWorkoutById } from '../lib/firestoreService';
+import { getRecentWorkouts, getWorkoutById } from '../lib/firestoreService';
 import type { WorkoutSession } from '../lib/types';
 import { copyToClipboard, formatDurationHuman, formatRelativeTime, generateWorkoutSummary } from '../lib/utils';
 import {
     getExerciseVolume,
+    getWorkoutBestSet,
     getWorkoutExerciseSummaryRows,
     getWorkoutHeadline,
     getWorkoutLoggedSetCount,
+    getWorkoutPersonalBestBadges,
     getWorkoutTopExercise,
     getWorkoutTotalReps,
     getWorkoutTotalSets,
     getWorkoutTotalVolume,
     shareWorkoutImage,
 } from '../lib/workoutSummary';
+import { formatEffortValue, formatSetPerformance } from '../lib/exerciseRules';
 
 export default function SessionDetailPage() {
     const { id } = useParams<{ id: string }>();
@@ -38,6 +41,7 @@ export default function SessionDetailPage() {
     const [error, setError] = useState<string | null>(null);
     const [sharingImage, setSharingImage] = useState(false);
     const [sharingText, setSharingText] = useState(false);
+    const [recentWorkouts, setRecentWorkouts] = useState<WorkoutSession[]>([]);
 
     useEffect(() => {
         if (!id) {
@@ -53,13 +57,17 @@ export default function SessionDetailPage() {
 
         const load = async () => {
             try {
-                const workout = await getWorkoutById(user.uid, id);
+                const [workout, history] = await Promise.all([
+                    getWorkoutById(user.uid, id),
+                    getRecentWorkouts(user.uid, 365),
+                ]);
                 if (cancelled) return;
                 if (!workout) {
                     setError('Session not found');
                     return;
                 }
                 setSession(workout);
+                setRecentWorkouts(history);
             } catch (err) {
                 if (cancelled) return;
                 console.error('Failed to load session:', err);
@@ -85,8 +93,13 @@ export default function SessionDetailPage() {
             totalReps: getWorkoutTotalReps(session),
             topExercise: getWorkoutTopExercise(session),
             exerciseRows: getWorkoutExerciseSummaryRows(session, 4),
+            personalBestBadges: getWorkoutPersonalBestBadges(
+                session,
+                recentWorkouts.filter((workout) => workout.id !== session.id)
+            ),
+            bestSet: getWorkoutBestSet(session),
         };
-    }, [session]);
+    }, [recentWorkouts, session]);
 
     const handleBack = () => {
         if (window.history.length > 1) {
@@ -100,7 +113,10 @@ export default function SessionDetailPage() {
         if (!session) return;
         setSharingImage(true);
         try {
-            const result = await shareWorkoutImage(session, profile?.displayName || user?.displayName);
+            const result = await shareWorkoutImage(session, {
+                athleteName: profile?.displayName || user?.displayName,
+                previousWorkouts: recentWorkouts.filter((workout) => workout.id !== session.id),
+            });
             toast.success(result === 'shared' ? 'Session image ready to share' : 'Session image downloaded');
         } catch (error) {
             if ((error as Error)?.name !== 'AbortError') {
@@ -171,6 +187,10 @@ export default function SessionDetailPage() {
     const completionPct = workoutStats.totalSets > 0
         ? Math.round((workoutStats.loggedSets / workoutStats.totalSets) * 100)
         : 0;
+    const workoutEffort = formatEffortValue(workoutStats.totalVolume, workoutStats.totalReps);
+    const topExerciseEffort = workoutStats.topExercise
+        ? formatEffortValue(workoutStats.topExercise.volume, workoutStats.topExercise.reps)
+        : null;
 
     return (
         <div className="max-w-lg mx-auto px-4 pt-6 pb-24 space-y-5">
@@ -205,24 +225,55 @@ export default function SessionDetailPage() {
                         {formatDurationHuman(session.duration)} • {session.exercises.length} exercises • {workoutStats.totalReps} reps
                     </p>
 
+                    {workoutStats.personalBestBadges.length > 0 && (
+                        <div className="flex flex-wrap gap-2 mt-4">
+                            {workoutStats.personalBestBadges.map((badge) => (
+                                <span
+                                    key={badge}
+                                    className="px-3 py-1 rounded-full bg-green/15 border border-green/20 text-[11px] font-semibold text-green"
+                                >
+                                    {badge}
+                                </span>
+                            ))}
+                        </div>
+                    )}
+
                     <div className="grid grid-cols-2 gap-3 mt-5">
-                        <PreviewMetric label="Volume" value={`${workoutStats.totalVolume}`} sub="kg·reps" />
+                        <PreviewMetric
+                            label={workoutEffort.unit === 'kg·reps' ? 'Volume' : 'Reps'}
+                            value={workoutEffort.value}
+                            sub={workoutEffort.unit}
+                        />
                         <PreviewMetric label="Sets" value={`${workoutStats.loggedSets}`} sub="logged" />
                         <PreviewMetric label="Calories" value={`${Math.round(session.caloriesEstimate)}`} sub="kcal" />
                         <PreviewMetric label="Completion" value={`${completionPct}%`} sub="of planned sets" />
                     </div>
 
                     <div className="rounded-2xl bg-white/5 border border-white/8 p-4 mt-4">
-                        <p className="text-[11px] uppercase tracking-wide text-text-muted">Top Lift</p>
+                        <p className="text-[11px] uppercase tracking-wide text-text-muted">
+                            {workoutStats.topExercise?.metric === 'reps' ? 'Top Movement' : 'Top Lift'}
+                        </p>
                         <p className="text-base font-semibold mt-2">
                             {workoutStats.topExercise?.name || 'No single lift recorded'}
                         </p>
                         <p className="text-xs text-text-secondary mt-1">
-                            {workoutStats.topExercise && workoutStats.topExercise.volume > 0
-                                ? `${Math.round(workoutStats.topExercise.volume)} kg·reps`
+                            {topExerciseEffort
+                                ? `${topExerciseEffort.value} ${topExerciseEffort.unit}`
                                 : 'Bodyweight or timed emphasis'}
                         </p>
                     </div>
+
+                    {workoutStats.bestSet && (
+                        <div className="rounded-2xl bg-cyan/10 border border-cyan/15 p-4 mt-4">
+                            <p className="text-[11px] uppercase tracking-wide text-cyan font-semibold">Best Set Callout</p>
+                            <p className="text-sm font-semibold mt-2">
+                                {workoutStats.bestSet.exerciseName} • {formatSetPerformance(
+                                    workoutStats.bestSet.weight,
+                                    workoutStats.bestSet.reps
+                                )}
+                            </p>
+                        </div>
+                    )}
                 </div>
             </div>
 
@@ -267,9 +318,9 @@ export default function SessionDetailPage() {
                 />
                 <MetricCard
                     icon={<Dumbbell size={20} className="text-accent" />}
-                    label="Total Volume"
-                    value={`${workoutStats.totalVolume}`}
-                    unit="kg·rep"
+                    label={workoutEffort.unit === 'kg·reps' ? 'Total Volume' : 'Total Reps'}
+                    value={workoutEffort.value}
+                    unit={workoutEffort.unit}
                 />
                 <MetricCard
                     icon={<TrendingUp size={20} className="text-green" />}
@@ -304,20 +355,23 @@ export default function SessionDetailPage() {
             <div className="glass rounded-2xl p-4">
                 <h3 className="text-sm font-semibold text-text-secondary mb-3">Exercise Snapshot</h3>
                 <div className="space-y-3">
-                    {workoutStats.exerciseRows.map((row) => (
-                        <div key={`${row.name}-${row.sets}-${row.reps}`} className="rounded-2xl bg-bg-card p-3 flex items-center justify-between gap-3">
-                            <div className="min-w-0">
-                                <p className="font-semibold truncate">{row.name}</p>
-                                <p className="text-xs text-text-muted mt-1">
-                                    {row.sets} sets • {row.reps} reps
-                                </p>
+                    {workoutStats.exerciseRows.map((row) => {
+                        const effort = formatEffortValue(row.volume, row.reps);
+                        return (
+                            <div key={`${row.name}-${row.sets}-${row.reps}`} className="rounded-2xl bg-bg-card p-3 flex items-center justify-between gap-3">
+                                <div className="min-w-0">
+                                    <p className="font-semibold truncate">{row.name}</p>
+                                    <p className="text-xs text-text-muted mt-1">
+                                        {row.sets} sets • {row.reps} reps
+                                    </p>
+                                </div>
+                                <div className="text-right shrink-0">
+                                    <p className="font-semibold">{effort.value}</p>
+                                    <p className="text-xs text-text-muted">{effort.unit}</p>
+                                </div>
                             </div>
-                            <div className="text-right shrink-0">
-                                <p className="font-semibold">{Math.round(row.volume)}</p>
-                                <p className="text-xs text-text-muted">kg·reps</p>
-                            </div>
-                        </div>
-                    ))}
+                        );
+                    })}
                 </div>
             </div>
 
@@ -326,6 +380,8 @@ export default function SessionDetailPage() {
                 <div className="space-y-3">
                     {session.exercises.map((exercise) => {
                         const exerciseVolume = Math.round(getExerciseVolume(exercise));
+                        const exerciseReps = exercise.sets.reduce((sum, set) => sum + (set.reps || 0), 0);
+                        const exerciseEffort = formatEffortValue(exerciseVolume, exerciseReps);
                         const completedSets = exercise.sets.filter((set) => set.completed).length;
 
                         return (
@@ -348,8 +404,8 @@ export default function SessionDetailPage() {
                                         )}
                                     </div>
                                     <div className="text-right shrink-0">
-                                        <p className="text-sm font-semibold">{exerciseVolume}</p>
-                                        <p className="text-xs text-text-muted">kg·reps</p>
+                                        <p className="text-sm font-semibold">{exerciseEffort.value}</p>
+                                        <p className="text-xs text-text-muted">{exerciseEffort.unit}</p>
                                     </div>
                                 </div>
 
@@ -381,7 +437,7 @@ export default function SessionDetailPage() {
                                                     Set {index + 1}
                                                 </span>
                                                 <span className="text-text-secondary">
-                                                    {set.reps} reps × {set.weight} kg
+                                                    {formatSetPerformance(set.weight, set.reps)}
                                                 </span>
                                             </div>
                                             <div className="flex items-center gap-2 text-text-muted">

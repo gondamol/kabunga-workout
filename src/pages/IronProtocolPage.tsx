@@ -23,6 +23,7 @@ import {
     scaleTemplateForOneRepMaxes,
     type IronScheduleDay,
 } from '../lib/ironProtocol';
+import { formatSetPerformance, hasExternalLoad } from '../lib/exerciseRules';
 import { getOneRepMaxPromptStatus } from '../lib/oneRepMaxes';
 import OneRepMaxCard from '../components/OneRepMaxCard';
 
@@ -57,7 +58,9 @@ const pickBestSet = (sessions: WorkoutSession[], exerciseNames: string[]): strin
         for (const exercise of session.exercises) {
             if (!nameSet.has(normalizeExerciseName(exercise.name))) continue;
             for (const setItem of exercise.sets) {
-                const score = setItem.weight * setItem.reps;
+                const score = hasExternalLoad(setItem.weight)
+                    ? setItem.weight * setItem.reps
+                    : (setItem.reps || 0);
                 if (score > bestScore || (score === bestScore && setItem.weight > bestWeight)) {
                     bestScore = score;
                     bestWeight = setItem.weight;
@@ -68,7 +71,7 @@ const pickBestSet = (sessions: WorkoutSession[], exerciseNames: string[]): strin
     }
 
     if (bestScore <= 0) return '-';
-    return `${bestWeight}kg x ${bestReps}`;
+    return formatSetPerformance(bestWeight, bestReps);
 };
 
 const buildSixWeekRows = (sessions: WorkoutSession[]) => {

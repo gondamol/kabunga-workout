@@ -9,7 +9,7 @@ import { BarChart, Bar, XAxis, YAxis, ResponsiveContainer, Tooltip, Cell } from 
 import { Dumbbell, Flame, Clock, TrendingUp, ChevronRight, Zap, Trophy, Plus, BarChart3, TimerReset } from 'lucide-react';
 import dayjs from 'dayjs';
 import { getOneRepMaxPromptStatus, getOneRepMaxSnoozeUntil } from '../lib/oneRepMaxes';
-import { getDashboardProgressionInsight } from '../lib/progressionInsights';
+import { formatProgressionInsightTarget, getDashboardProgressionInsight } from '../lib/progressionInsights';
 import { getWorkoutHeadline } from '../lib/workoutSummary';
 
 export default function DashboardPage() {
@@ -394,7 +394,7 @@ export default function DashboardPage() {
                             Open Planner
                         </button>
                     </div>
-                    <p className="text-xl font-black mt-3">{progressionInsight.weight}kg x {progressionInsight.reps}</p>
+                    <p className="text-xl font-black mt-3">{formatProgressionInsightTarget(progressionInsight)}</p>
                     <p className="text-xs text-text-secondary mt-1">{progressionInsight.reason}</p>
                 </div>
             )}

@@ -6,7 +6,8 @@ import { useAuthStore } from '../stores/authStore';
 import { deleteWorkout, getUserWorkouts } from '../lib/firestoreService';
 import type { Exercise, WorkoutSession } from '../lib/types';
 import { formatDurationHuman } from '../lib/utils';
-import { getWorkoutHeadline } from '../lib/workoutSummary';
+import { getWorkoutHeadline, shareWorkoutPeriodImage } from '../lib/workoutSummary';
+import { formatEffortValue, formatSetPerformance } from '../lib/exerciseRules';
 import toast from 'react-hot-toast';
 
 const weekHeaders = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
@@ -48,7 +49,7 @@ const getSessionVolume = (session: WorkoutSession): number => {
 };
 
 export default function HistoryPage() {
-    const { user } = useAuthStore();
+    const { user, profile } = useAuthStore();
     const navigate = useNavigate();
     const [month, setMonth] = useState(dayjs().startOf('month'));
     const [workouts, setWorkouts] = useState<WorkoutSession[]>([]);
@@ -56,6 +57,7 @@ export default function HistoryPage() {
     const [selectedSessionId, setSelectedSessionId] = useState<string | null>(null);
     const [loadingHistory, setLoadingHistory] = useState(true);
     const [deletingSessionId, setDeletingSessionId] = useState<string | null>(null);
+    const [sharingPeriod, setSharingPeriod] = useState<'week' | 'month' | null>(null);
 
     useEffect(() => {
         if (!user) return undefined;
@@ -115,6 +117,24 @@ export default function HistoryPage() {
     }, [workoutsByDate]);
 
     const days = useMemo(() => buildCalendarDays(month), [month]);
+    const currentWeekWindow = useMemo(() => {
+        const start = getWeekStart(dayjs());
+        return {
+            start,
+            end: start.add(6, 'day').endOf('day'),
+        };
+    }, []);
+    const weekWorkouts = useMemo(() => {
+        return workouts.filter((workout) => (
+            workout.startedAt >= currentWeekWindow.start.valueOf()
+            && workout.startedAt <= currentWeekWindow.end.valueOf()
+        ));
+    }, [currentWeekWindow.end, currentWeekWindow.start, workouts]);
+    const monthWorkouts = useMemo(() => {
+        const monthStart = month.startOf('month').valueOf();
+        const monthEnd = month.endOf('month').valueOf();
+        return workouts.filter((workout) => workout.startedAt >= monthStart && workout.startedAt <= monthEnd);
+    }, [month, workouts]);
 
     const selectedSessions = selectedDate ? (workoutsByDate[selectedDate] || []) : [];
     const selectedSession = useMemo(() => {
@@ -122,6 +142,14 @@ export default function HistoryPage() {
         if (!selectedSessionId) return selectedSessions[0];
         return selectedSessions.find((session) => session.id === selectedSessionId) ?? selectedSessions[0];
     }, [selectedSessions, selectedSessionId]);
+    const selectedSessionEffort = useMemo(() => {
+        if (!selectedSession) return null;
+        const totalReps = selectedSession.exercises.reduce(
+            (sum, exercise) => sum + exercise.sets.reduce((setSum, setItem) => setSum + (setItem.reps || 0), 0),
+            0
+        );
+        return formatEffortValue(Math.round(getSessionVolume(selectedSession)), totalReps);
+    }, [selectedSession]);
 
     useEffect(() => {
         if (!selectedDate) {
@@ -142,6 +170,35 @@ export default function HistoryPage() {
         const oldest = workouts.reduce((min, workout) => Math.min(min, workout.startedAt), workouts[0].startedAt);
         return dayjs(oldest).startOf('day');
     }, [workouts]);
+
+    const handleSharePeriod = async (period: 'week' | 'month') => {
+        const data = period === 'week' ? weekWorkouts : monthWorkouts;
+        if (data.length === 0) {
+            toast.error(period === 'week' ? 'No workouts to share this week' : 'No workouts to share for this month');
+            return;
+        }
+
+        setSharingPeriod(period);
+        try {
+            const result = await shareWorkoutPeriodImage(data, {
+                athleteName: profile?.displayName,
+                periodLabel: period === 'week' ? 'This Week' : month.format('MMMM'),
+                title: period === 'week' ? 'Weekly Training Recap' : `${month.format('MMMM')} Training Recap`,
+                subtitle: period === 'week'
+                    ? `${currentWeekWindow.start.format('MMM D')} - ${currentWeekWindow.end.format('MMM D, YYYY')}`
+                    : month.format('MMMM YYYY'),
+                filenameLabel: period === 'week' ? 'weekly-recap' : `${month.format('YYYY-MM')}-recap`,
+            });
+            toast.success(result === 'shared' ? 'Period share card ready' : 'Period share card downloaded');
+        } catch (error) {
+            if ((error as Error)?.name !== 'AbortError') {
+                console.warn('Failed to share period recap:', error);
+                toast.error('Could not export period recap');
+            }
+        } finally {
+            setSharingPeriod(null);
+        }
+    };
 
     const handleDeleteWorkout = async (session: WorkoutSession) => {
         if (!user) return;
@@ -212,6 +269,23 @@ export default function HistoryPage() {
                             <div className="h-full gradient-primary" style={{ width: `${weeklyCompliance.pct}%` }} />
                         </div>
                     </div>
+                </div>
+
+                <div className="mt-4 grid grid-cols-2 gap-2">
+                    <button
+                        onClick={() => { void handleSharePeriod('week'); }}
+                        disabled={sharingPeriod !== null}
+                        className="py-3 rounded-2xl border border-border text-sm text-text-secondary font-semibold disabled:opacity-50"
+                    >
+                        {sharingPeriod === 'week' ? 'Preparing...' : 'Share This Week'}
+                    </button>
+                    <button
+                        onClick={() => { void handleSharePeriod('month'); }}
+                        disabled={sharingPeriod !== null}
+                        className="py-3 rounded-2xl border border-border text-sm text-text-secondary font-semibold disabled:opacity-50"
+                    >
+                        {sharingPeriod === 'month' ? `Sharing ${month.format('MMM')}` : `Share ${month.format('MMM')}`}
+                    </button>
                 </div>
             </div>
 
@@ -342,8 +416,8 @@ export default function HistoryPage() {
                                                 <p className="text-sm font-semibold mt-1">{selectedSession.exercises.length}</p>
                                             </div>
                                             <div className="rounded-2xl bg-bg-card p-3">
-                                                <p className="text-xs text-text-muted">Volume</p>
-                                                <p className="text-sm font-semibold mt-1">{Math.round(getSessionVolume(selectedSession))}</p>
+                                                <p className="text-xs text-text-muted">{selectedSessionEffort?.unit === 'kg·reps' ? 'Volume' : 'Reps'}</p>
+                                                <p className="text-sm font-semibold mt-1">{selectedSessionEffort?.value || '0'}</p>
                                             </div>
                                         </div>
 
@@ -367,24 +441,30 @@ export default function HistoryPage() {
                                             {selectedSession.exercises.length === 0 ? (
                                                 <p className="text-sm text-text-secondary">No exercises logged for this session.</p>
                                             ) : (
-                                                selectedSession.exercises.map((exercise) => (
-                                                    <div key={exercise.id} className="rounded-xl bg-bg-surface p-3 border border-border">
-                                                        <div className="flex items-center justify-between gap-2">
-                                                            <p className="text-sm font-semibold">{exercise.name}</p>
-                                                            <p className="text-xs text-text-muted">
-                                                                {exercise.sets.length} sets • {Math.round(getExerciseVolume(exercise))} kg·reps
-                                                            </p>
-                                                        </div>
-                                                        <div className="mt-2 space-y-1">
-                                                            {exercise.sets.map((setItem, index) => (
-                                                                <p key={setItem.id} className="text-xs text-text-secondary">
-                                                                    Set {index + 1}: {setItem.weight || 0} kg × {setItem.reps || 0}
-                                                                    {setItem.completed ? ' ✓' : ''}
+                                                selectedSession.exercises.map((exercise) => {
+                                                    const exerciseVolume = Math.round(getExerciseVolume(exercise));
+                                                    const exerciseReps = exercise.sets.reduce((sum, setItem) => sum + (setItem.reps || 0), 0);
+                                                    const effort = formatEffortValue(exerciseVolume, exerciseReps);
+
+                                                    return (
+                                                        <div key={exercise.id} className="rounded-xl bg-bg-surface p-3 border border-border">
+                                                            <div className="flex items-center justify-between gap-2">
+                                                                <p className="text-sm font-semibold">{exercise.name}</p>
+                                                                <p className="text-xs text-text-muted">
+                                                                    {exercise.sets.length} sets • {effort.value} {effort.unit}
                                                                 </p>
-                                                            ))}
+                                                            </div>
+                                                            <div className="mt-2 space-y-1">
+                                                                {exercise.sets.map((setItem, index) => (
+                                                                    <p key={setItem.id} className="text-xs text-text-secondary">
+                                                                        Set {index + 1}: {formatSetPerformance(setItem.weight, setItem.reps)}
+                                                                        {setItem.completed ? ' ✓' : ''}
+                                                                    </p>
+                                                                ))}
+                                                            </div>
                                                         </div>
-                                                    </div>
-                                                ))
+                                                    );
+                                                })
                                             )}
                                         </div>
 

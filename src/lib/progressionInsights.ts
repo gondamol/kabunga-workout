@@ -1,4 +1,5 @@
 import type { ExerciseHistory, WorkoutSession, WorkoutTemplate } from './types';
+import { formatProgressionTarget } from './exerciseRules';
 import { getOverloadSuggestion, type OverloadSuggestion } from './timerService';
 
 interface SessionLike {
@@ -92,6 +93,8 @@ export const getDashboardProgressionInsight = (
     const seen = new Set<string>();
 
     for (const exercise of latestWorkout.exercises) {
+        if (exercise.isWarmup || exercise.phaseType === 'warmup') continue;
+
         const normalized = normalizeExerciseName(exercise.name);
         if (seen.has(normalized)) continue;
         seen.add(normalized);
@@ -107,4 +110,8 @@ export const getDashboardProgressionInsight = (
     }
 
     return null;
+};
+
+export const formatProgressionInsightTarget = (insight: Pick<ProgressionInsight, 'weight' | 'reps'>): string => {
+    return formatProgressionTarget(insight.weight, insight.reps);
 };

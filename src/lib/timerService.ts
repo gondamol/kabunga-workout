@@ -3,6 +3,8 @@
  * PWA-safe: uses Web Audio API for sounds, Vibration API for haptics
  */
 
+import { formatProgressionTarget } from './exerciseRules';
+
 let audioCtx: AudioContext | null = null;
 
 const getAudioContext = (): AudioContext => {
@@ -107,9 +109,44 @@ export const getOverloadSuggestion = (
     const avgRpe = lastSession.sets
         .filter(s => s.rpe)
         .reduce((sum, s, _, arr) => sum + (s.rpe || 0) / arr.length, 0);
+    const allBodyweight = lastSessions.every((session) => session.sets.every((setItem) => setItem.weight <= 0));
 
     if (progressionStyle === 'maintenance') {
-        return { weight: lastWeight, reps: lastReps, reason: 'Maintaining current level' };
+        return {
+            weight: allBodyweight ? 0 : lastWeight,
+            reps: lastReps,
+            reason: allBodyweight ? 'Maintaining current bodyweight target' : 'Maintaining current level',
+        };
+    }
+
+    if (allBodyweight) {
+        if (plannedReps <= 3) return null;
+
+        const allRepsHit = lastSession.sets.every(s => s.reps >= plannedReps);
+        const nextReps = Math.max(lastReps, plannedReps) + 1;
+        const effortOk = avgRpe === 0 || avgRpe <= 8;
+
+        if (allRepsHit && effortOk) {
+            return {
+                weight: 0,
+                reps: nextReps,
+                reason: `All reps hit at bodyweight -> try ${nextReps} reps`
+            };
+        }
+
+        if (!allRepsHit) {
+            return {
+                weight: 0,
+                reps: plannedReps,
+                reason: 'Missed reps last time -> stay at bodyweight'
+            };
+        }
+
+        return {
+            weight: 0,
+            reps: plannedReps,
+            reason: `RPE was high (${avgRpe.toFixed(0)}) -> stay at bodyweight`
+        };
     }
 
     if (progressionStyle === 'double') {
@@ -118,14 +155,14 @@ export const getOverloadSuggestion = (
             return {
                 weight: lastWeight + smallestIncrement,
                 reps: plannedReps,
-                reason: `Hit ${lastReps} reps → increase weight`
+                reason: `Hit ${lastReps} reps -> increase weight`
             };
         }
         // Otherwise increase reps
         return {
             weight: lastWeight,
             reps: lastReps + 1,
-            reason: `Building reps: ${lastReps} → ${lastReps + 1}`
+            reason: `Building reps: ${lastReps} -> ${lastReps + 1}`
         };
     }
 
@@ -137,7 +174,7 @@ export const getOverloadSuggestion = (
         return {
             weight: lastWeight + smallestIncrement,
             reps: plannedReps,
-            reason: `All reps hit at ${lastWeight}kg → try ${lastWeight + smallestIncrement}kg`
+            reason: `All reps hit at ${formatProgressionTarget(lastWeight, plannedReps)} -> try ${formatProgressionTarget(lastWeight + smallestIncrement, plannedReps)}`
         };
     }
 
@@ -145,7 +182,7 @@ export const getOverloadSuggestion = (
         return {
             weight: lastWeight,
             reps: plannedReps,
-            reason: `Missed reps last time → stay at ${lastWeight}kg`
+            reason: `Missed reps last time -> stay at ${formatProgressionTarget(lastWeight, plannedReps)}`
         };
     }
 
@@ -153,6 +190,6 @@ export const getOverloadSuggestion = (
     return {
         weight: lastWeight,
         reps: plannedReps,
-        reason: `RPE was high (${avgRpe.toFixed(0)}) → stay at ${lastWeight}kg`
+        reason: `RPE was high (${avgRpe.toFixed(0)}) -> stay at ${formatProgressionTarget(lastWeight, plannedReps)}`
     };
 };

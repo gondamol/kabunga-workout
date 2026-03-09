@@ -2,6 +2,7 @@
 export const COMMON_EXERCISES = [
     'Bench Press', 'Squat', 'Deadlift', 'Overhead Press',
     'Barbell Row', 'Pull-ups', 'Push-ups', 'Dips',
+    'Burpees', 'Bodyweight Squats', 'Mountain Climbers', 'Jumping Jacks',
     'Lat Pulldown', 'Cable Row', 'Leg Press', 'Leg Curl',
     'Leg Extension', 'Calf Raises', 'Bicep Curls', 'Tricep Pushdown',
     'Lateral Raises', 'Face Pulls', 'Plank', 'Lunges',
@@ -9,6 +10,7 @@ export const COMMON_EXERCISES = [
     'Flat Bench Press', 'Back Squat', 'Bent-Over BB Rows', 'Overhead BB Press',
     'Dips (or Close-Grip Bench)', 'Close-Grip Bench', 'Triceps Finisher',
     'Pull-Ups', 'Wide-Grip Pull-Ups', 'Hamstring Curls', 'Leg Raises',
+    'Hollow Hold', 'Glute Bridge', 'Pike Push-ups', 'Sit-ups',
     'Cable Chest Fly', 'Meadows Rows (Left)', 'Meadows Rows (Right)',
     'Leg Extensions', 'Dead Hang',
 ];
