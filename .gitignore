@@ -36,3 +36,9 @@ IMPLEMENTATION_PLAN.md
 
 # ─── Firebase local cache ───
 .firebase/
+
+# ─── Local deploy metadata / legacy server scaffolding ───
+.vercel/
+server.env
+functions/
+.vercel

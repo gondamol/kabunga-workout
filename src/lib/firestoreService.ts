@@ -16,6 +16,7 @@ import type {
     FitnessDailyLog,
     Meal,
     OneRepMaxes,
+    UserProfile,
     UserRole,
     WorkoutSession,
 } from './types';
@@ -275,6 +276,23 @@ export const getRecentWorkouts = async (
         .sort((a, b) => b.startedAt - a.startedAt);
 };
 
+export const getWorkoutById = async (
+    userId: string,
+    workoutId: string
+): Promise<WorkoutSession | null> => {
+    try {
+        const snap = await getDoc(doc(db, 'workouts', workoutId));
+        if (!snap.exists()) return null;
+        const workout = snap.data() as WorkoutSession;
+        // Verify ownership
+        if (workout.userId !== userId) return null;
+        return workout;
+    } catch (error) {
+        console.error('Failed to fetch workout:', error);
+        return null;
+    }
+};
+
 // ─── Coach / Athlete Collaboration ───
 export const setUserRole = async (
     uid: string,
@@ -315,6 +333,20 @@ export const setUserRole = async (
     );
 
     return { role, coachCode };
+};
+
+export const updateUserProfile = async (
+    uid: string,
+    patch: Partial<UserProfile>
+): Promise<void> => {
+    await setDoc(
+        doc(db, 'users', uid),
+        {
+            ...patch,
+            updatedAt: Date.now(),
+        },
+        { merge: true }
+    );
 };
 
 export const getCoachCodeInfo = async (coachCode: string): Promise<CoachCode | null> => {

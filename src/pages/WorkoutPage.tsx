@@ -3,21 +3,45 @@ import { useAuthStore } from '../stores/authStore';
 import { useWorkoutStore } from '../stores/workoutStore';
 import { getAthleteCoachPlans, getOneRepMaxes, getUserWorkouts } from '../lib/firestoreService';
 import { formatDurationHuman, formatRelativeTime } from '../lib/utils';
-import type { CoachWorkoutPlan, WorkoutSession, WorkoutTemplate } from '../lib/types';
+import type { CoachWorkoutPlan, ExerciseCatalogItem, WorkoutSession, WorkoutTemplate } from '../lib/types';
 import { useEffect, useMemo, useState } from 'react';
 import { COMMON_EXERCISES } from '../lib/constants';
 import { BUILT_IN_TEMPLATES, getTemplateCategories } from '../lib/templates';
-import { isIronTemplateId, normalizeOneRepMaxes, scaleTemplateForOneRepMaxes } from '../lib/ironProtocol';
+import { isIronTemplateId, scaleTemplateForUserOneRepMaxes } from '../lib/ironProtocol';
+import { searchExerciseCatalog } from '../lib/exerciseCatalog';
+import { getProgressionSuggestionFromWorkouts, type ProgressionInsight } from '../lib/progressionInsights';
 import {
-    Play, Dumbbell, Clock, Plus, X, Search, History, Calendar, Users, ClipboardList, LayoutGrid,
+    Play, Dumbbell, Clock, Plus, X, Search, History, Calendar, Users, ClipboardList, LayoutGrid, Sparkles, LoaderCircle, Shield,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
+
+const buildCatalogMetaLine = (item: ExerciseCatalogItem): string => {
+    return [item.targetMuscle, item.exerciseType, item.difficulty]
+        .filter((value): value is string => typeof value === 'string' && value.trim().length > 0)
+        .filter((value) => !['general', 'full body'].includes(value.trim().toLowerCase()))
+        .join(' • ');
+};
+
+const buildCatalogTags = (item: ExerciseCatalogItem): string[] => {
+    const tags = [
+        item.bodyPart,
+        item.targetMuscle,
+        item.exerciseType,
+        item.difficulty,
+        ...(item.equipmentList && item.equipmentList.length > 0 ? item.equipmentList : [item.equipment]),
+    ]
+        .filter((value): value is string => typeof value === 'string' && value.trim().length > 0)
+        .filter((value) => !['general'].includes(value.trim().toLowerCase()))
+        .map((value) => value.trim());
+
+    return Array.from(new Set(tags));
+};
 
 export default function WorkoutPage() {
     const { user } = useAuthStore();
     const {
         startWorkout, activeSession, addExercise, initPlan,
-        isTimerRunning, updateExercisePlan, removeExercise, loadCoachPlan, initFromTemplatePlan,
+        isTimerRunning, updateExercisePlan, removeExercise, loadCoachPlan, initFromTemplatePlan, activeTemplate,
     } = useWorkoutStore();
     const navigate = useNavigate();
 
@@ -29,6 +53,9 @@ export default function WorkoutPage() {
     const [search, setSearch] = useState('');
     const [custom, setCustom] = useState('');
     const [tab, setTab] = useState<'plan' | 'history'>('plan');
+    const [catalogResults, setCatalogResults] = useState<ExerciseCatalogItem[]>([]);
+    const [catalogLoading, setCatalogLoading] = useState(false);
+    const [selectedCatalogItem, setSelectedCatalogItem] = useState<ExerciseCatalogItem | null>(null);
 
     // Queue = exercises already in the active session
     const queue = activeSession?.exercises ?? [];
@@ -66,11 +93,12 @@ export default function WorkoutPage() {
         navigate('/active-workout');
     };
 
-    const handleAddExercise = (name: string) => {
+    const handleAddExercise = (name: string, cue?: string) => {
         if (!user) return;
         if (!activeSession) initPlan(user.uid);
-        addExercise(name);
+        addExercise(name, cue ? { cue } : undefined);
         setShowPicker(false);
+        setSelectedCatalogItem(null);
         setSearch('');
         setCustom('');
     };
@@ -91,11 +119,63 @@ export default function WorkoutPage() {
     const filtered = COMMON_EXERCISES.filter(e =>
         e.toLowerCase().includes(search.toLowerCase())
     );
+    const filteredLocalNames = useMemo(() => {
+        const catalogNames = new Set(catalogResults.map((item) => item.name.toLowerCase()));
+        return filtered.filter((name) => !catalogNames.has(name.toLowerCase()));
+    }, [catalogResults, filtered]);
+
+    useEffect(() => {
+        if (!showPicker) {
+            setCatalogResults([]);
+            setCatalogLoading(false);
+            return;
+        }
+
+        const query = search.trim();
+        if (query.length < 2) {
+            setCatalogResults([]);
+            setCatalogLoading(false);
+            return;
+        }
+
+        let cancelled = false;
+        setCatalogLoading(true);
+        const timeout = window.setTimeout(async () => {
+            try {
+                const results = await searchExerciseCatalog(query, 8);
+                if (!cancelled) setCatalogResults(results);
+            } catch (error) {
+                console.warn('Exercise catalog lookup failed:', error);
+                if (!cancelled) setCatalogResults([]);
+            } finally {
+                if (!cancelled) setCatalogLoading(false);
+            }
+        }, 400);
+
+        return () => {
+            cancelled = true;
+            window.clearTimeout(timeout);
+        };
+    }, [search, showPicker]);
 
     const templateCategories = useMemo(
         () => ['All', ...getTemplateCategories(BUILT_IN_TEMPLATES)],
         []
     );
+    const progressionSuggestions = useMemo<Record<string, ProgressionInsight>>(() => {
+        if (queue.length === 0 || history.length === 0) return {};
+
+        return queue.reduce<Record<string, ProgressionInsight>>((acc, exercise) => {
+            const suggestion = getProgressionSuggestionFromWorkouts(
+                history,
+                exercise.name,
+                exercise.plannedReps,
+                activeTemplate?.progressionRule || 'linear'
+            );
+            if (suggestion) acc[exercise.id] = suggestion;
+            return acc;
+        }, {});
+    }, [activeTemplate?.progressionRule, history, queue]);
     const filteredTemplates = useMemo(() => {
         if (templateCategory === 'All') return BUILT_IN_TEMPLATES;
         return BUILT_IN_TEMPLATES.filter((template) => template.category === templateCategory);
@@ -111,10 +191,7 @@ export default function WorkoutPage() {
         if (isIronTemplateId(template.id)) {
             try {
                 const maxes = await getOneRepMaxes(user.uid);
-                selectedTemplate = scaleTemplateForOneRepMaxes(
-                    template,
-                    normalizeOneRepMaxes(user.uid, maxes)
-                );
+                selectedTemplate = scaleTemplateForUserOneRepMaxes(template, user.uid, maxes);
             } catch (error) {
                 console.warn('Failed to load 1RMs for template scaling:', error);
             }
@@ -247,6 +324,7 @@ export default function WorkoutPage() {
                                         plannedSets={ex.plannedSets ?? 1}
                                         plannedReps={ex.plannedReps ?? null}
                                         plannedWeight={ex.plannedWeight ?? null}
+                                        suggestion={progressionSuggestions[ex.id] ?? null}
                                         onChange={(patch) => updateExercisePlan(ex.id, patch)}
                                         onRemove={() => removeExercise(ex.id)}
                                     />
@@ -370,57 +448,219 @@ export default function WorkoutPage() {
                     onClick={() => setShowPicker(false)}
                 >
                     <div
-                        className="w-full max-w-lg mx-auto bg-bg-surface rounded-t-3xl p-6 max-h-[80vh] flex flex-col animate-slide-up"
+                        className="w-full max-w-lg mx-auto bg-bg-surface rounded-t-3xl px-4 pt-3 pb-4 max-h-[88vh] flex flex-col animate-slide-up"
                         onClick={e => e.stopPropagation()}
                     >
+                        <div className="w-12 h-1.5 rounded-full bg-border mx-auto mb-3" />
+
+                        <div className="sticky top-0 z-10 bg-bg-surface pb-3">
+                            <div className="flex items-center justify-between mb-4">
+                                <div>
+                                    <h3 className="text-lg font-bold">Add Exercise</h3>
+                                    <p className="text-xs text-text-muted mt-1">Search by exercise name or muscle, or add your own.</p>
+                                </div>
+                                <button onClick={() => setShowPicker(false)} className="p-2 text-text-muted">
+                                    <X size={20} />
+                                </button>
+                            </div>
+
+                            <div className="relative mb-3">
+                                <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-text-muted" />
+                                <input
+                                    type="text"
+                                    value={search}
+                                    onChange={e => setSearch(e.target.value)}
+                                    placeholder="Bench press, biceps, shoulders..."
+                                    autoFocus
+                                    className="w-full bg-bg-input border border-border rounded-xl py-3 pl-10 pr-4 text-sm focus:outline-none focus:border-accent/50"
+                                />
+                            </div>
+
+                            <div className="grid grid-cols-[1fr_auto] gap-2">
+                                <input
+                                    type="text"
+                                    value={custom}
+                                    onChange={e => setCustom(e.target.value)}
+                                    placeholder="Custom exercise name..."
+                                    className="min-w-0 bg-bg-input border border-border rounded-xl py-3 px-4 text-sm focus:outline-none focus:border-accent/50"
+                                    onKeyDown={e => e.key === 'Enter' && handleAddCustom()}
+                                />
+                                <button
+                                    onClick={handleAddCustom}
+                                    disabled={!custom.trim()}
+                                    className="px-5 rounded-xl gradient-primary text-white text-sm font-semibold disabled:opacity-30"
+                                >
+                                    Add
+                                </button>
+                            </div>
+                        </div>
+
+                        <div className="overflow-y-auto flex-1 -mx-1 px-1 space-y-3">
+                            {search.trim().length < 2 && (
+                                <div className="rounded-xl bg-bg-card border border-border p-3 text-sm text-text-secondary">
+                                    Type at least 2 letters to search the API. The list below is only your quick-add library.
+                                </div>
+                            )}
+                            {search.trim().length >= 2 && (
+                                <div>
+                                    <div className="flex items-center justify-between px-2 mb-2">
+                                        <p className="text-[11px] font-semibold uppercase tracking-wide text-text-muted">Exercise Catalog</p>
+                                        <span className="text-[11px] text-text-muted">API + local backup</span>
+                                    </div>
+                                    {catalogLoading ? (
+                                        <div className="rounded-xl bg-bg-card border border-border p-3 flex items-center gap-2 text-sm text-text-secondary">
+                                            <LoaderCircle size={15} className="animate-spin text-accent" />
+                                            Searching exercise catalog...
+                                        </div>
+                                    ) : catalogResults.length > 0 ? (
+                                        <div className="space-y-2">
+                                            {catalogResults.map((item) => (
+                                                <button
+                                                    key={item.id}
+                                                    onClick={() => setSelectedCatalogItem(item)}
+                                                    className="w-full text-left rounded-xl bg-bg-card border border-border p-3 hover:border-accent/40 transition-colors"
+                                                >
+                                                    <div className="flex gap-3">
+                                                        <ExerciseCatalogMedia item={item} className="w-14 h-14 rounded-xl overflow-hidden bg-bg-input shrink-0" iconSize={16} />
+                                                        <div className="flex-1 min-w-0">
+                                                            <div className="flex items-start justify-between gap-2">
+                                                                <p className="text-sm font-semibold truncate">{item.name}</p>
+                                                                <span className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-semibold ${item.source === 'api' ? 'bg-cyan/10 text-cyan' : 'bg-bg-input text-text-muted'}`}>
+                                                                    {item.source === 'api' ? 'API' : 'Local'}
+                                                                </span>
+                                                            </div>
+                                                            <p className="text-xs text-text-secondary mt-1 truncate">
+                                                                {buildCatalogMetaLine(item) || `${item.bodyPart} • ${item.equipment}`}
+                                                            </p>
+                                                            <div className="flex flex-wrap gap-1.5 mt-2">
+                                                                {buildCatalogTags(item).slice(0, 3).map((tag) => (
+                                                                    <span key={`${item.id}-${tag}`} className="px-2 py-0.5 rounded-full bg-bg-input text-[10px] text-text-muted">
+                                                                        {tag}
+                                                                    </span>
+                                                                ))}
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                </button>
+                                            ))}
+                                        </div>
+                                    ) : (
+                                        <div className="rounded-xl bg-bg-card border border-border p-3 text-sm text-text-secondary">
+                                            No API matches yet. Local exercise names are still available below.
+                                        </div>
+                                    )}
+                                </div>
+                            )}
+
+                            <div>
+                                <div className="flex items-center justify-between px-2 mb-2">
+                                    <p className="text-[11px] font-semibold uppercase tracking-wide text-text-muted">Quick Add</p>
+                                    <span className="text-[11px] text-text-muted">{filteredLocalNames.length} matches</span>
+                                </div>
+                                {filteredLocalNames.map(name => (
+                                    <button
+                                        key={name}
+                                        onClick={() => handleAddExercise(name)}
+                                        className="w-full text-left py-3 px-4 rounded-xl text-sm hover:bg-bg-card transition-colors flex items-center justify-between group"
+                                    >
+                                        <span>{name}</span>
+                                        <Plus size={16} className="text-text-muted opacity-0 group-hover:opacity-100 transition-opacity" />
+                                    </button>
+                                ))}
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {selectedCatalogItem && (
+                <div
+                    className="fixed inset-0 z-[120] bg-black/70 flex items-end"
+                    onClick={() => setSelectedCatalogItem(null)}
+                >
+                    <div
+                        className="w-full max-w-lg mx-auto bg-bg-surface rounded-t-3xl px-4 pt-3 pb-4 max-h-[92vh] flex flex-col animate-slide-up"
+                        onClick={(event) => event.stopPropagation()}
+                    >
+                        <div className="w-12 h-1.5 rounded-full bg-border mx-auto mb-3" />
+
                         <div className="flex items-center justify-between mb-4">
-                            <h3 className="text-lg font-bold">Add Exercise</h3>
-                            <button onClick={() => setShowPicker(false)} className="p-2 text-text-muted">
+                            <div>
+                                <p className="text-[11px] font-semibold uppercase tracking-wide text-text-muted">
+                                    {selectedCatalogItem.source === 'api' ? 'API Result' : 'Kabunga Library'}
+                                </p>
+                                <h3 className="text-lg font-bold mt-1">{selectedCatalogItem.name}</h3>
+                                <p className="text-xs text-text-secondary mt-1">
+                                    {buildCatalogMetaLine(selectedCatalogItem) || `${selectedCatalogItem.bodyPart} • ${selectedCatalogItem.equipment}`}
+                                </p>
+                            </div>
+                            <button onClick={() => setSelectedCatalogItem(null)} className="p-2 text-text-muted">
                                 <X size={20} />
                             </button>
                         </div>
 
-                        <div className="relative mb-3">
-                            <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-text-muted" />
-                            <input
-                                type="text"
-                                value={search}
-                                onChange={e => setSearch(e.target.value)}
-                                placeholder="Search exercises..."
-                                autoFocus
-                                className="w-full bg-bg-input border border-border rounded-xl py-3 pl-10 pr-4 text-sm focus:outline-none focus:border-accent/50"
-                            />
+                        <div className="overflow-y-auto flex-1 -mx-1 px-1 pb-4">
+                            <div className="rounded-2xl overflow-hidden bg-bg-input mb-4">
+                                <ExerciseCatalogMedia
+                                    item={selectedCatalogItem}
+                                    className="w-full aspect-[4/3]"
+                                    iconSize={26}
+                                    showModeBadge
+                                />
+                            </div>
+
+                            {!selectedCatalogItem.gifUrl && (
+                                <p className="text-xs text-text-muted mb-4">
+                                    No live demo was returned for this exercise. Kabunga is showing a free local muscle-focus visual instead.
+                                </p>
+                            )}
+
+                            <div className="flex flex-wrap gap-2 mb-4">
+                                {buildCatalogTags(selectedCatalogItem).map((tag) => (
+                                    <span key={`${selectedCatalogItem.id}-tag-${tag}`} className="px-2.5 py-1 rounded-full bg-bg-card text-xs text-text-secondary">
+                                        {tag}
+                                    </span>
+                                ))}
+                            </div>
+
+                            {selectedCatalogItem.safetyInfo && (
+                                <div className="rounded-2xl bg-orange-500/10 border border-orange-500/20 p-4 mb-4">
+                                    <div className="flex items-center gap-2 mb-2">
+                                        <Shield size={14} className="text-orange-300" />
+                                        <p className="text-xs font-semibold uppercase tracking-wide text-orange-200">Safety</p>
+                                    </div>
+                                    <p className="text-sm text-text-secondary">{selectedCatalogItem.safetyInfo}</p>
+                                </div>
+                            )}
+
+                            <div className="rounded-2xl bg-bg-card border border-border p-4">
+                                <p className="text-xs font-semibold uppercase tracking-wide text-text-muted mb-2">Instructions</p>
+                                {selectedCatalogItem.instructions.length > 0 ? (
+                                    <div className="space-y-2">
+                                        {selectedCatalogItem.instructions.map((instruction, index) => (
+                                            <p key={`${selectedCatalogItem.id}-step-${index}`} className="text-sm text-text-secondary">
+                                                {index + 1}. {instruction}
+                                            </p>
+                                        ))}
+                                    </div>
+                                ) : (
+                                    <p className="text-sm text-text-secondary">
+                                        No instructions were returned. You can still add the exercise and adjust it manually.
+                                    </p>
+                                )}
+                            </div>
                         </div>
 
-                        <div className="flex gap-2 mb-3">
-                            <input
-                                type="text"
-                                value={custom}
-                                onChange={e => setCustom(e.target.value)}
-                                placeholder="Custom exercise name..."
-                                className="flex-1 bg-bg-input border border-border rounded-xl py-3 px-4 text-sm focus:outline-none focus:border-accent/50"
-                                onKeyDown={e => e.key === 'Enter' && handleAddCustom()}
-                            />
+                        <div className="border-t border-border pt-4 bg-bg-surface">
                             <button
-                                onClick={handleAddCustom}
-                                disabled={!custom.trim()}
-                                className="px-5 rounded-xl gradient-primary text-white text-sm font-semibold disabled:opacity-30"
+                                onClick={() => handleAddExercise(
+                                    selectedCatalogItem.name,
+                                    selectedCatalogItem.instructions.slice(0, 3).join(' ')
+                                )}
+                                className="w-full py-3 rounded-2xl gradient-primary text-white font-semibold"
                             >
-                                Add
+                                Add Exercise
                             </button>
-                        </div>
-
-                        <div className="overflow-y-auto flex-1 -mx-2">
-                            {filtered.map(name => (
-                                <button
-                                    key={name}
-                                    onClick={() => handleAddExercise(name)}
-                                    className="w-full text-left py-3 px-4 rounded-xl text-sm hover:bg-bg-card transition-colors flex items-center justify-between group"
-                                >
-                                    <span>{name}</span>
-                                    <Plus size={16} className="text-text-muted opacity-0 group-hover:opacity-100 transition-opacity" />
-                                </button>
-                            ))}
                         </div>
                     </div>
                 </div>
@@ -480,6 +720,69 @@ export default function WorkoutPage() {
 }
 
 // ──────────────────────────────────────────────────────────────────────────────
+// Exercise catalog media preview
+// ──────────────────────────────────────────────────────────────────────────────
+interface ExerciseCatalogMediaProps {
+    item: ExerciseCatalogItem;
+    className: string;
+    iconSize?: number;
+    showModeBadge?: boolean;
+}
+
+function ExerciseCatalogMedia({ item, className, iconSize = 20, showModeBadge = false }: ExerciseCatalogMediaProps) {
+    const [mode, setMode] = useState<'gif' | 'muscle' | 'fallback'>(() => {
+        if (item.gifUrl) return 'gif';
+        if (item.muscleImageUrl) return 'muscle';
+        return 'fallback';
+    });
+
+    useEffect(() => {
+        if (item.gifUrl) {
+            setMode('gif');
+            return;
+        }
+        if (item.muscleImageUrl) {
+            setMode('muscle');
+            return;
+        }
+        setMode('fallback');
+    }, [item.gifUrl, item.id, item.muscleImageUrl]);
+
+    const src = mode === 'gif' ? item.gifUrl : (mode === 'muscle' ? item.muscleImageUrl : null);
+    const label = mode === 'gif' ? 'Demo' : (mode === 'muscle' ? 'Muscle Map' : null);
+
+    return (
+        <div className={`relative ${className}`}>
+            {src ? (
+                <img
+                    src={src}
+                    alt=""
+                    loading="lazy"
+                    className="w-full h-full object-cover"
+                    onError={() => {
+                        if (mode === 'gif' && item.muscleImageUrl) {
+                            setMode('muscle');
+                            return;
+                        }
+                        setMode('fallback');
+                    }}
+                />
+            ) : (
+                <div className="w-full h-full flex items-center justify-center text-text-muted">
+                    <Sparkles size={iconSize} />
+                </div>
+            )}
+
+            {showModeBadge && label && (
+                <span className="absolute right-3 top-3 rounded-full bg-black/55 px-2.5 py-1 text-[10px] font-semibold text-white backdrop-blur">
+                    {label}
+                </span>
+            )}
+        </div>
+    );
+}
+
+// ──────────────────────────────────────────────────────────────────────────────
 // Inline editable exercise card for the Plan tab
 // ──────────────────────────────────────────────────────────────────────────────
 interface ExerciseCardProps {
@@ -488,11 +791,12 @@ interface ExerciseCardProps {
     plannedSets: number;
     plannedReps: number | null;
     plannedWeight: number | null;  // null = bodyweight
+    suggestion: ProgressionInsight | null;
     onChange: (patch: { plannedSets?: number; plannedReps?: number | null; plannedWeight?: number | null }) => void;
     onRemove: () => void;
 }
 
-function ExerciseCard({ index, name, plannedSets, plannedReps, plannedWeight, onChange, onRemove }: ExerciseCardProps) {
+function ExerciseCard({ index, name, plannedSets, plannedReps, plannedWeight, suggestion, onChange, onRemove }: ExerciseCardProps) {
     return (
         <div className="glass rounded-2xl p-4 animate-fade-in">
             {/* Top row: number + name + remove */}
@@ -587,6 +891,16 @@ function ExerciseCard({ index, name, plannedSets, plannedReps, plannedWeight, on
                 {plannedReps ? ` × ${plannedReps} reps` : ''}
                 {plannedWeight ? ` @ ${plannedWeight}kg` : ' — bodyweight'}
             </p>
+
+            {suggestion && (
+                <div className="mt-3 rounded-xl border border-cyan/20 bg-cyan/10 p-3">
+                    <p className="text-[10px] uppercase tracking-wide text-cyan font-semibold">Suggested Next Load</p>
+                    <p className="text-sm font-semibold mt-1">
+                        {suggestion.weight}kg x {suggestion.reps}
+                    </p>
+                    <p className="text-xs text-text-secondary mt-1">{suggestion.reason}</p>
+                </div>
+            )}
         </div>
     );
 }

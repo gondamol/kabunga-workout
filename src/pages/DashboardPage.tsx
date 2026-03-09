@@ -2,12 +2,14 @@ import { useEffect, useState, useMemo, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuthStore } from '../stores/authStore';
 import { useWorkoutStore } from '../stores/workoutStore';
-import { getRecentWorkouts, getActiveChallenges, getMealsByDate } from '../lib/firestoreService';
+import { getRecentWorkouts, getActiveChallenges, getMealsByDate, getOneRepMaxes, updateUserProfile } from '../lib/firestoreService';
 import { formatDurationHuman, formatRelativeTime, getTodayKey, getDaysInRange } from '../lib/utils';
-import type { WorkoutSession, Challenge, Meal } from '../lib/types';
+import type { WorkoutSession, Challenge, Meal, OneRepMaxes } from '../lib/types';
 import { BarChart, Bar, XAxis, YAxis, ResponsiveContainer, Tooltip, Cell } from 'recharts';
-import { Dumbbell, Flame, Clock, TrendingUp, ChevronRight, Zap, Trophy, Plus } from 'lucide-react';
+import { Dumbbell, Flame, Clock, TrendingUp, ChevronRight, Zap, Trophy, Plus, BarChart3, TimerReset } from 'lucide-react';
 import dayjs from 'dayjs';
+import { getOneRepMaxPromptStatus, getOneRepMaxSnoozeUntil } from '../lib/oneRepMaxes';
+import { getDashboardProgressionInsight } from '../lib/progressionInsights';
 
 export default function DashboardPage() {
     const { user, profile } = useAuthStore();
@@ -17,7 +19,9 @@ export default function DashboardPage() {
     const [workouts, setWorkouts] = useState<WorkoutSession[]>([]);
     const [challenges, setChallenges] = useState<Challenge[]>([]);
     const [todayMeals, setTodayMeals] = useState<Meal[]>([]);
+    const [oneRepMaxes, setOneRepMaxes] = useState<OneRepMaxes | null>(null);
     const [loadingWorkouts, setLoadingWorkouts] = useState(true);
+    const [savingPromptState, setSavingPromptState] = useState(false);
     const chartContainerRef = useRef<HTMLDivElement>(null);
     const [isChartReady, setIsChartReady] = useState(false);
 
@@ -25,21 +29,23 @@ export default function DashboardPage() {
         if (!user) return;
         const load = async () => {
             try {
-                const [w, c, m] = await Promise.all([
-                    getRecentWorkouts(user.uid, 30),
+                const [w, c, m, maxes] = await Promise.all([
+                    getRecentWorkouts(user.uid, 120),
                     getActiveChallenges(user.uid),
                     getMealsByDate(user.uid, getTodayKey()),
+                    getOneRepMaxes(user.uid),
                 ]);
                 setWorkouts(w);
                 setChallenges(c);
                 setTodayMeals(m);
+                setOneRepMaxes(maxes);
             } catch (err) {
                 console.warn('Failed to load dashboard data:', err);
             } finally {
                 setLoadingWorkouts(false);
             }
         };
-        load();
+        void load();
     }, [user]);
 
     useEffect(() => {
@@ -63,8 +69,10 @@ export default function DashboardPage() {
     }, []);
 
     const stats = useMemo(() => {
-        const totalDuration = workouts.reduce((sum, w) => sum + w.duration, 0);
-        const totalCalories = workouts.reduce((sum, w) => sum + w.caloriesEstimate, 0);
+        const monthStart = dayjs().startOf('month').valueOf();
+        const monthWorkouts = workouts.filter((workout) => workout.startedAt >= monthStart);
+        const totalDuration = monthWorkouts.reduce((sum, w) => sum + w.duration, 0);
+        const totalCalories = monthWorkouts.reduce((sum, w) => sum + w.caloriesEstimate, 0);
 
         const weekStart = dayjs().startOf('week').valueOf();
         const weeklyWorkouts = workouts.filter((w) => w.startedAt >= weekStart).length;
@@ -80,6 +88,64 @@ export default function DashboardPage() {
 
         return { totalWorkouts: workouts.length, totalDuration, totalCalories, weeklyWorkouts, streak };
     }, [workouts]);
+
+    const oneRepMaxStatus = useMemo(() => {
+        return getOneRepMaxPromptStatus(oneRepMaxes, workouts, profile);
+    }, [oneRepMaxes, profile, workouts]);
+    const progressionInsight = useMemo(() => getDashboardProgressionInsight(workouts), [workouts]);
+
+    useEffect(() => {
+        if (!user || !profile || !oneRepMaxStatus.shouldPrompt) return;
+        const lastShownAt = profile.oneRepMaxPromptLastShownAt || 0;
+        if (Date.now() - lastShownAt < 6 * 60 * 60 * 1000) return;
+
+        const nextShownAt = Date.now();
+        useAuthStore.setState((state) => {
+            if (!state.profile) return state;
+            return {
+                ...state,
+                profile: {
+                    ...state.profile,
+                    oneRepMaxPromptLastShownAt: nextShownAt,
+                },
+            };
+        });
+
+        void updateUserProfile(user.uid, {
+            oneRepMaxPromptLastShownAt: nextShownAt,
+        }).catch((error) => {
+            console.warn('Failed to record 1RM prompt impression:', error);
+        });
+    }, [oneRepMaxStatus.shouldPrompt, profile, user]);
+
+    const handleSnoozeOneRepMaxPrompt = async () => {
+        if (!user) return;
+
+        setSavingPromptState(true);
+        const snoozeUntil = getOneRepMaxSnoozeUntil();
+        useAuthStore.setState((state) => {
+            if (!state.profile) return state;
+            return {
+                ...state,
+                profile: {
+                    ...state.profile,
+                    oneRepMaxPromptSnoozeUntil: snoozeUntil,
+                    oneRepMaxPromptLastShownAt: Date.now(),
+                },
+            };
+        });
+
+        try {
+            await updateUserProfile(user.uid, {
+                oneRepMaxPromptSnoozeUntil: snoozeUntil,
+                oneRepMaxPromptLastShownAt: Date.now(),
+            });
+        } catch (error) {
+            console.warn('Failed to snooze 1RM prompt:', error);
+        } finally {
+            setSavingPromptState(false);
+        }
+    };
 
     const trendInsights = useMemo(() => {
         const now = Date.now();
@@ -191,6 +257,37 @@ export default function DashboardPage() {
                 </button>
             )}
 
+            {oneRepMaxStatus.shouldPrompt && (
+                <div className="rounded-3xl border border-amber/20 bg-gradient-to-br from-amber/15 via-bg-card to-bg-surface p-5 animate-fade-in">
+                    <div className="flex items-start justify-between gap-3">
+                        <div>
+                            <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-amber">Performance Check</p>
+                            <h2 className="text-lg font-bold mt-1">Update your 1RM</h2>
+                            <p className="text-sm text-text-secondary mt-2">{oneRepMaxStatus.reason}</p>
+                        </div>
+                        <div className="w-11 h-11 rounded-2xl bg-amber/15 flex items-center justify-center shrink-0">
+                            <BarChart3 size={20} className="text-amber" />
+                        </div>
+                    </div>
+                    <div className="mt-4 flex gap-2">
+                        <button
+                            onClick={() => navigate('/profile?focus=one-rep-maxes')}
+                            className="flex-1 py-3 rounded-2xl bg-amber text-bg-primary font-semibold"
+                        >
+                            Update Now
+                        </button>
+                        <button
+                            onClick={() => void handleSnoozeOneRepMaxPrompt()}
+                            disabled={savingPromptState}
+                            className="px-4 py-3 rounded-2xl border border-border text-sm text-text-secondary flex items-center gap-2 disabled:opacity-50"
+                        >
+                            <TimerReset size={15} />
+                            7 days
+                        </button>
+                    </div>
+                </div>
+            )}
+
             {/* Stats Grid */}
             <div className="grid grid-cols-2 gap-3 animate-fade-in stagger-1">
                 <StatCard
@@ -282,6 +379,25 @@ export default function DashboardPage() {
                 </div>
             </div>
 
+            {progressionInsight && (
+                <div className="glass rounded-2xl p-4 animate-fade-in stagger-3">
+                    <div className="flex items-center justify-between gap-3">
+                        <div>
+                            <p className="text-[11px] uppercase tracking-wide text-cyan font-semibold">Next Progression</p>
+                            <h3 className="text-base font-bold mt-1">{progressionInsight.exerciseName}</h3>
+                        </div>
+                        <button
+                            onClick={() => navigate('/workout')}
+                            className="px-3 py-2 rounded-xl border border-border text-xs text-text-secondary"
+                        >
+                            Open Planner
+                        </button>
+                    </div>
+                    <p className="text-xl font-black mt-3">{progressionInsight.weight}kg x {progressionInsight.reps}</p>
+                    <p className="text-xs text-text-secondary mt-1">{progressionInsight.reason}</p>
+                </div>
+            )}
+
             {/* Challenge Progress */}
             {challenges.length > 0 && (
                 <div className="animate-fade-in stagger-3">
@@ -371,7 +487,7 @@ export default function DashboardPage() {
                         <Dumbbell size={32} className="text-accent" />
                     </div>
                     <h3 className="text-lg font-semibold mb-1">No workouts yet</h3>
-                    <p className="text-text-secondary text-sm">Start your first one and track your progress! 🚀</p>
+                    <p className="text-text-secondary text-sm">Start your first one and track your progress.</p>
                 </div>
             )}
         </div>

@@ -23,6 +23,8 @@ import {
     scaleTemplateForOneRepMaxes,
     type IronScheduleDay,
 } from '../lib/ironProtocol';
+import { getOneRepMaxPromptStatus } from '../lib/oneRepMaxes';
+import OneRepMaxCard from '../components/OneRepMaxCard';
 
 const dailyTasks = [
     { key: 'legRaisesDone', label: '10-Min Leg Raises' },
@@ -90,7 +92,7 @@ const buildSixWeekRows = (sessions: WorkoutSession[]) => {
 
 export default function IronProtocolPage() {
     const navigate = useNavigate();
-    const { user } = useAuthStore();
+    const { user, profile } = useAuthStore();
     const { activeSession, initFromTemplatePlan, startFromTemplate } = useWorkoutStore();
 
     const [oneRepMaxes, setOneRepMaxes] = useState<OneRepMaxes | null>(null);
@@ -215,6 +217,10 @@ export default function IronProtocolPage() {
     const selectedTargetWeights = useMemo(() => {
         return getTargetWeights(selectedTemplate, selectedSchedule.primaryLift);
     }, [selectedTemplate, selectedSchedule.primaryLift]);
+
+    const oneRepMaxStatus = useMemo(() => {
+        return getOneRepMaxPromptStatus(oneRepMaxes, workouts, profile);
+    }, [oneRepMaxes, profile, workouts]);
 
     const updateMax = (key: keyof Omit<OneRepMaxes, 'userId' | 'updatedAt'>, value: number) => {
         setOneRepMaxes((prev) => {
@@ -505,74 +511,23 @@ export default function IronProtocolPage() {
                 )}
             </div>
 
-            <div className="glass rounded-2xl p-4 space-y-3">
-                <div className="flex items-center justify-between">
+            <div className="space-y-2">
+                <div className="flex items-center justify-between px-1">
                     <div className="flex items-center gap-2">
                         <Flame size={16} style={{ color: '#E8630A' }} />
                         <h3 className="text-sm font-semibold">1RM Calculator</h3>
                     </div>
                     <span className="text-xs text-text-muted">{scaledTemplateCount}/6 templates updated</span>
                 </div>
-                <p className="text-xs text-text-secondary">
-                    Weights in Iron sessions auto-update from these values for each user.
-                </p>
-
-                <div className="grid grid-cols-2 gap-2">
-                    <label className="text-xs text-text-secondary">
-                        Bench Press
-                        <input
-                            type="number"
-                            value={oneRepMaxes.benchPress}
-                            onChange={(e) => updateMax('benchPress', parseFloat(e.target.value) || 0)}
-                            className="mt-1 w-full bg-bg-input border border-border rounded-xl py-2 px-3"
-                        />
-                    </label>
-                    <label className="text-xs text-text-secondary">
-                        Back Squat
-                        <input
-                            type="number"
-                            value={oneRepMaxes.backSquat}
-                            onChange={(e) => updateMax('backSquat', parseFloat(e.target.value) || 0)}
-                            className="mt-1 w-full bg-bg-input border border-border rounded-xl py-2 px-3"
-                        />
-                    </label>
-                    <label className="text-xs text-text-secondary">
-                        Overhead Press
-                        <input
-                            type="number"
-                            value={oneRepMaxes.overheadPress}
-                            onChange={(e) => updateMax('overheadPress', parseFloat(e.target.value) || 0)}
-                            className="mt-1 w-full bg-bg-input border border-border rounded-xl py-2 px-3"
-                        />
-                    </label>
-                    <label className="text-xs text-text-secondary">
-                        Bent-Over Row
-                        <input
-                            type="number"
-                            value={oneRepMaxes.bentOverRow}
-                            onChange={(e) => updateMax('bentOverRow', parseFloat(e.target.value) || 0)}
-                            className="mt-1 w-full bg-bg-input border border-border rounded-xl py-2 px-3"
-                        />
-                    </label>
-                    <label className="text-xs text-text-secondary col-span-2">
-                        Romanian Deadlift
-                        <input
-                            type="number"
-                            value={oneRepMaxes.romanianDL}
-                            onChange={(e) => updateMax('romanianDL', parseFloat(e.target.value) || 0)}
-                            className="mt-1 w-full bg-bg-input border border-border rounded-xl py-2 px-3"
-                        />
-                    </label>
-                </div>
-
-                <button
-                    onClick={handleSaveOneRepMaxes}
-                    disabled={savingMaxes}
-                    className="w-full py-3 rounded-xl text-white font-semibold disabled:opacity-50"
-                    style={{ background: '#2D5F8A' }}
-                >
-                    {savingMaxes ? 'Saving...' : 'Save 1RMs'}
-                </button>
+                <OneRepMaxCard
+                    title="Iron Strength Inputs"
+                    subtitle="Update these here or in Profile. New Iron sessions scale automatically from the latest values."
+                    maxes={oneRepMaxes}
+                    status={oneRepMaxStatus}
+                    saving={savingMaxes}
+                    onChange={updateMax}
+                    onSave={handleSaveOneRepMaxes}
+                />
             </div>
 
             <div className="glass rounded-2xl p-4">

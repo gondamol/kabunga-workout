@@ -110,6 +110,15 @@ export const scaleTemplateForOneRepMaxes = (
     };
 };
 
+export const scaleTemplateForUserOneRepMaxes = (
+    template: WorkoutTemplate,
+    uid: string,
+    maxes?: Partial<OneRepMaxes> | null
+): WorkoutTemplate => {
+    if (!isIronTemplateId(template.id)) return template;
+    return scaleTemplateForOneRepMaxes(template, normalizeOneRepMaxes(uid, maxes));
+};
+
 export const getScaledIronTemplates = (oneRepMaxes: OneRepMaxes): WorkoutTemplate[] => {
     return BUILT_IN_TEMPLATES
         .filter((template) => isIronTemplateId(template.id))

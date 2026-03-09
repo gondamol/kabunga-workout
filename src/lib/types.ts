@@ -6,6 +6,8 @@ export interface UserProfile {
     photoURL: string | null;
     role?: UserRole;
     coachCode?: string | null;
+    oneRepMaxPromptSnoozeUntil?: number | null;
+    oneRepMaxPromptLastShownAt?: number | null;
     createdAt: number;
     updatedAt: number;
 }
@@ -85,6 +87,22 @@ export interface OneRepMaxes {
     bentOverRow: number;   // kg
     romanianDL: number;    // kg
     updatedAt: number;
+}
+
+export interface ExerciseCatalogItem {
+    id: string;
+    name: string;
+    bodyPart: string;
+    targetMuscle: string;
+    equipment: string;
+    equipmentList?: string[];
+    exerciseType?: string | null;
+    difficulty?: string | null;
+    gifUrl: string | null;
+    muscleImageUrl?: string | null;
+    instructions: string[];
+    safetyInfo?: string | null;
+    source: 'api' | 'local';
 }
 
 // ─── Fitness Dailies Tracking ───

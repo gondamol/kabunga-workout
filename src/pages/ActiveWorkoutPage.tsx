@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useWorkoutStore } from '../stores/workoutStore';
 import dayjs from 'dayjs';
@@ -10,6 +10,7 @@ import { COMMON_EXERCISES } from '../lib/constants';
 import RestTimer from '../components/RestTimer';
 import toast from 'react-hot-toast';
 import type { ExerciseHistory, ExerciseSet, IronSetType } from '../lib/types';
+import { getProgressionSuggestionFromHistory } from '../lib/progressionInsights';
 import {
     Plus, X, Check, CheckSquare,
     Camera, Video, StopCircle, Pause, Play,
@@ -38,7 +39,7 @@ export default function ActiveWorkoutPage() {
         currentExerciseIndex, goToExercise, nextExercise, prevExercise,
         addExercise, removeExercise, addSet, removeSet, updateSet, completeSet, toggleSetComplete,
         endWorkout, cancelWorkout, tick, setTimerRunning, setTimerAlarmMinutes, addMediaUrl, updateSessionNotes,
-        startRest, defaultRestSeconds, isResting,
+        startRest, defaultRestSeconds, isResting, activeTemplate,
     } = useWorkoutStore();
 
     const [showPicker, setShowPicker] = useState(false);
@@ -165,6 +166,15 @@ export default function ActiveWorkoutPage() {
     const currentHistory = currentEx ? historyByExercise[normalizeExerciseName(currentEx.name)] ?? null : null;
     const lastSession = currentHistory?.sessions[0];
     const lastWeeksAgo = lastSession ? Math.max(0, dayjs().diff(dayjs(lastSession.date), 'week')) : null;
+    const currentSuggestion = useMemo(() => {
+        if (!currentEx) return null;
+        return getProgressionSuggestionFromHistory(
+            currentHistory,
+            currentEx.name,
+            currentEx.plannedReps,
+            activeTemplate?.progressionRule || 'linear'
+        );
+    }, [activeTemplate?.progressionRule, currentEx, currentHistory]);
 
     const getHistoricalBestScore = (history: ExerciseHistory | null): number => {
         if (!history) return 0;
@@ -463,6 +473,19 @@ export default function ActiveWorkoutPage() {
                             <div className="flex items-start gap-2 mt-3 p-3 rounded-xl bg-accent/5 border border-accent/10">
                                 <Zap size={14} className="text-accent mt-0.5 shrink-0" />
                                 <p className="text-xs text-text-secondary">{currentEx.cue}</p>
+                            </div>
+                        )}
+
+                        {currentSuggestion && (
+                            <div className="mt-3 rounded-xl border border-cyan/20 bg-cyan/10 p-3">
+                                <div className="flex items-center justify-between gap-2">
+                                    <p className="text-xs uppercase tracking-wide text-cyan font-semibold">Next Load Suggestion</p>
+                                    <span className="text-[11px] text-text-muted">{currentSuggestion.sourceSessions} history sessions</span>
+                                </div>
+                                <p className="text-sm font-semibold text-text-primary mt-1">
+                                    {currentSuggestion.weight}kg x {currentSuggestion.reps}
+                                </p>
+                                <p className="text-xs text-text-secondary mt-1">{currentSuggestion.reason}</p>
                             </div>
                         )}
 

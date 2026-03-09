@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
+    "dev:exercise-proxy": "node scripts/dev-exercise-proxy.mjs",
     "build": "tsc && vite build",
     "preview": "vite preview"
   },

@@ -5,7 +5,7 @@ import { useWorkoutStore } from '../stores/workoutStore';
 import { BUILT_IN_TEMPLATES, getTemplateCategories } from '../lib/templates';
 import type { WorkoutTemplate } from '../lib/types';
 import { getOneRepMaxes } from '../lib/firestoreService';
-import { isIronTemplateId, normalizeOneRepMaxes, scaleTemplateForOneRepMaxes } from '../lib/ironProtocol';
+import { isIronTemplateId, scaleTemplateForUserOneRepMaxes } from '../lib/ironProtocol';
 import { Dumbbell, Play, ChevronRight, Zap, Target, Heart, Clock, Filter } from 'lucide-react';
 import toast from 'react-hot-toast';
 
@@ -45,10 +45,7 @@ export default function TemplatesPage() {
         if (isIronTemplateId(template.id)) {
             try {
                 const maxes = await getOneRepMaxes(user.uid);
-                selectedTemplate = scaleTemplateForOneRepMaxes(
-                    template,
-                    normalizeOneRepMaxes(user.uid, maxes)
-                );
+                selectedTemplate = scaleTemplateForUserOneRepMaxes(template, user.uid, maxes);
             } catch (error) {
                 console.warn('Failed to load 1RMs. Starting with default iron template:', error);
             }

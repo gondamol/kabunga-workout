@@ -48,7 +48,16 @@ export default defineConfig({
             },
         }),
     ],
-    server: { port: 5173, host: true },
+    server: {
+        port: 5173,
+        host: true,
+        proxy: {
+            '/api/exercises': {
+                target: process.env.VITE_EXERCISE_PROXY_TARGET || 'http://127.0.0.1:8787',
+                changeOrigin: true,
+            },
+        },
+    },
     build: {
         rollupOptions: {
             output: {
