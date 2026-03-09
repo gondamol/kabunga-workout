@@ -10,6 +10,7 @@ import { Dumbbell, Flame, Clock, TrendingUp, ChevronRight, Zap, Trophy, Plus, Ba
 import dayjs from 'dayjs';
 import { getOneRepMaxPromptStatus, getOneRepMaxSnoozeUntil } from '../lib/oneRepMaxes';
 import { getDashboardProgressionInsight } from '../lib/progressionInsights';
+import { getWorkoutHeadline } from '../lib/workoutSummary';
 
 export default function DashboardPage() {
     const { user, profile } = useAuthStore();
@@ -456,25 +457,38 @@ export default function DashboardPage() {
             {/* Recent Sessions */}
             {workouts.length > 0 && (
                 <div className="animate-fade-in stagger-5">
-                    <h3 className="text-sm font-semibold text-text-secondary mb-3">Recent Sessions</h3>
+                    <div className="flex items-center justify-between mb-3">
+                        <h3 className="text-sm font-semibold text-text-secondary">Recent Sessions</h3>
+                        <button
+                            onClick={() => navigate('/history')}
+                            className="text-xs text-accent font-medium"
+                        >
+                            Open Calendar
+                        </button>
+                    </div>
                     <div className="space-y-2">
-                        {workouts.slice(0, 5).map((w) => (
-                            <div key={w.id} className="glass rounded-2xl p-4 flex items-center gap-3">
+                        {workouts.slice(0, 3).map((w) => (
+                            <button
+                                key={w.id}
+                                onClick={() => navigate(`/history/${w.id}`)}
+                                className="w-full glass rounded-2xl p-4 flex items-center gap-3 text-left"
+                            >
                                 <div className="w-10 h-10 rounded-xl bg-accent/20 flex items-center justify-center">
                                     <Dumbbell size={18} className="text-accent" />
                                 </div>
                                 <div className="flex-1 min-w-0">
                                     <p className="text-sm font-medium truncate">
-                                        {w.exercises.length > 0
-                                            ? w.exercises.map((e) => e.name).join(', ')
-                                            : 'Quick Session'}
+                                        {getWorkoutHeadline(w)}
                                     </p>
                                     <p className="text-xs text-text-muted">
                                         {formatDurationHuman(w.duration)} • {formatRelativeTime(w.startedAt)}
                                     </p>
                                 </div>
-                                <span className="text-xs text-text-muted">{w.exercises.length} ex</span>
-                            </div>
+                                <div className="flex items-center gap-2 shrink-0">
+                                    <span className="text-xs text-text-muted">{w.exercises.length} ex</span>
+                                    <ChevronRight size={16} className="text-text-muted" />
+                                </div>
+                            </button>
                         ))}
                     </div>
                 </div>

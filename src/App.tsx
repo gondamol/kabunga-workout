@@ -14,6 +14,7 @@ import NutritionPage from './pages/NutritionPage';
 import ProfilePage from './pages/ProfilePage';
 import IronProtocolPage from './pages/IronProtocolPage';
 import HistoryPage from './pages/HistoryPage';
+import SessionDetailPage from './pages/SessionDetailPage';
 import CoachHubPage from './pages/CoachHubPage';
 import CommunityPage from './pages/CommunityPage';
 import SciencePage from './pages/SciencePage';
@@ -99,6 +100,9 @@ export default function App() {
                     } />
                     <Route path="/history" element={
                         <ProtectedRoute><HistoryPage /></ProtectedRoute>
+                    } />
+                    <Route path="/history/:id" element={
+                        <ProtectedRoute><SessionDetailPage /></ProtectedRoute>
                     } />
                     <Route path="/coach" element={
                         <ProtectedRoute><CoachHubPage /></ProtectedRoute>

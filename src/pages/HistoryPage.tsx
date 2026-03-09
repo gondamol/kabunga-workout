@@ -1,10 +1,12 @@
 import { useEffect, useMemo, useState } from 'react';
 import dayjs, { type Dayjs } from 'dayjs';
+import { useNavigate } from 'react-router-dom';
 import { Calendar, ChevronLeft, ChevronRight, Flame, Trash2 } from 'lucide-react';
 import { useAuthStore } from '../stores/authStore';
 import { deleteWorkout, getUserWorkouts } from '../lib/firestoreService';
 import type { Exercise, WorkoutSession } from '../lib/types';
 import { formatDurationHuman } from '../lib/utils';
+import { getWorkoutHeadline } from '../lib/workoutSummary';
 import toast from 'react-hot-toast';
 
 const weekHeaders = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
@@ -47,6 +49,7 @@ const getSessionVolume = (session: WorkoutSession): number => {
 
 export default function HistoryPage() {
     const { user } = useAuthStore();
+    const navigate = useNavigate();
     const [month, setMonth] = useState(dayjs().startOf('month'));
     const [workouts, setWorkouts] = useState<WorkoutSession[]>([]);
     const [selectedDate, setSelectedDate] = useState<string | null>(null);
@@ -286,7 +289,6 @@ export default function HistoryPage() {
                                     <div className="space-y-2">
                                         {selectedSessions.map((session) => {
                                             const isSelected = selectedSession?.id === session.id;
-                                            const exerciseNames = session.exercises.map((exercise) => exercise.name).join(', ');
                                             return (
                                                 <div
                                                     key={session.id}
@@ -304,8 +306,14 @@ export default function HistoryPage() {
                                                                 {session.exercises.length} exercises • {getSessionSetCount(session)} sets
                                                             </p>
                                                             <p className="text-xs text-text-muted mt-1 line-clamp-1">
-                                                                {exerciseNames || 'No exercises logged'}
+                                                                {getWorkoutHeadline(session) || 'No exercises logged'}
                                                             </p>
+                                                        </button>
+                                                        <button
+                                                            onClick={() => navigate(`/history/${session.id}`)}
+                                                            className="px-3 h-9 rounded-lg border border-border text-xs text-text-secondary hover:border-accent/40 hover:text-accent"
+                                                        >
+                                                            Open
                                                         </button>
                                                         <button
                                                             onClick={() => { void handleDeleteWorkout(session); }}
@@ -340,7 +348,15 @@ export default function HistoryPage() {
                                         </div>
 
                                         <div className="rounded-2xl bg-bg-card p-4">
-                                            <p className="text-xs text-text-muted uppercase tracking-wide mb-1">Session Notes</p>
+                                            <div className="flex items-center justify-between gap-3 mb-1">
+                                                <p className="text-xs text-text-muted uppercase tracking-wide">Session Notes</p>
+                                                <button
+                                                    onClick={() => navigate(`/history/${selectedSession.id}`)}
+                                                    className="text-xs text-accent font-medium"
+                                                >
+                                                    Full Summary
+                                                </button>
+                                            </div>
                                             <p className="text-sm text-text-secondary whitespace-pre-wrap">
                                                 {selectedSession.notes?.trim() || 'No notes saved for this session.'}
                                             </p>
