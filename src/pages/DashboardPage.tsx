@@ -56,7 +56,7 @@ const getReadinessTone = (status: ReadinessStatus): {
 
 export default function DashboardPage() {
     const { user, profile } = useAuthStore();
-    const { activeSession } = useWorkoutStore();
+    const { activeSession, loadRepeatWorkout } = useWorkoutStore();
     const navigate = useNavigate();
     const todayKey = getTodayKey();
 
@@ -72,6 +72,7 @@ export default function DashboardPage() {
     const [savingHealthCheck, setSavingHealthCheck] = useState(false);
     const chartContainerRef = useRef<HTMLDivElement>(null);
     const [isChartReady, setIsChartReady] = useState(false);
+    const latestWorkout = workouts[0] ?? null;
 
     useEffect(() => {
         if (!user) return;
@@ -305,6 +306,20 @@ export default function DashboardPage() {
         }
     };
 
+    const handleRepeatLastWorkout = (startImmediately = false) => {
+        if (!user || !latestWorkout) return;
+
+        loadRepeatWorkout(user.uid, latestWorkout, { startImmediately });
+        if (startImmediately) {
+            toast.success('Last workout loaded and started.');
+            navigate('/active-workout');
+            return;
+        }
+
+        toast.success('Last workout loaded. Review it before starting.');
+        navigate('/workout');
+    };
+
     const chartData = useMemo(() => {
         const days = getDaysInRange(7);
         return days.map((day) => {
@@ -393,6 +408,49 @@ export default function DashboardPage() {
                         </div>
                     </div>
                 )
+            )}
+
+            {!activeSession && latestWorkout && (
+                <div className="glass rounded-3xl p-5 animate-fade-in">
+                    <div className="flex items-start justify-between gap-3">
+                        <div>
+                            <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-cyan">Fast Lane</p>
+                            <h2 className="text-lg font-bold mt-1">Repeat Last Workout</h2>
+                            <p className="text-sm text-text-secondary mt-2">{getWorkoutHeadline(latestWorkout)}</p>
+                        </div>
+                        <div className="rounded-2xl bg-cyan/10 px-3 py-2 text-xs font-semibold text-cyan">
+                            {formatRelativeTime(latestWorkout.startedAt)}
+                        </div>
+                    </div>
+                    <div className="mt-4 grid grid-cols-3 gap-2 text-center">
+                        <div className="rounded-xl bg-bg-card p-2">
+                            <p className="text-[10px] text-text-muted">Exercises</p>
+                            <p className="text-sm font-semibold">{latestWorkout.exercises.length}</p>
+                        </div>
+                        <div className="rounded-xl bg-bg-card p-2">
+                            <p className="text-[10px] text-text-muted">Duration</p>
+                            <p className="text-sm font-semibold">{formatDurationHuman(latestWorkout.duration)}</p>
+                        </div>
+                        <div className="rounded-xl bg-bg-card p-2">
+                            <p className="text-[10px] text-text-muted">Calories</p>
+                            <p className="text-sm font-semibold">{Math.round(latestWorkout.caloriesEstimate)}</p>
+                        </div>
+                    </div>
+                    <div className="mt-4 flex gap-2">
+                        <button
+                            onClick={() => handleRepeatLastWorkout(false)}
+                            className="flex-1 py-3 rounded-2xl border border-border text-sm font-semibold text-text-primary"
+                        >
+                            Load For Edit
+                        </button>
+                        <button
+                            onClick={() => handleRepeatLastWorkout(true)}
+                            className="flex-1 py-3 rounded-2xl gradient-primary text-white text-sm font-semibold"
+                        >
+                            Start Now
+                        </button>
+                    </div>
+                </div>
             )}
 
             {/* Start Workout CTA */}

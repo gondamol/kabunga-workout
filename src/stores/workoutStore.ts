@@ -4,6 +4,8 @@ import type { CoachPlanExercise, Exercise, ExerciseSet, WorkoutSession, WorkoutT
 import { CALORIES_PER_MINUTE } from '../lib/constants';
 import { playAlarm, playCountdownBeep, vibrate, vibrateRestComplete, vibrateSetComplete, playCompletionChime } from '../lib/timerService';
 import { classifyIronPhase, isIronTemplateId } from '../lib/ironProtocol';
+import { buildRepeatWorkoutSession } from '../lib/repeatWorkout';
+import { BUILT_IN_TEMPLATES } from '../lib/templates';
 
 interface WorkoutState {
     activeSession: WorkoutSession | null;
@@ -29,6 +31,7 @@ interface WorkoutState {
     startWorkout: (userId: string) => void;       // Start timer on existing or new session
     initFromTemplatePlan: (userId: string, template: WorkoutTemplate) => void;
     startFromTemplate: (userId: string, template: WorkoutTemplate) => void;
+    loadRepeatWorkout: (userId: string, sourceWorkout: WorkoutSession, options?: { startImmediately?: boolean }) => void;
     loadCoachPlan: (userId: string, planId: string, planTitle: string, notes: string, exercises: CoachPlanExercise[]) => void;
     endWorkout: () => WorkoutSession | null;
     cancelWorkout: () => void;
@@ -222,6 +225,23 @@ export const useWorkoutStore = create<WorkoutState>()(
                     isTimerRunning: true,
                     isGuidedMode: true,
                     activeTemplate: template,
+                    currentExerciseIndex: 0,
+                    restSeconds: 0,
+                    isResting: false,
+                });
+            },
+
+            loadRepeatWorkout: (userId, sourceWorkout, options) => {
+                const repeatedSession = buildRepeatWorkoutSession(userId, sourceWorkout);
+                const repeatedTemplate = sourceWorkout.templateId
+                    ? BUILT_IN_TEMPLATES.find((template) => template.id === sourceWorkout.templateId) ?? null
+                    : null;
+                set({
+                    activeSession: repeatedSession,
+                    timerSeconds: 0,
+                    isTimerRunning: options?.startImmediately ?? false,
+                    isGuidedMode: false,
+                    activeTemplate: repeatedTemplate,
                     currentExerciseIndex: 0,
                     restSeconds: 0,
                     isResting: false,

@@ -1,4 +1,5 @@
 import { useNavigate } from 'react-router-dom';
+import dayjs from 'dayjs';
 import { useAuthStore } from '../stores/authStore';
 import { useWorkoutStore } from '../stores/workoutStore';
 import { getAthleteCoachPlans, getOneRepMaxes, getUserWorkouts } from '../lib/firestoreService';
@@ -10,6 +11,7 @@ import { BUILT_IN_TEMPLATES, getTemplateCategories } from '../lib/templates';
 import { isIronTemplateId, scaleTemplateForUserOneRepMaxes } from '../lib/ironProtocol';
 import { searchExerciseCatalog } from '../lib/exerciseCatalog';
 import { formatProgressionInsightTarget, getProgressionSuggestionFromWorkouts, type ProgressionInsight } from '../lib/progressionInsights';
+import { getWorkoutHeadline } from '../lib/workoutSummary';
 import {
     Play, Dumbbell, Clock, Plus, X, Search, History, Calendar, Users, ClipboardList, LayoutGrid, Sparkles, LoaderCircle, Shield,
 } from 'lucide-react';
@@ -41,7 +43,7 @@ export default function WorkoutPage() {
     const { user } = useAuthStore();
     const {
         startWorkout, activeSession, addExercise, initPlan,
-        isTimerRunning, updateExercisePlan, removeExercise, loadCoachPlan, initFromTemplatePlan, activeTemplate,
+        isTimerRunning, updateExercisePlan, removeExercise, loadCoachPlan, initFromTemplatePlan, activeTemplate, loadRepeatWorkout,
     } = useWorkoutStore();
     const navigate = useNavigate();
 
@@ -60,6 +62,7 @@ export default function WorkoutPage() {
     // Queue = exercises already in the active session
     const queue = activeSession?.exercises ?? [];
     const todayKey = new Date().toISOString().slice(0, 10);
+    const latestWorkout = history[0] ?? null;
     const todayCoachPlans = coachPlans.filter((plan) => plan.scheduledDate === todayKey);
     const loadedCoachPlan = activeSession?.scheduledWorkoutId
         ? coachPlans.find((plan) => plan.id === activeSession.scheduledWorkoutId) ?? null
@@ -114,6 +117,22 @@ export default function WorkoutPage() {
         }
         loadCoachPlan(user.uid, plan.id, plan.title, plan.notes, plan.exercises);
         toast.success('Coach plan loaded. Review and tap Start Workout.');
+    };
+
+    const handleRepeatLastWorkout = (startImmediately = false) => {
+        if (!user || !latestWorkout) return;
+        if (activeSession && queue.length > 0 && !confirm('Replace your current plan with your last workout?')) {
+            return;
+        }
+
+        loadRepeatWorkout(user.uid, latestWorkout, { startImmediately });
+        if (startImmediately) {
+            toast.success('Last workout loaded and started.');
+            navigate('/active-workout');
+            return;
+        }
+
+        toast.success('Last workout loaded. Review it before starting.');
     };
 
     const filtered = COMMON_EXERCISES.filter(e =>
@@ -286,6 +305,49 @@ export default function WorkoutPage() {
                                         </button>
                                     </div>
                                 ))}
+                            </div>
+                        </div>
+                    )}
+
+                    {latestWorkout && !isTimerRunning && (
+                        <div className="glass rounded-2xl p-4 animate-fade-in">
+                            <div className="flex items-start justify-between gap-3">
+                                <div>
+                                    <p className="text-[11px] font-semibold uppercase tracking-wide text-cyan">Fast Lane</p>
+                                    <h3 className="text-base font-bold mt-1">Repeat Last Workout</h3>
+                                    <p className="text-sm text-text-secondary mt-1">{getWorkoutHeadline(latestWorkout)}</p>
+                                </div>
+                                <div className="rounded-2xl bg-cyan/10 px-3 py-2 text-xs font-semibold text-cyan">
+                                    {formatRelativeTime(latestWorkout.startedAt)}
+                                </div>
+                            </div>
+                            <div className="mt-3 grid grid-cols-3 gap-2 text-center">
+                                <div className="rounded-xl bg-bg-card p-2">
+                                    <p className="text-[10px] text-text-muted">Exercises</p>
+                                    <p className="text-sm font-semibold">{latestWorkout.exercises.length}</p>
+                                </div>
+                                <div className="rounded-xl bg-bg-card p-2">
+                                    <p className="text-[10px] text-text-muted">Duration</p>
+                                    <p className="text-sm font-semibold">{formatDurationHuman(latestWorkout.duration)}</p>
+                                </div>
+                                <div className="rounded-xl bg-bg-card p-2">
+                                    <p className="text-[10px] text-text-muted">Last Done</p>
+                                    <p className="text-sm font-semibold">{dayjs(latestWorkout.startedAt).format('MMM D')}</p>
+                                </div>
+                            </div>
+                            <div className="mt-3 flex gap-2">
+                                <button
+                                    onClick={() => handleRepeatLastWorkout(false)}
+                                    className="flex-1 py-3 rounded-2xl border border-border text-sm font-semibold text-text-primary"
+                                >
+                                    Load For Edit
+                                </button>
+                                <button
+                                    onClick={() => handleRepeatLastWorkout(true)}
+                                    className="flex-1 py-3 rounded-2xl gradient-primary text-white text-sm font-semibold"
+                                >
+                                    Start Now
+                                </button>
                             </div>
                         </div>
                     )}
