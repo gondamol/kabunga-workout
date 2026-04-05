@@ -878,7 +878,7 @@ export default function CommunityPage() {
                                     Group Challenge Leaderboard
                                 </p>
                                 <p className="text-[11px] text-text-muted mt-1">
-                                    Members sync their own workout history into a shared scoreboard.
+                                    Members sync their own workout history into a shared scoreboard. Tap Sync My Workouts inside a challenge to count your sessions.
                                 </p>
                             </div>
                             {isSelectedGroupOwner && (
@@ -1013,6 +1013,24 @@ export default function CommunityPage() {
                                                     You are at {myChallengeEntry.completedWorkouts}/{myChallengeEntry.targetCount} workouts.
                                                 </p>
                                             )}
+                                            {!myChallengeEntry && isSelectedGroupMember && (
+                                                <p className="text-[11px] text-text-muted mt-3">
+                                                    Your workouts are not on this board yet. Tap Sync My Workouts to pull them in.
+                                                </p>
+                                            )}
+                                            {isSelectedGroupMember ? (
+                                                <button
+                                                    onClick={() => void handleSyncChallengeProgress()}
+                                                    disabled={syncingChallengeId === selectedGroupChallenge.id}
+                                                    className="mt-3 w-full py-3 rounded-xl gradient-primary text-white text-sm font-semibold disabled:opacity-40"
+                                                >
+                                                    {syncingChallengeId === selectedGroupChallenge.id ? 'Syncing Workouts...' : 'Sync My Workouts'}
+                                                </button>
+                                            ) : (
+                                                <p className="text-xs text-text-secondary mt-3">
+                                                    Join this group to sync your workout count into the leaderboard.
+                                                </p>
+                                            )}
                                         </div>
 
                                         <div className="space-y-2">
@@ -1058,19 +1076,6 @@ export default function CommunityPage() {
                                             )}
                                         </div>
 
-                                        {isSelectedGroupMember ? (
-                                            <button
-                                                onClick={() => void handleSyncChallengeProgress()}
-                                                disabled={syncingChallengeId === selectedGroupChallenge.id}
-                                                className="w-full py-2.5 rounded-xl border border-amber/40 text-amber text-sm font-semibold disabled:opacity-40"
-                                            >
-                                                {syncingChallengeId === selectedGroupChallenge.id ? 'Syncing...' : 'Sync My Progress'}
-                                            </button>
-                                        ) : (
-                                            <p className="text-xs text-text-secondary">
-                                                Join this group to sync your workout count into the leaderboard.
-                                            </p>
-                                        )}
                                     </>
                                 )}
                             </>
