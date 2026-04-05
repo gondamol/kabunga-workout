@@ -546,7 +546,8 @@ export default function CommunityPage() {
             const entry = await syncCommunityGroupChallengeProgress(
                 selectedGroupChallenge,
                 user.uid,
-                profile?.displayName || user.displayName || 'Member'
+                profile?.displayName || user.displayName || 'Member',
+                { existingJoinedAt: myChallengeEntry?.joinedAt }
             );
             setChallengeEntries((current) => sortCommunityGroupChallengeEntries([
                 entry,

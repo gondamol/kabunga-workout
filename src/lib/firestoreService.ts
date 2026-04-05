@@ -757,18 +757,16 @@ export const getCommunityGroupChallengeEntries = async (
 export const syncCommunityGroupChallengeProgress = async (
     challenge: CommunityGroupChallenge,
     userId: string,
-    userName: string
+    userName: string,
+    options?: { existingJoinedAt?: number }
 ): Promise<CommunityGroupChallengeEntry> => {
     const workouts = await getUserWorkouts(userId, challenge.period === 'yearly' ? 520 : 240);
-    const entryId = `${challenge.id}_${userId}`;
-    const existingSnap = await getDoc(doc(db, 'communityGroupChallengeEntries', entryId));
-    const existing = existingSnap.exists() ? existingSnap.data() as CommunityGroupChallengeEntry : null;
     const payload = buildCommunityGroupChallengeEntry({
         challenge,
         userId,
         userName,
         workouts,
-        existingJoinedAt: existing?.joinedAt,
+        existingJoinedAt: options?.existingJoinedAt,
     });
 
     await setDoc(doc(db, 'communityGroupChallengeEntries', payload.id), payload, { merge: true });
