@@ -1,28 +1,75 @@
 import { useEffect, useState, useMemo, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
+import toast from 'react-hot-toast';
 import { useAuthStore } from '../stores/authStore';
 import { useWorkoutStore } from '../stores/workoutStore';
 import { getRecentWorkouts, getActiveChallenges, getMealsByDate, getOneRepMaxes, updateUserProfile } from '../lib/firestoreService';
 import { formatDurationHuman, formatRelativeTime, getTodayKey, getDaysInRange } from '../lib/utils';
-import type { WorkoutSession, Challenge, Meal, OneRepMaxes } from '../lib/types';
+import { enqueueAction } from '../lib/offlineQueue';
+import { calculateReadinessScore, getAthleteReadiness, getHealthCheck, saveHealthCheck } from '../lib/healthCheckService';
+import type { WorkoutSession, Challenge, Meal, OneRepMaxes, HealthCheck, ReadinessScore, ReadinessStatus } from '../lib/types';
 import { BarChart, Bar, XAxis, YAxis, ResponsiveContainer, Tooltip, Cell } from 'recharts';
 import { Dumbbell, Flame, Clock, TrendingUp, ChevronRight, Zap, Trophy, Plus, BarChart3, TimerReset } from 'lucide-react';
 import dayjs from 'dayjs';
 import { getOneRepMaxPromptStatus, getOneRepMaxSnoozeUntil } from '../lib/oneRepMaxes';
 import { formatProgressionInsightTarget, getDashboardProgressionInsight } from '../lib/progressionInsights';
 import { getWorkoutHeadline } from '../lib/workoutSummary';
+import HealthCheckForm from '../components/HealthCheckForm';
+
+const getReadinessTone = (status: ReadinessStatus): {
+    badge: string;
+    border: string;
+    surface: string;
+    label: string;
+} => {
+    if (status === 'excellent') {
+        return {
+            badge: 'bg-green/15 text-green',
+            border: 'border-green/20',
+            surface: 'from-green/12 via-bg-card to-bg-surface',
+            label: 'Ready',
+        };
+    }
+    if (status === 'good') {
+        return {
+            badge: 'bg-cyan/15 text-cyan',
+            border: 'border-cyan/20',
+            surface: 'from-cyan/12 via-bg-card to-bg-surface',
+            label: 'Solid',
+        };
+    }
+    if (status === 'moderate') {
+        return {
+            badge: 'bg-amber/15 text-amber',
+            border: 'border-amber/20',
+            surface: 'from-amber/12 via-bg-card to-bg-surface',
+            label: 'Caution',
+        };
+    }
+    return {
+        badge: 'bg-red/15 text-red',
+        border: 'border-red/20',
+        surface: 'from-red/12 via-bg-card to-bg-surface',
+        label: 'Recovery',
+    };
+};
 
 export default function DashboardPage() {
     const { user, profile } = useAuthStore();
     const { activeSession } = useWorkoutStore();
     const navigate = useNavigate();
+    const todayKey = getTodayKey();
 
     const [workouts, setWorkouts] = useState<WorkoutSession[]>([]);
     const [challenges, setChallenges] = useState<Challenge[]>([]);
     const [todayMeals, setTodayMeals] = useState<Meal[]>([]);
     const [oneRepMaxes, setOneRepMaxes] = useState<OneRepMaxes | null>(null);
+    const [todayHealthCheck, setTodayHealthCheck] = useState<HealthCheck | null>(null);
+    const [todayReadiness, setTodayReadiness] = useState<ReadinessScore | null>(null);
+    const [showHealthForm, setShowHealthForm] = useState(false);
     const [loadingWorkouts, setLoadingWorkouts] = useState(true);
     const [savingPromptState, setSavingPromptState] = useState(false);
+    const [savingHealthCheck, setSavingHealthCheck] = useState(false);
     const chartContainerRef = useRef<HTMLDivElement>(null);
     const [isChartReady, setIsChartReady] = useState(false);
 
@@ -30,16 +77,21 @@ export default function DashboardPage() {
         if (!user) return;
         const load = async () => {
             try {
-                const [w, c, m, maxes] = await Promise.all([
+                const [w, c, m, maxes, healthCheck, readiness] = await Promise.all([
                     getRecentWorkouts(user.uid, 120),
                     getActiveChallenges(user.uid),
-                    getMealsByDate(user.uid, getTodayKey()),
+                    getMealsByDate(user.uid, todayKey),
                     getOneRepMaxes(user.uid),
+                    getHealthCheck(user.uid, todayKey),
+                    getAthleteReadiness(user.uid, todayKey),
                 ]);
                 setWorkouts(w);
                 setChallenges(c);
                 setTodayMeals(m);
                 setOneRepMaxes(maxes);
+                setTodayHealthCheck(healthCheck);
+                setTodayReadiness(readiness);
+                setShowHealthForm(!healthCheck);
             } catch (err) {
                 console.warn('Failed to load dashboard data:', err);
             } finally {
@@ -47,7 +99,7 @@ export default function DashboardPage() {
             }
         };
         void load();
-    }, [user]);
+    }, [todayKey, user]);
 
     useEffect(() => {
         const el = chartContainerRef.current;
@@ -204,6 +256,55 @@ export default function DashboardPage() {
         };
     }, [workouts]);
 
+    const readinessTone = useMemo(
+        () => (todayReadiness ? getReadinessTone(todayReadiness.status) : null),
+        [todayReadiness]
+    );
+
+    const handleSaveHealthCheck = async (check: HealthCheck) => {
+        if (!user) return;
+
+        const now = Date.now();
+        const payload: HealthCheck = {
+            ...check,
+            athleteId: user.uid,
+            date: todayKey,
+            createdAt: todayHealthCheck?.createdAt ?? check.createdAt ?? now,
+            updatedAt: now,
+        };
+        const readiness = calculateReadinessScore({
+            athleteId: payload.athleteId,
+            date: payload.date,
+            sleepQuality: payload.sleepQuality,
+            soreness: payload.soreness,
+            mood: payload.mood,
+            painNotes: payload.painNotes,
+            updatedAt: payload.updatedAt,
+        });
+
+        setSavingHealthCheck(true);
+        try {
+            await saveHealthCheck(payload);
+            setTodayHealthCheck(payload);
+            setTodayReadiness(readiness);
+            setShowHealthForm(false);
+            toast.success('Readiness check saved');
+        } catch (error) {
+            setTodayHealthCheck(payload);
+            setTodayReadiness(readiness);
+            setShowHealthForm(false);
+            await enqueueAction({
+                type: 'healthCheck',
+                action: todayHealthCheck ? 'update' : 'create',
+                data: payload,
+            });
+            toast('Saved offline - will sync when online', { icon: '📴' });
+            console.warn('Failed to save readiness check:', error);
+        } finally {
+            setSavingHealthCheck(false);
+        }
+    };
+
     const chartData = useMemo(() => {
         const days = getDaysInRange(7);
         return days.map((day) => {
@@ -244,6 +345,54 @@ export default function DashboardPage() {
                     </div>
                     <ChevronRight size={20} className="text-text-muted" />
                 </button>
+            )}
+
+            {(showHealthForm || !todayHealthCheck || !todayReadiness) ? (
+                <HealthCheckForm
+                    athleteId={user?.uid || ''}
+                    date={todayKey}
+                    initialValue={todayHealthCheck}
+                    saving={savingHealthCheck}
+                    onComplete={handleSaveHealthCheck}
+                    onCancel={todayHealthCheck ? () => setShowHealthForm(false) : undefined}
+                />
+            ) : (
+                todayReadiness && readinessTone && (
+                    <div className={`rounded-3xl border bg-gradient-to-br ${readinessTone.surface} ${readinessTone.border} p-5 animate-fade-in`}>
+                        <div className="flex items-start justify-between gap-3">
+                            <div>
+                                <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-text-muted">Daily Readiness</p>
+                                <h2 className="text-lg font-bold mt-1">Score {todayReadiness.score}/10</h2>
+                                <p className="text-sm text-text-secondary mt-2">
+                                    {todayReadiness.warnings.length > 0
+                                        ? todayReadiness.warnings.join(' • ')
+                                        : 'No recovery flags reported today.'}
+                                </p>
+                            </div>
+                            <div className={`rounded-2xl px-3 py-2 text-sm font-semibold ${readinessTone.badge}`}>
+                                {readinessTone.label}
+                            </div>
+                        </div>
+                        <div className="mt-4 flex flex-wrap gap-2">
+                            {todayReadiness.recommendations.slice(0, 2).map((recommendation) => (
+                                <span
+                                    key={recommendation}
+                                    className="rounded-full border border-border bg-bg-surface px-3 py-1 text-[11px] text-text-secondary"
+                                >
+                                    {recommendation}
+                                </span>
+                            ))}
+                        </div>
+                        <div className="mt-4">
+                            <button
+                                onClick={() => setShowHealthForm(true)}
+                                className="w-full py-3 rounded-2xl border border-border text-sm font-semibold text-text-primary"
+                            >
+                                Edit Check-In
+                            </button>
+                        </div>
+                    </div>
+                )
             )}
 
             {/* Start Workout CTA */}

@@ -33,10 +33,13 @@ import {
     unlinkAthleteCoach,
     updateCoachPlan,
 } from '../lib/firestoreService';
+import { getAthleteReadiness, getWeeklyReadinessTrend } from '../lib/healthCheckService';
 import type {
     CoachAthleteLink,
     CoachPlanExercise,
     CoachWorkoutPlan,
+    ReadinessScore,
+    ReadinessTrendPoint,
     UserRole,
     WorkoutSession,
 } from '../lib/types';
@@ -121,6 +124,19 @@ const getPlanStatusMeta = (plan: CoachWorkoutPlan, todayKey: string): { label: s
     return { label: 'Scheduled', className: 'text-text-muted' };
 };
 
+const getReadinessMeta = (status: ReadinessScore['status']): { pill: string; card: string; label: string } => {
+    if (status === 'excellent') {
+        return { pill: 'bg-green/15 text-green', card: 'border-green/20', label: 'Ready' };
+    }
+    if (status === 'good') {
+        return { pill: 'bg-cyan/15 text-cyan', card: 'border-cyan/20', label: 'Solid' };
+    }
+    if (status === 'moderate') {
+        return { pill: 'bg-amber/15 text-amber', card: 'border-amber/20', label: 'Watch' };
+    }
+    return { pill: 'bg-red/15 text-red', card: 'border-red/20', label: 'Recovery' };
+};
+
 export default function CoachHubPage() {
     const navigate = useNavigate();
     const { user, profile } = useAuthStore();
@@ -141,6 +157,8 @@ export default function CoachHubPage() {
     const [selectedAthleteId, setSelectedAthleteId] = useState('');
     const [coachPlans, setCoachPlans] = useState<CoachWorkoutPlan[]>([]);
     const [athleteWorkouts, setAthleteWorkouts] = useState<WorkoutSession[]>([]);
+    const [athleteReadiness, setAthleteReadiness] = useState<ReadinessScore | null>(null);
+    const [athleteReadinessTrend, setAthleteReadinessTrend] = useState<ReadinessTrendPoint[]>([]);
     const [loadingCoachData, setLoadingCoachData] = useState(false);
 
     const [savingPlan, setSavingPlan] = useState(false);
@@ -191,6 +209,7 @@ export default function CoachHubPage() {
     const editingPlan = useMemo(() => (
         editingPlanId ? coachPlans.find((plan) => plan.id === editingPlanId) ?? null : null
     ), [coachPlans, editingPlanId]);
+    const athleteReadinessMeta = athleteReadiness ? getReadinessMeta(athleteReadiness.status) : null;
 
     const planCalendarDays = useMemo(() => {
         return Array.from({ length: 21 }, (_, index) => {
@@ -227,6 +246,8 @@ export default function CoachHubPage() {
                 setSelectedAthleteId('');
                 setCoachPlans([]);
                 setAthleteWorkouts([]);
+                setAthleteReadiness(null);
+                setAthleteReadinessTrend([]);
                 return;
             }
             setSelectedAthleteId((current) => (
@@ -246,16 +267,22 @@ export default function CoachHubPage() {
         if (!athleteId) {
             setCoachPlans([]);
             setAthleteWorkouts([]);
+            setAthleteReadiness(null);
+            setAthleteReadinessTrend([]);
             return;
         }
         if (!silent) setLoadingCoachData(true);
         try {
-            const [plans, workouts] = await Promise.all([
+            const [plans, workouts, readiness, readinessTrend] = await Promise.all([
                 getCoachPlansByCoach(coachId, athleteId),
                 getCoachVisibleWorkouts(coachId, athleteId, 30),
+                getAthleteReadiness(athleteId, todayKey),
+                getWeeklyReadinessTrend(athleteId, dayjs(todayKey).subtract(6, 'day').format('YYYY-MM-DD')),
             ]);
             setCoachPlans(plans);
             setAthleteWorkouts(workouts);
+            setAthleteReadiness(readiness);
+            setAthleteReadinessTrend(readinessTrend);
         } catch (error) {
             console.warn('Could not load athlete details:', error);
             toast.error('Failed to load athlete details');
@@ -278,6 +305,8 @@ export default function CoachHubPage() {
         if (!selectedAthleteId) {
             setCoachPlans([]);
             setAthleteWorkouts([]);
+            setAthleteReadiness(null);
+            setAthleteReadinessTrend([]);
             return;
         }
         void loadCoachAthleteDetails(user.uid, selectedAthleteId);
@@ -887,6 +916,82 @@ export default function CoachHubPage() {
 
                     {selectedAthlete && (
                         <>
+                            <div className={`glass rounded-2xl p-4 space-y-3 ${athleteReadinessMeta ? `border ${athleteReadinessMeta.card}` : ''}`}>
+                                <div className="flex items-center justify-between gap-3">
+                                    <div>
+                                        <h3 className="text-sm font-semibold flex items-center gap-2">
+                                            <Activity size={16} className="text-accent" />
+                                            Athlete Readiness
+                                        </h3>
+                                        <p className="text-xs text-text-muted mt-1">
+                                            Coach-safe recovery summary for {selectedAthlete.athleteName}.
+                                        </p>
+                                    </div>
+                                    {athleteReadinessMeta && athleteReadiness && (
+                                        <span className={`rounded-full px-3 py-1 text-xs font-semibold ${athleteReadinessMeta.pill}`}>
+                                            {athleteReadinessMeta.label} • {athleteReadiness.score}/10
+                                        </span>
+                                    )}
+                                </div>
+
+                                {athleteReadiness ? (
+                                    <>
+                                        <div className="rounded-xl bg-bg-card p-3">
+                                            <p className="text-xs text-text-muted">Today</p>
+                                            <p className="text-sm text-text-secondary mt-1">
+                                                {athleteReadiness.warnings.length > 0
+                                                    ? athleteReadiness.warnings.join(' • ')
+                                                    : 'No recovery flags reported today.'}
+                                            </p>
+                                            <div className="mt-2 flex flex-wrap gap-2">
+                                                {athleteReadiness.recommendations.slice(0, 2).map((recommendation) => (
+                                                    <span
+                                                        key={recommendation}
+                                                        className="rounded-full border border-border bg-bg-surface px-3 py-1 text-[11px] text-text-secondary"
+                                                    >
+                                                        {recommendation}
+                                                    </span>
+                                                ))}
+                                            </div>
+                                        </div>
+
+                                        <div className="space-y-2">
+                                            <div className="flex items-center justify-between">
+                                                <p className="text-xs font-semibold text-text-secondary">Last 7 Days</p>
+                                                <p className="text-[11px] text-text-muted">Missing days stay blank</p>
+                                            </div>
+                                            <div className="grid grid-cols-7 gap-2">
+                                                {athleteReadinessTrend.map((point) => {
+                                                    const toneClass = point.status === 'excellent'
+                                                        ? 'border-green/30 bg-green/10 text-green'
+                                                        : point.status === 'good'
+                                                            ? 'border-cyan/30 bg-cyan/10 text-cyan'
+                                                            : point.status === 'moderate'
+                                                                ? 'border-amber/30 bg-amber/10 text-amber'
+                                                                : point.status === 'poor'
+                                                                    ? 'border-red/30 bg-red/10 text-red'
+                                                                    : 'border-border bg-bg-card text-text-muted';
+
+                                                    return (
+                                                        <div
+                                                            key={point.date}
+                                                            className={`rounded-xl border px-2 py-3 text-center ${toneClass}`}
+                                                        >
+                                                            <p className="text-[10px] font-semibold uppercase">{dayjs(point.date).format('dd')}</p>
+                                                            <p className="text-sm font-bold mt-1">{point.score ?? '—'}</p>
+                                                        </div>
+                                                    );
+                                                })}
+                                            </div>
+                                        </div>
+                                    </>
+                                ) : (
+                                    <div className="rounded-xl bg-bg-card p-3 text-sm text-text-secondary">
+                                        No health check submitted for today yet.
+                                    </div>
+                                )}
+                            </div>
+
                             <div className="glass rounded-2xl p-4 space-y-3">
                                 <div>
                                     <h3 className="text-sm font-semibold">

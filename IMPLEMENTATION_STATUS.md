@@ -14,12 +14,18 @@
 - [x] Tighten mobile UX for exercise picker and exercise detail sheets
 - [x] Verify live `Exercises by API-Ninjas` search responses against RapidAPI
 - [x] Add a neutral local `server.env` path for the exercise proxy
+- [x] Stabilize Feature 1.1 exercise library coverage and validator thresholds
+- [x] Add daily athlete readiness check-in on Dashboard
+- [x] Add coach-safe readiness summary and 7-day trend in Coach Hub
+- [x] Add `athleteHealthFlags` Firestore storage and privacy rules
 
 ## Needs Setup
 - [x] Deploy the app to Vercel with `API_NINJAS_API_KEY` configured
 - [x] Runtime verification of the deployed Vercel `/api/exercises/*` routes
+- [x] Deploy updated Firestore rules for readiness summaries
 
 ## Still Pending
+- [ ] Repeat Last Workout fast-lane flow
 - [ ] Group challenges / leaderboards in Community
 - [ ] Nutrition and recovery recommendations tied to training readiness
 - [ ] Moderator / reporting tools for community spaces

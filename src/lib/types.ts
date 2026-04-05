@@ -115,6 +115,39 @@ export interface FitnessDailyLog {
     completedAt: number;
 }
 
+// ─── Health / Readiness ───
+export type HealthMood = 'energetic' | 'normal' | 'tired';
+export type ReadinessStatus = 'excellent' | 'good' | 'moderate' | 'poor';
+
+export interface HealthCheck {
+    athleteId: string;
+    date: string; // YYYY-MM-DD
+    sleepQuality: 1 | 2 | 3 | 4 | 5;
+    soreness: 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10;
+    mood: HealthMood;
+    bodyWeightKg?: number;
+    bodyFatPercent?: number;
+    painNotes?: string | null;
+    createdAt: number;
+    updatedAt: number;
+}
+
+export interface ReadinessScore {
+    athleteId: string;
+    date: string;
+    score: number;
+    status: ReadinessStatus;
+    warnings: string[];
+    recommendations: string[];
+    updatedAt: number;
+}
+
+export interface ReadinessTrendPoint {
+    date: string;
+    score: number | null;
+    status: ReadinessStatus | null;
+}
+
 // ─── Workout ───
 export type IronSetType = 'warmup' | 'working' | 'heavy' | 'backoff' | 'accessories';
 
@@ -314,7 +347,7 @@ export interface DashboardStats {
 // ─── Offline Queue ───
 export interface QueuedAction {
     id: string;
-    type: 'workout' | 'meal' | 'challenge' | 'oneRepMaxes' | 'fitnessDaily';
+    type: 'workout' | 'meal' | 'challenge' | 'oneRepMaxes' | 'fitnessDaily' | 'healthCheck';
     action: 'create' | 'update' | 'delete';
     data: any;
     timestamp: number;

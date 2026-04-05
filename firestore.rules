@@ -172,6 +172,17 @@ service cloud.firestore {
       allow read, write: if isOwner(userId);
     }
 
+    // ─── Athlete Health Flags ───
+    match /athleteHealthFlags/{athleteId}/checks/{date} {
+      allow read, write: if isOwner(athleteId);
+    }
+
+    match /athleteHealthFlags/{athleteId}/summaries/{date} {
+      allow read: if isOwner(athleteId) || isLinkedCoach(athleteId);
+      allow create, update: if isOwner(athleteId);
+      allow delete: if false;
+    }
+
     // Deny all other access
     match /{document=**} {
       allow read, write: if false;

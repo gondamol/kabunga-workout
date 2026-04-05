@@ -6,6 +6,9 @@ import {
     saveOneRepMaxes,
     saveWorkout,
 } from './firestoreService';
+import { saveHealthCheck } from './healthCheckService';
+import type { HealthCheck } from './types';
+import { runQueuedAction } from './offlineQueueRunner';
 
 const DB_NAME = 'kabunga-offline';
 const STORE_NAME = 'queue';
@@ -63,29 +66,31 @@ const removeAction = async (id: string): Promise<void> => {
     });
 };
 
+type QueueActionHandlers = {
+    saveWorkout: typeof saveWorkout;
+    saveMeal: typeof saveMeal;
+    saveChallenge: typeof saveChallenge;
+    saveOneRepMaxes: typeof saveOneRepMaxes;
+    saveFitnessDailyLog: typeof saveFitnessDailyLog;
+    saveHealthCheck: (check: HealthCheck) => Promise<void>;
+};
+
+const defaultQueueHandlers: QueueActionHandlers = {
+    saveWorkout,
+    saveMeal,
+    saveChallenge,
+    saveOneRepMaxes,
+    saveFitnessDailyLog,
+    saveHealthCheck,
+};
+
 export const processQueue = async (): Promise<number> => {
     const actions = await getQueuedActions();
     let processed = 0;
 
     for (const action of actions) {
         try {
-            switch (action.type) {
-                case 'workout':
-                    await saveWorkout(action.data);
-                    break;
-                case 'meal':
-                    await saveMeal(action.data);
-                    break;
-                case 'challenge':
-                    await saveChallenge(action.data);
-                    break;
-                case 'oneRepMaxes':
-                    await saveOneRepMaxes(action.data.uid, action.data.maxes);
-                    break;
-                case 'fitnessDaily':
-                    await saveFitnessDailyLog(action.data.uid, action.data.date, action.data.log);
-                    break;
-            }
+            await runQueuedAction(action, defaultQueueHandlers);
             await removeAction(action.id);
             processed++;
         } catch (err) {

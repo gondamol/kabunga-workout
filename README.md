@@ -14,7 +14,9 @@ Kabunga is a **Progressive Web App (PWA)** that acts as your real-time workout g
 - **Rest timer**: Counts down between sets so you don't have to guess when to go again
 - **Full history**: Every session is saved so you can look back at what you've done
 - **Works offline**: You can use it at the gym even without a signal
+- **Daily readiness check-in**: Athletes can log sleep, soreness, mood, and optional body metrics before training
 - **Coach Hub**: Coaches can assign plans remotely and athletes can load them directly into Workout Planner
+- **Coach-safe readiness view**: Linked coaches can see readiness summaries and a 7-day trend without seeing private body metrics
 - **Community**: Group spaces for accountability chats and coach-led circles
 - **Exercise search + demos**: Workout builder now supports enriched exercise search with GIF previews and fallback to Kabunga's local library
 - **Evidence-based method**: In-app Training Science page links core peer-reviewed studies behind programming choices
@@ -37,6 +39,9 @@ Kabunga is a **Progressive Web App (PWA)** that acts as your real-time workout g
 
 ### Notes
 - `Weight = 0` means bodyweight.
+- Dashboard now includes an optional daily readiness check-in before training.
+- Optional body weight and body fat fields stay athlete-only.
+- Coaches only see derived readiness summaries, not raw body metrics or raw pain notes.
 - Athletes can adjust targets before pressing **Start Workout**.
 - As the athlete trains, coach view refreshes and shows live plan progress (sets completed).
 - Coaches can plan faster with:
@@ -72,10 +77,11 @@ Coach Hub uses Firestore collections:
 - `coachCodes`
 - `coachAthletes`
 - `coachPlans`
+- `athleteHealthFlags`
 - `communityGroups`
 - `communityMessages`
 
-After pulling new code, deploy Firestore rules so role switching and coach linking can work:
+After pulling new code, deploy Firestore rules so coach linking and readiness privacy rules can work:
 
 ```bash
 npx firebase-tools deploy --only firestore:rules --project kabunga-workout-7e5aa

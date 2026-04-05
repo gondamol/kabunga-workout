@@ -12,7 +12,7 @@ import {
   getTotalExerciseCount,
   getExerciseCountsByCategory,
   getExerciseCountsByWorkoutType,
-} from '../lib/exerciseLibraryService';
+} from '../src/lib/exerciseLibraryService.ts';
 
 export function validateExerciseLibrary(): { passed: number; failed: number; errors: string[] } {
   const errors: string[] = [];
@@ -185,8 +185,7 @@ export function validateExerciseLibrary(): { passed: number; failed: number; err
   return { passed, failed, errors };
 }
 
-// Run validation when imported
-if (typeof window !== 'undefined') {
+const reportValidationResult = () => {
   const result = validateExerciseLibrary();
   console.log(
     `Exercise Library Validation: ${result.passed} passed, ${result.failed} failed`
@@ -197,4 +196,14 @@ if (typeof window !== 'undefined') {
   } else {
     console.log('✓ All validations passed!');
   }
+  return result;
+};
+
+if (typeof window !== 'undefined') {
+  reportValidationResult();
+}
+
+if (typeof process !== 'undefined' && typeof window === 'undefined') {
+  const result = reportValidationResult();
+  if (result.failed > 0) process.exitCode = 1;
 }
