@@ -162,6 +162,33 @@ service cloud.firestore {
       allow update, delete: if isSignedIn() && resource.data.userId == request.auth.uid;
     }
 
+    // ─── Community moderation reports ───
+    match /communityReports/{reportId} {
+      allow read: if isSignedIn()
+        && (resource.data.reporterId == request.auth.uid || resource.data.ownerId == request.auth.uid);
+      allow create: if isSignedIn()
+        && request.resource.data.reporterId == request.auth.uid
+        && request.resource.data.status == 'open'
+        && request.resource.data.groupId is string
+        && request.resource.data.ownerId is string
+        && canAccessCommunityGroup(request.resource.data.groupId)
+        && exists(/databases/$(database)/documents/communityGroups/$(request.resource.data.groupId))
+        && get(/databases/$(database)/documents/communityGroups/$(request.resource.data.groupId)).data.ownerId == request.resource.data.ownerId;
+      allow update: if isSignedIn()
+        && resource.data.ownerId == request.auth.uid
+        && request.resource.data.reporterId == resource.data.reporterId
+        && request.resource.data.reporterName == resource.data.reporterName
+        && request.resource.data.groupId == resource.data.groupId
+        && request.resource.data.ownerId == resource.data.ownerId
+        && request.resource.data.targetType == resource.data.targetType
+        && request.resource.data.targetId == resource.data.targetId
+        && request.resource.data.targetPreview == resource.data.targetPreview
+        && request.resource.data.reason == resource.data.reason
+        && request.resource.data.details == resource.data.details
+        && request.resource.data.createdAt == resource.data.createdAt;
+      allow delete: if false;
+    }
+
     // ─── Iron Protocol 1RMs ───
     match /oneRepMaxes/{userId} {
       allow read, write: if isOwner(userId);

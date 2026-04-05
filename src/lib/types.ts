@@ -311,6 +311,26 @@ export interface CommunityMessage {
     updatedAt: number;
 }
 
+export type CommunityReportTargetType = 'group' | 'message';
+export type CommunityReportReason = 'spam' | 'harassment' | 'unsafe' | 'other';
+export type CommunityReportStatus = 'open' | 'reviewed' | 'resolved';
+
+export interface CommunityReport {
+    id: string;
+    groupId: string;
+    ownerId: string;
+    reporterId: string;
+    reporterName: string;
+    targetType: CommunityReportTargetType;
+    targetId: string;
+    targetPreview: string;
+    reason: CommunityReportReason;
+    details?: string | null;
+    status: CommunityReportStatus;
+    createdAt: number;
+    updatedAt: number;
+}
+
 // ─── Nutrition ───
 export interface Meal {
     id: string;

@@ -28,4 +28,4 @@
 - [x] Repeat Last Workout fast-lane flow
 - [x] Nutrition and recovery recommendations tied to training readiness
 - [ ] Group challenges / leaderboards in Community
-- [ ] Moderator / reporting tools for community spaces
+- [x] Moderator / reporting tools for community spaces

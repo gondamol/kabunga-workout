@@ -12,6 +12,8 @@ import type {
     CommunityGroupKind,
     CommunityInvite,
     CommunityMessage,
+    CommunityReport,
+    CommunityReportStatus,
     ExerciseHistory,
     FitnessDailyLog,
     Meal,
@@ -702,6 +704,43 @@ export const getCommunityMessages = async (
     return snap.docs
         .map((d) => d.data() as CommunityMessage)
         .sort((a, b) => a.createdAt - b.createdAt);
+};
+
+export const saveCommunityReport = async (report: CommunityReport): Promise<void> => {
+    await setDoc(doc(db, 'communityReports', report.id), report);
+};
+
+export const getCommunityReports = async (
+    groupId: string,
+    ownerId: string,
+    maxResults = 80
+): Promise<CommunityReport[]> => {
+    const q = query(
+        collection(db, 'communityReports'),
+        where('groupId', '==', groupId),
+        where('ownerId', '==', ownerId),
+        limit(maxResults)
+    );
+    const snap = await getDocs(q);
+    return snap.docs
+        .map((d) => d.data() as CommunityReport)
+        .sort((a, b) => {
+            if (a.status !== b.status) {
+                const weight = { open: 0, reviewed: 1, resolved: 2 };
+                return weight[a.status] - weight[b.status];
+            }
+            return b.createdAt - a.createdAt;
+        });
+};
+
+export const updateCommunityReportStatus = async (
+    reportId: string,
+    status: CommunityReportStatus
+): Promise<void> => {
+    await updateDoc(doc(db, 'communityReports', reportId), {
+        status,
+        updatedAt: Date.now(),
+    });
 };
 
 // ─── One Rep Maxes ───

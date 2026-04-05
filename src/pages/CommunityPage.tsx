@@ -16,6 +16,7 @@ import {
     createCommunityGroup,
     getCoachAthletes,
     getCommunityMessages,
+    getCommunityReports,
     getMyCommunityGroups,
     getPublicCommunityGroups,
     joinCommunityGroupByInviteCode,
@@ -23,13 +24,26 @@ import {
     leaveCommunityGroup,
     regenerateCommunityGroupInviteCode,
     saveCommunityMessage,
+    saveCommunityReport,
+    updateCommunityReportStatus,
 } from '../lib/firestoreService';
 import type {
     CoachAthleteLink,
     CommunityGroup,
     CommunityGroupKind,
     CommunityMessage,
+    CommunityReport,
+    CommunityReportReason,
+    CommunityReportStatus,
+    CommunityReportTargetType,
 } from '../lib/types';
+import {
+    COMMUNITY_REPORT_REASONS,
+    buildCommunityReport,
+    countOpenCommunityReports,
+    getCommunityReportReasonLabel,
+    sortCommunityReports,
+} from '../lib/communityModeration';
 import { copyToClipboard } from '../lib/utils';
 
 const createId = (): string => `${Math.random().toString(36).slice(2, 10)}${Date.now().toString(36)}`;
@@ -63,13 +77,24 @@ export default function CommunityPage() {
 
     const [selectedGroupId, setSelectedGroupId] = useState<string>('');
     const [messages, setMessages] = useState<CommunityMessage[]>([]);
+    const [communityReports, setCommunityReports] = useState<CommunityReport[]>([]);
     const [messageText, setMessageText] = useState('');
     const [loadingGroups, setLoadingGroups] = useState(false);
     const [loadingMessages, setLoadingMessages] = useState(false);
+    const [loadingReports, setLoadingReports] = useState(false);
     const [sending, setSending] = useState(false);
     const [groupsError, setGroupsError] = useState('');
     const [inviteCodeInput, setInviteCodeInput] = useState('');
     const [joiningByInviteCode, setJoiningByInviteCode] = useState(false);
+    const [selectedReportTarget, setSelectedReportTarget] = useState<{
+        targetType: CommunityReportTargetType;
+        targetId: string;
+        targetPreview: string;
+    } | null>(null);
+    const [reportReason, setReportReason] = useState<CommunityReportReason>('spam');
+    const [reportDetails, setReportDetails] = useState('');
+    const [submittingReport, setSubmittingReport] = useState(false);
+    const [updatingReportId, setUpdatingReportId] = useState('');
 
     const [groupName, setGroupName] = useState('');
     const [groupDescription, setGroupDescription] = useState('');
@@ -103,6 +128,10 @@ export default function CommunityPage() {
         const myIds = new Set(myGroups.map((group) => group.id));
         return publicGroups.filter((group) => !myIds.has(group.id));
     }, [myGroups, publicGroups]);
+    const openReportCount = useMemo(
+        () => countOpenCommunityReports(communityReports),
+        [communityReports]
+    );
 
     const loadGroups = async () => {
         if (!user) return;
@@ -177,6 +206,19 @@ export default function CommunityPage() {
         }
     };
 
+    const loadReports = async (groupId: string, ownerId: string) => {
+        setLoadingReports(true);
+        try {
+            const reports = await getCommunityReports(groupId, ownerId, 60);
+            setCommunityReports(sortCommunityReports(reports));
+        } catch (error) {
+            console.warn('Failed to load community reports:', error);
+            toast.error(getFriendlyError('Could not load moderation reports', error), { id: 'community-reports-load' });
+        } finally {
+            setLoadingReports(false);
+        }
+    };
+
     useEffect(() => {
         if (!user?.uid) return;
         void loadGroups();
@@ -193,6 +235,20 @@ export default function CommunityPage() {
             void loadMessages(selectedGroupId);
         }, 9000);
         return () => window.clearInterval(interval);
+    }, [selectedGroupId]);
+
+    useEffect(() => {
+        if (!selectedGroup || !user || !isSelectedGroupOwner) {
+            setCommunityReports([]);
+            return;
+        }
+        void loadReports(selectedGroup.id, user.uid);
+    }, [selectedGroup, isSelectedGroupOwner, user]);
+
+    useEffect(() => {
+        setSelectedReportTarget(null);
+        setReportReason('spam');
+        setReportDetails('');
     }, [selectedGroupId]);
 
     useEffect(() => {
@@ -357,6 +413,77 @@ export default function CommunityPage() {
         }
     };
 
+    const openReportComposer = (
+        targetType: CommunityReportTargetType,
+        targetId: string,
+        targetPreview: string
+    ) => {
+        setSelectedReportTarget({
+            targetType,
+            targetId,
+            targetPreview,
+        });
+        setReportReason('spam');
+        setReportDetails('');
+    };
+
+    const closeReportComposer = () => {
+        setSelectedReportTarget(null);
+        setReportReason('spam');
+        setReportDetails('');
+    };
+
+    const handleSubmitReport = async () => {
+        if (!user || !selectedGroup || !selectedReportTarget) return;
+
+        const payload = buildCommunityReport({
+            id: createId(),
+            groupId: selectedGroup.id,
+            ownerId: selectedGroup.ownerId,
+            reporterId: user.uid,
+            reporterName: profile?.displayName || user.displayName || 'Member',
+            targetType: selectedReportTarget.targetType,
+            targetId: selectedReportTarget.targetId,
+            targetPreview: selectedReportTarget.targetPreview,
+            reason: reportReason,
+            details: reportDetails,
+        });
+
+        setSubmittingReport(true);
+        try {
+            await saveCommunityReport(payload);
+            toast.success('Report sent to the group moderator');
+            closeReportComposer();
+        } catch (error) {
+            console.warn('Submit report failed:', error);
+            toast.error(getFriendlyError('Could not submit report', error));
+        } finally {
+            setSubmittingReport(false);
+        }
+    };
+
+    const handleUpdateReportStatus = async (
+        reportId: string,
+        status: CommunityReportStatus
+    ) => {
+        if (!isSelectedGroupOwner) return;
+        setUpdatingReportId(reportId);
+        try {
+            await updateCommunityReportStatus(reportId, status);
+            setCommunityReports((current) => sortCommunityReports(current.map((report) => (
+                report.id === reportId
+                    ? { ...report, status, updatedAt: Date.now() }
+                    : report
+            ))));
+            toast.success(status === 'resolved' ? 'Report resolved' : 'Report marked reviewed');
+        } catch (error) {
+            console.warn('Update report status failed:', error);
+            toast.error(getFriendlyError('Could not update report status', error));
+        } finally {
+            setUpdatingReportId('');
+        }
+    };
+
     const handleSendMessage = async () => {
         if (!user || !selectedGroup) return;
         const text = messageText.trim();
@@ -511,14 +638,28 @@ export default function CommunityPage() {
                                 {selectedGroup.isPublic ? 'Public group' : 'Private group'}
                             </p>
                         </div>
-                        {user && selectedGroup.ownerId !== user.uid && selectedGroup.memberIds.includes(user.uid) && (
-                            <button
-                                onClick={() => void handleLeaveGroup(selectedGroup)}
-                                className="text-xs text-red"
-                            >
-                                Leave
-                            </button>
-                        )}
+                        <div className="flex items-center gap-3">
+                            {user && selectedGroup.ownerId !== user.uid && (
+                                <button
+                                    onClick={() => openReportComposer(
+                                        'group',
+                                        selectedGroup.id,
+                                        `${selectedGroup.name} ${selectedGroup.description}`.trim()
+                                    )}
+                                    className="text-xs text-amber"
+                                >
+                                    Report
+                                </button>
+                            )}
+                            {user && selectedGroup.ownerId !== user.uid && selectedGroup.memberIds.includes(user.uid) && (
+                                <button
+                                    onClick={() => void handleLeaveGroup(selectedGroup)}
+                                    className="text-xs text-red"
+                                >
+                                    Leave
+                                </button>
+                            )}
+                        </div>
                     </div>
 
                     {isSelectedGroupOwner && (
@@ -581,6 +722,129 @@ export default function CommunityPage() {
                         </div>
                     )}
 
+                    {isSelectedGroupOwner && (
+                        <div className="rounded-xl border border-border bg-bg-card p-3 space-y-3">
+                            <div className="flex items-center justify-between gap-3">
+                                <div>
+                                    <p className="text-xs font-semibold text-text-secondary">Moderation Inbox</p>
+                                    <p className="text-[11px] text-text-muted mt-1">
+                                        {openReportCount} open report{openReportCount === 1 ? '' : 's'}
+                                    </p>
+                                </div>
+                                {loadingReports && <span className="text-[11px] text-text-muted">Refreshing...</span>}
+                            </div>
+
+                            {communityReports.length === 0 ? (
+                                <p className="text-xs text-text-secondary">No reports yet. This group is clean so far.</p>
+                            ) : (
+                                <div className="space-y-2">
+                                    {communityReports.slice(0, 6).map((report) => (
+                                        <div key={report.id} className="rounded-xl border border-border bg-bg-surface p-3 space-y-2">
+                                            <div className="flex items-start justify-between gap-3">
+                                                <div>
+                                                    <p className="text-sm font-semibold">
+                                                        {report.targetType === 'group' ? 'Group report' : 'Message report'}
+                                                    </p>
+                                                    <p className="text-[11px] text-text-muted mt-1">
+                                                        {report.reporterName} • {getCommunityReportReasonLabel(report.reason)} • {dayjs(report.createdAt).format('MMM D, h:mm A')}
+                                                    </p>
+                                                </div>
+                                                <span className={`rounded-full px-2 py-1 text-[10px] font-semibold ${
+                                                    report.status === 'open'
+                                                        ? 'bg-red/15 text-red'
+                                                        : report.status === 'reviewed'
+                                                            ? 'bg-amber/15 text-amber'
+                                                            : 'bg-green/15 text-green'
+                                                }`}>
+                                                    {report.status}
+                                                </span>
+                                            </div>
+                                            <p className="text-xs text-text-secondary whitespace-pre-wrap">{report.targetPreview}</p>
+                                            {report.details && (
+                                                <p className="text-xs text-text-secondary border-t border-border pt-2 whitespace-pre-wrap">
+                                                    {report.details}
+                                                </p>
+                                            )}
+                                            <div className="flex gap-2">
+                                                {report.status !== 'reviewed' && (
+                                                    <button
+                                                        onClick={() => void handleUpdateReportStatus(report.id, 'reviewed')}
+                                                        disabled={updatingReportId === report.id}
+                                                        className="px-3 py-1.5 rounded-lg border border-amber/40 text-amber text-[11px] font-semibold disabled:opacity-40"
+                                                    >
+                                                        {updatingReportId === report.id ? 'Updating...' : 'Mark Reviewed'}
+                                                    </button>
+                                                )}
+                                                {report.status !== 'resolved' && (
+                                                    <button
+                                                        onClick={() => void handleUpdateReportStatus(report.id, 'resolved')}
+                                                        disabled={updatingReportId === report.id}
+                                                        className="px-3 py-1.5 rounded-lg border border-green/40 text-green text-[11px] font-semibold disabled:opacity-40"
+                                                    >
+                                                        {updatingReportId === report.id ? 'Updating...' : 'Resolve'}
+                                                    </button>
+                                                )}
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+                            )}
+                        </div>
+                    )}
+
+                    {selectedReportTarget && (
+                        <div className="rounded-xl border border-amber/30 bg-amber/10 p-3 space-y-3">
+                            <div className="flex items-start justify-between gap-3">
+                                <div>
+                                    <p className="text-[11px] font-semibold uppercase tracking-wide text-amber">Report Content</p>
+                                    <p className="text-sm font-semibold mt-1">
+                                        {selectedReportTarget.targetType === 'group' ? 'Report this group' : 'Report this message'}
+                                    </p>
+                                    <p className="text-xs text-text-secondary mt-1 whitespace-pre-wrap">
+                                        {selectedReportTarget.targetPreview}
+                                    </p>
+                                </div>
+                                <button
+                                    onClick={closeReportComposer}
+                                    className="text-xs text-text-secondary"
+                                >
+                                    Cancel
+                                </button>
+                            </div>
+                            <label className="text-xs text-text-secondary block">
+                                Reason
+                                <select
+                                    value={reportReason}
+                                    onChange={(event) => setReportReason(event.target.value as CommunityReportReason)}
+                                    className="mt-1 w-full bg-bg-input border border-border rounded-xl py-2 px-3"
+                                >
+                                    {COMMUNITY_REPORT_REASONS.map((reason) => (
+                                        <option key={reason} value={reason}>
+                                            {getCommunityReportReasonLabel(reason)}
+                                        </option>
+                                    ))}
+                                </select>
+                            </label>
+                            <label className="text-xs text-text-secondary block">
+                                Details (optional)
+                                <textarea
+                                    value={reportDetails}
+                                    onChange={(event) => setReportDetails(event.target.value)}
+                                    rows={3}
+                                    placeholder="Add context for the moderator"
+                                    className="mt-1 w-full bg-bg-input border border-border rounded-xl py-2 px-3"
+                                />
+                            </label>
+                            <button
+                                onClick={() => void handleSubmitReport()}
+                                disabled={submittingReport}
+                                className="w-full py-2.5 rounded-xl bg-amber text-bg-primary text-sm font-semibold disabled:opacity-50"
+                            >
+                                {submittingReport ? 'Sending Report...' : 'Send Report'}
+                            </button>
+                        </div>
+                    )}
+
                     <div className="rounded-xl bg-bg-card border border-border p-3 h-[280px] overflow-y-auto space-y-2">
                         {loadingMessages ? (
                             <p className="text-xs text-text-muted">Loading messages...</p>
@@ -591,7 +855,21 @@ export default function CommunityPage() {
                                 const mine = user?.uid === message.userId;
                                 return (
                                     <div key={message.id} className={`max-w-[85%] rounded-xl px-3 py-2 ${mine ? 'ml-auto bg-accent/15 border border-accent/20' : 'bg-bg-surface border border-border'}`}>
-                                        <p className="text-[11px] text-text-muted">{message.userName}</p>
+                                        <div className="flex items-start justify-between gap-3">
+                                            <p className="text-[11px] text-text-muted">{message.userName}</p>
+                                            {!mine && (
+                                                <button
+                                                    onClick={() => openReportComposer(
+                                                        'message',
+                                                        message.id,
+                                                        `${message.userName}: ${message.text}`
+                                                    )}
+                                                    className="shrink-0 text-[10px] text-amber"
+                                                >
+                                                    Report
+                                                </button>
+                                            )}
+                                        </div>
                                         <p className="text-sm text-text-primary mt-0.5 whitespace-pre-wrap">{message.text}</p>
                                         <p className="text-[10px] text-text-muted mt-1">{dayjs(message.createdAt).format('MMM D, h:mm A')}</p>
                                     </div>
