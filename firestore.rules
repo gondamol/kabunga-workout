@@ -24,6 +24,12 @@ service cloud.firestore {
         );
     }
 
+    function isCommunityMember(groupId) {
+      return isSignedIn()
+        && exists(/databases/$(database)/documents/communityGroups/$(groupId))
+        && request.auth.uid in get(/databases/$(database)/documents/communityGroups/$(groupId)).data.memberIds;
+    }
+
     function isCommunityMetadataUnchanged() {
       return request.resource.data.ownerId == resource.data.ownerId
         && request.resource.data.name == resource.data.name
@@ -158,8 +164,33 @@ service cloud.firestore {
       allow create: if isSignedIn()
         && request.resource.data.userId == request.auth.uid
         && exists(/databases/$(database)/documents/communityGroups/$(request.resource.data.groupId))
-        && request.auth.uid in get(/databases/$(database)/documents/communityGroups/$(request.resource.data.groupId)).data.memberIds;
+        && isCommunityMember(request.resource.data.groupId);
       allow update, delete: if isSignedIn() && resource.data.userId == request.auth.uid;
+    }
+
+    // ─── Community group challenges ───
+    match /communityGroupChallenges/{challengeId} {
+      allow read: if canAccessCommunityGroup(resource.data.groupId);
+      allow create: if isSignedIn()
+        && request.resource.data.ownerId == request.auth.uid
+        && request.resource.data.createdById == request.auth.uid
+        && request.resource.data.groupId is string
+        && exists(/databases/$(database)/documents/communityGroups/$(request.resource.data.groupId))
+        && get(/databases/$(database)/documents/communityGroups/$(request.resource.data.groupId)).data.ownerId == request.auth.uid;
+      allow update, delete: if isSignedIn() && resource.data.ownerId == request.auth.uid;
+    }
+
+    match /communityGroupChallengeEntries/{entryId} {
+      allow read: if canAccessCommunityGroup(resource.data.groupId);
+      allow create, update: if isSignedIn()
+        && request.resource.data.userId == request.auth.uid
+        && request.resource.data.challengeId is string
+        && request.resource.data.groupId is string
+        && exists(/databases/$(database)/documents/communityGroupChallenges/$(request.resource.data.challengeId))
+        && get(/databases/$(database)/documents/communityGroupChallenges/$(request.resource.data.challengeId)).data.groupId == request.resource.data.groupId
+        && request.resource.data.targetCount == get(/databases/$(database)/documents/communityGroupChallenges/$(request.resource.data.challengeId)).data.targetCount
+        && isCommunityMember(request.resource.data.groupId);
+      allow delete: if false;
     }
 
     // ─── Community moderation reports ───

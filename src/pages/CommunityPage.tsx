@@ -8,6 +8,7 @@ import {
     Plus,
     RefreshCcw,
     Send,
+    Trophy,
     Users,
 } from 'lucide-react';
 import { useAuthStore } from '../stores/authStore';
@@ -15,6 +16,8 @@ import {
     addMembersToCommunityGroup,
     createCommunityGroup,
     getCoachAthletes,
+    getCommunityGroupChallengeEntries,
+    getCommunityGroupChallenges,
     getCommunityMessages,
     getCommunityReports,
     getMyCommunityGroups,
@@ -23,13 +26,18 @@ import {
     joinCommunityGroup,
     leaveCommunityGroup,
     regenerateCommunityGroupInviteCode,
+    saveCommunityGroupChallenge,
     saveCommunityMessage,
     saveCommunityReport,
+    syncCommunityGroupChallengeProgress,
     updateCommunityReportStatus,
 } from '../lib/firestoreService';
 import type {
+    ChallengePeriod,
     CoachAthleteLink,
     CommunityGroup,
+    CommunityGroupChallenge,
+    CommunityGroupChallengeEntry,
     CommunityGroupKind,
     CommunityMessage,
     CommunityReport,
@@ -37,6 +45,12 @@ import type {
     CommunityReportStatus,
     CommunityReportTargetType,
 } from '../lib/types';
+import {
+    buildCommunityGroupChallenge,
+    getCommunityGroupChallengeStatus,
+    sortCommunityGroupChallengeEntries,
+    sortCommunityGroupChallenges,
+} from '../lib/communityChallenges';
 import {
     COMMUNITY_REPORT_REASONS,
     buildCommunityReport,
@@ -76,10 +90,15 @@ export default function CommunityPage() {
     const [coachAthletes, setCoachAthletes] = useState<CoachAthleteLink[]>([]);
 
     const [selectedGroupId, setSelectedGroupId] = useState<string>('');
+    const [groupChallenges, setGroupChallenges] = useState<CommunityGroupChallenge[]>([]);
+    const [selectedGroupChallengeId, setSelectedGroupChallengeId] = useState('');
+    const [challengeEntries, setChallengeEntries] = useState<CommunityGroupChallengeEntry[]>([]);
     const [messages, setMessages] = useState<CommunityMessage[]>([]);
     const [communityReports, setCommunityReports] = useState<CommunityReport[]>([]);
     const [messageText, setMessageText] = useState('');
     const [loadingGroups, setLoadingGroups] = useState(false);
+    const [loadingChallenges, setLoadingChallenges] = useState(false);
+    const [loadingChallengeEntries, setLoadingChallengeEntries] = useState(false);
     const [loadingMessages, setLoadingMessages] = useState(false);
     const [loadingReports, setLoadingReports] = useState(false);
     const [sending, setSending] = useState(false);
@@ -91,10 +110,17 @@ export default function CommunityPage() {
         targetId: string;
         targetPreview: string;
     } | null>(null);
+    const [showGroupChallengeComposer, setShowGroupChallengeComposer] = useState(false);
+    const [groupChallengeTitle, setGroupChallengeTitle] = useState('');
+    const [groupChallengeDescription, setGroupChallengeDescription] = useState('');
+    const [groupChallengePeriod, setGroupChallengePeriod] = useState<ChallengePeriod>('weekly');
+    const [groupChallengeTarget, setGroupChallengeTarget] = useState(4);
     const [reportReason, setReportReason] = useState<CommunityReportReason>('spam');
     const [reportDetails, setReportDetails] = useState('');
     const [submittingReport, setSubmittingReport] = useState(false);
     const [updatingReportId, setUpdatingReportId] = useState('');
+    const [creatingGroupChallenge, setCreatingGroupChallenge] = useState(false);
+    const [syncingChallengeId, setSyncingChallengeId] = useState('');
 
     const [groupName, setGroupName] = useState('');
     const [groupDescription, setGroupDescription] = useState('');
@@ -117,6 +143,9 @@ export default function CommunityPage() {
     }, [myGroups, publicGroups]);
 
     const selectedGroup = selectedGroupId ? groupMap.get(selectedGroupId) || null : null;
+    const selectedGroupChallenge = selectedGroupChallengeId
+        ? groupChallenges.find((challenge) => challenge.id === selectedGroupChallengeId) ?? null
+        : null;
     const isSelectedGroupMember = !!(selectedGroup && user && selectedGroup.memberIds.includes(user.uid));
     const isSelectedGroupOwner = !!(selectedGroup && user && selectedGroup.ownerId === user.uid);
     const availableAthletesForSelectedGroup = useMemo(() => {
@@ -131,6 +160,10 @@ export default function CommunityPage() {
     const openReportCount = useMemo(
         () => countOpenCommunityReports(communityReports),
         [communityReports]
+    );
+    const myChallengeEntry = useMemo(
+        () => challengeEntries.find((entry) => entry.userId === user?.uid) ?? null,
+        [challengeEntries, user?.uid]
     );
 
     const loadGroups = async () => {
@@ -206,6 +239,43 @@ export default function CommunityPage() {
         }
     };
 
+    const loadGroupChallenges = async (groupId: string) => {
+        setLoadingChallenges(true);
+        try {
+            const challenges = await getCommunityGroupChallenges(groupId, 12);
+            const sorted = sortCommunityGroupChallenges(challenges);
+            setGroupChallenges(sorted);
+            setSelectedGroupChallengeId((current) => {
+                if (current && sorted.some((challenge) => challenge.id === current)) {
+                    return current;
+                }
+                return sorted[0]?.id || '';
+            });
+        } catch (error) {
+            console.warn('Failed to load community challenges:', error);
+            toast.error(getFriendlyError('Could not load group challenges', error), { id: 'community-challenges-load' });
+        } finally {
+            setLoadingChallenges(false);
+        }
+    };
+
+    const loadChallengeEntries = async (challengeId: string) => {
+        if (!challengeId) {
+            setChallengeEntries([]);
+            return;
+        }
+        setLoadingChallengeEntries(true);
+        try {
+            const entries = await getCommunityGroupChallengeEntries(challengeId, 80);
+            setChallengeEntries(sortCommunityGroupChallengeEntries(entries));
+        } catch (error) {
+            console.warn('Failed to load community challenge entries:', error);
+            toast.error(getFriendlyError('Could not load leaderboard', error), { id: 'community-challenge-entries-load' });
+        } finally {
+            setLoadingChallengeEntries(false);
+        }
+    };
+
     const loadReports = async (groupId: string, ownerId: string) => {
         setLoadingReports(true);
         try {
@@ -230,6 +300,16 @@ export default function CommunityPage() {
     }, [selectedGroupId]);
 
     useEffect(() => {
+        if (!selectedGroupId) {
+            setGroupChallenges([]);
+            setSelectedGroupChallengeId('');
+            setChallengeEntries([]);
+            return;
+        }
+        void loadGroupChallenges(selectedGroupId);
+    }, [selectedGroupId]);
+
+    useEffect(() => {
         if (!selectedGroupId) return;
         const interval = window.setInterval(() => {
             void loadMessages(selectedGroupId);
@@ -246,9 +326,18 @@ export default function CommunityPage() {
     }, [selectedGroup, isSelectedGroupOwner, user]);
 
     useEffect(() => {
+        void loadChallengeEntries(selectedGroupChallengeId);
+    }, [selectedGroupChallengeId]);
+
+    useEffect(() => {
         setSelectedReportTarget(null);
         setReportReason('spam');
         setReportDetails('');
+        setShowGroupChallengeComposer(false);
+        setGroupChallengeTitle('');
+        setGroupChallengeDescription('');
+        setGroupChallengePeriod('weekly');
+        setGroupChallengeTarget(4);
     }, [selectedGroupId]);
 
     useEffect(() => {
@@ -410,6 +499,65 @@ export default function CommunityPage() {
             toast.error(getFriendlyError('Could not create group', error));
         } finally {
             setCreatingGroup(false);
+        }
+    };
+
+    const handleCreateGroupChallenge = async () => {
+        if (!user || !selectedGroup || !isSelectedGroupOwner) return;
+        if (groupChallengeTitle.trim().length < 3) {
+            toast.error('Challenge title should be at least 3 characters');
+            return;
+        }
+
+        setCreatingGroupChallenge(true);
+        try {
+            const challenge = buildCommunityGroupChallenge({
+                id: createId(),
+                groupId: selectedGroup.id,
+                ownerId: selectedGroup.ownerId,
+                createdById: user.uid,
+                createdByName: profile?.displayName || user.displayName || 'Coach',
+                title: groupChallengeTitle,
+                description: groupChallengeDescription,
+                period: groupChallengePeriod,
+                targetCount: groupChallengeTarget,
+            });
+            await saveCommunityGroupChallenge(challenge);
+            setGroupChallenges((current) => sortCommunityGroupChallenges([challenge, ...current]));
+            setSelectedGroupChallengeId(challenge.id);
+            setShowGroupChallengeComposer(false);
+            setGroupChallengeTitle('');
+            setGroupChallengeDescription('');
+            setGroupChallengePeriod('weekly');
+            setGroupChallengeTarget(4);
+            toast.success('Group challenge created');
+        } catch (error) {
+            console.warn('Create group challenge failed:', error);
+            toast.error(getFriendlyError('Could not create group challenge', error));
+        } finally {
+            setCreatingGroupChallenge(false);
+        }
+    };
+
+    const handleSyncChallengeProgress = async () => {
+        if (!user || !selectedGroupChallenge || !isSelectedGroupMember) return;
+        setSyncingChallengeId(selectedGroupChallenge.id);
+        try {
+            const entry = await syncCommunityGroupChallengeProgress(
+                selectedGroupChallenge,
+                user.uid,
+                profile?.displayName || user.displayName || 'Member'
+            );
+            setChallengeEntries((current) => sortCommunityGroupChallengeEntries([
+                entry,
+                ...current.filter((item) => item.id !== entry.id),
+            ]));
+            toast.success('Leaderboard synced from your workout history');
+        } catch (error) {
+            console.warn('Sync group challenge progress failed:', error);
+            toast.error(getFriendlyError('Could not sync your progress', error));
+        } finally {
+            setSyncingChallengeId('');
         }
     };
 
@@ -721,6 +869,213 @@ export default function CommunityPage() {
                             </button>
                         </div>
                     )}
+
+                    <div className="rounded-xl border border-border bg-bg-card p-3 space-y-3">
+                        <div className="flex items-start justify-between gap-3">
+                            <div>
+                                <p className="text-xs font-semibold text-text-secondary flex items-center gap-2">
+                                    <Trophy size={14} className="text-amber" />
+                                    Group Challenge Leaderboard
+                                </p>
+                                <p className="text-[11px] text-text-muted mt-1">
+                                    Members sync their own workout history into a shared scoreboard.
+                                </p>
+                            </div>
+                            {isSelectedGroupOwner && (
+                                <button
+                                    onClick={() => setShowGroupChallengeComposer((current) => !current)}
+                                    className="text-xs text-accent"
+                                >
+                                    {showGroupChallengeComposer ? 'Close' : 'New'}
+                                </button>
+                            )}
+                        </div>
+
+                        {showGroupChallengeComposer && isSelectedGroupOwner && (
+                            <div className="rounded-xl border border-accent/20 bg-accent/5 p-3 space-y-3">
+                                <label className="text-xs text-text-secondary block">
+                                    Challenge Title
+                                    <input
+                                        type="text"
+                                        value={groupChallengeTitle}
+                                        onChange={(event) => setGroupChallengeTitle(event.target.value)}
+                                        placeholder="April consistency race"
+                                        className="mt-1 w-full bg-bg-input border border-border rounded-xl py-2 px-3"
+                                    />
+                                </label>
+                                <label className="text-xs text-text-secondary block">
+                                    Description
+                                    <textarea
+                                        value={groupChallengeDescription}
+                                        onChange={(event) => setGroupChallengeDescription(event.target.value)}
+                                        rows={2}
+                                        placeholder="First athlete to hit the target leads the board."
+                                        className="mt-1 w-full bg-bg-input border border-border rounded-xl py-2 px-3"
+                                    />
+                                </label>
+                                <div className="grid grid-cols-2 gap-2">
+                                    <label className="text-xs text-text-secondary block">
+                                        Window
+                                        <select
+                                            value={groupChallengePeriod}
+                                            onChange={(event) => setGroupChallengePeriod(event.target.value as ChallengePeriod)}
+                                            className="mt-1 w-full bg-bg-input border border-border rounded-xl py-2 px-3"
+                                        >
+                                            <option value="weekly">Weekly</option>
+                                            <option value="monthly">Monthly</option>
+                                            <option value="yearly">Yearly</option>
+                                        </select>
+                                    </label>
+                                    <label className="text-xs text-text-secondary block">
+                                        Target Workouts
+                                        <input
+                                            type="number"
+                                            inputMode="numeric"
+                                            value={groupChallengeTarget}
+                                            min={1}
+                                            onChange={(event) => setGroupChallengeTarget(parseInt(event.target.value, 10) || 1)}
+                                            className="mt-1 w-full bg-bg-input border border-border rounded-xl py-2 px-3"
+                                        />
+                                    </label>
+                                </div>
+                                <button
+                                    onClick={() => void handleCreateGroupChallenge()}
+                                    disabled={creatingGroupChallenge}
+                                    className="w-full py-2.5 rounded-xl gradient-primary text-white text-sm font-semibold disabled:opacity-50"
+                                >
+                                    {creatingGroupChallenge ? 'Creating...' : 'Create Group Challenge'}
+                                </button>
+                            </div>
+                        )}
+
+                        {loadingChallenges ? (
+                            <p className="text-xs text-text-muted">Loading group challenges...</p>
+                        ) : groupChallenges.length === 0 ? (
+                            <p className="text-xs text-text-secondary">
+                                No group challenge yet. {isSelectedGroupOwner ? 'Create the first one for this group.' : 'Ask the group owner to start one.'}
+                            </p>
+                        ) : (
+                            <>
+                                <div className="flex gap-2 overflow-x-auto pb-1">
+                                    {groupChallenges.map((challenge) => {
+                                        const active = selectedGroupChallengeId === challenge.id;
+                                        const status = getCommunityGroupChallengeStatus(challenge);
+                                        return (
+                                            <button
+                                                key={challenge.id}
+                                                onClick={() => setSelectedGroupChallengeId(challenge.id)}
+                                                className={`px-3 py-2 rounded-xl text-xs font-semibold whitespace-nowrap border ${
+                                                    active
+                                                        ? 'bg-amber/15 border-amber text-amber'
+                                                        : 'bg-bg-surface border-border text-text-secondary'
+                                                }`}
+                                            >
+                                                {challenge.title} · {status}
+                                            </button>
+                                        );
+                                    })}
+                                </div>
+
+                                {selectedGroupChallenge && (
+                                    <>
+                                        <div className="rounded-xl border border-border bg-bg-surface p-3">
+                                            <div className="flex items-start justify-between gap-3">
+                                                <div>
+                                                    <p className="text-sm font-semibold">{selectedGroupChallenge.title}</p>
+                                                    <p className="text-xs text-text-secondary mt-1">
+                                                        {selectedGroupChallenge.description || 'Workout count challenge for this group.'}
+                                                    </p>
+                                                </div>
+                                                <span className={`rounded-full px-2 py-1 text-[10px] font-semibold ${
+                                                    getCommunityGroupChallengeStatus(selectedGroupChallenge) === 'completed'
+                                                        ? 'bg-green/15 text-green'
+                                                        : 'bg-amber/15 text-amber'
+                                                }`}>
+                                                    {getCommunityGroupChallengeStatus(selectedGroupChallenge)}
+                                                </span>
+                                            </div>
+                                            <div className="mt-3 grid grid-cols-3 gap-2 text-center">
+                                                <div className="rounded-lg bg-bg-card p-2">
+                                                    <p className="text-[10px] text-text-muted">Window</p>
+                                                    <p className="text-xs font-semibold capitalize">{selectedGroupChallenge.period}</p>
+                                                </div>
+                                                <div className="rounded-lg bg-bg-card p-2">
+                                                    <p className="text-[10px] text-text-muted">Target</p>
+                                                    <p className="text-xs font-semibold">{selectedGroupChallenge.targetCount} workouts</p>
+                                                </div>
+                                                <div className="rounded-lg bg-bg-card p-2">
+                                                    <p className="text-[10px] text-text-muted">Ends</p>
+                                                    <p className="text-xs font-semibold">{dayjs(selectedGroupChallenge.endDate).format('MMM D')}</p>
+                                                </div>
+                                            </div>
+                                            {myChallengeEntry && myChallengeEntry.challengeId === selectedGroupChallenge.id && (
+                                                <p className="text-[11px] text-text-muted mt-3">
+                                                    You are at {myChallengeEntry.completedWorkouts}/{myChallengeEntry.targetCount} workouts.
+                                                </p>
+                                            )}
+                                        </div>
+
+                                        <div className="space-y-2">
+                                            {loadingChallengeEntries ? (
+                                                <p className="text-xs text-text-muted">Loading leaderboard...</p>
+                                            ) : challengeEntries.length === 0 ? (
+                                                <p className="text-xs text-text-secondary">No one has synced yet. Be the first to put a score on the board.</p>
+                                            ) : (
+                                                challengeEntries.slice(0, 8).map((entry, index) => {
+                                                    const pct = Math.min(100, Math.round((entry.completedWorkouts / Math.max(1, entry.targetCount)) * 100));
+                                                    const mine = entry.userId === user?.uid;
+                                                    return (
+                                                        <div
+                                                            key={entry.id}
+                                                            className={`rounded-xl border p-3 ${mine ? 'border-accent bg-accent/10' : 'border-border bg-bg-surface'}`}
+                                                        >
+                                                            <div className="flex items-center justify-between gap-3">
+                                                                <div className="flex items-center gap-3 min-w-0">
+                                                                    <div className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-black ${index === 0 ? 'bg-amber/20 text-amber' : 'bg-bg-card text-text-secondary'}`}>
+                                                                        #{index + 1}
+                                                                    </div>
+                                                                    <div className="min-w-0">
+                                                                        <p className="text-sm font-semibold truncate">{entry.userName}</p>
+                                                                        <p className="text-[11px] text-text-muted">
+                                                                            {entry.lastWorkoutAt ? `Last workout ${dayjs(entry.lastWorkoutAt).format('MMM D')}` : 'No workout synced yet'}
+                                                                        </p>
+                                                                    </div>
+                                                                </div>
+                                                                <div className="text-right shrink-0">
+                                                                    <p className="text-sm font-bold">{entry.completedWorkouts}/{entry.targetCount}</p>
+                                                                    <p className="text-[11px] text-text-muted">workouts</p>
+                                                                </div>
+                                                            </div>
+                                                            <div className="mt-2 h-2 rounded-full bg-bg-card overflow-hidden">
+                                                                <div
+                                                                    className={`h-full rounded-full ${mine ? 'bg-accent' : 'bg-amber'}`}
+                                                                    style={{ width: `${pct}%` }}
+                                                                />
+                                                            </div>
+                                                        </div>
+                                                    );
+                                                })
+                                            )}
+                                        </div>
+
+                                        {isSelectedGroupMember ? (
+                                            <button
+                                                onClick={() => void handleSyncChallengeProgress()}
+                                                disabled={syncingChallengeId === selectedGroupChallenge.id}
+                                                className="w-full py-2.5 rounded-xl border border-amber/40 text-amber text-sm font-semibold disabled:opacity-40"
+                                            >
+                                                {syncingChallengeId === selectedGroupChallenge.id ? 'Syncing...' : 'Sync My Progress'}
+                                            </button>
+                                        ) : (
+                                            <p className="text-xs text-text-secondary">
+                                                Join this group to sync your workout count into the leaderboard.
+                                            </p>
+                                        )}
+                                    </>
+                                )}
+                            </>
+                        )}
+                    </div>
 
                     {isSelectedGroupOwner && (
                         <div className="rounded-xl border border-border bg-bg-card p-3 space-y-3">

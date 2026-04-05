@@ -331,6 +331,38 @@ export interface CommunityReport {
     updatedAt: number;
 }
 
+export type CommunityGroupChallengeStatus = 'active' | 'completed';
+
+export interface CommunityGroupChallenge {
+    id: string;
+    groupId: string;
+    ownerId: string;
+    createdById: string;
+    createdByName: string;
+    title: string;
+    description: string;
+    period: ChallengePeriod;
+    targetCount: number;
+    startDate: number;
+    endDate: number;
+    status: CommunityGroupChallengeStatus;
+    createdAt: number;
+    updatedAt: number;
+}
+
+export interface CommunityGroupChallengeEntry {
+    id: string;
+    challengeId: string;
+    groupId: string;
+    userId: string;
+    userName: string;
+    completedWorkouts: number;
+    targetCount: number;
+    lastWorkoutAt?: number | null;
+    joinedAt: number;
+    updatedAt: number;
+}
+
 // ─── Nutrition ───
 export interface Meal {
     id: string;

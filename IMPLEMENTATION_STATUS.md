@@ -27,5 +27,5 @@
 ## Still Pending
 - [x] Repeat Last Workout fast-lane flow
 - [x] Nutrition and recovery recommendations tied to training readiness
-- [ ] Group challenges / leaderboards in Community
+- [x] Group challenges / leaderboards in Community
 - [x] Moderator / reporting tools for community spaces

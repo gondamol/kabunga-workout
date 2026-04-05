@@ -9,6 +9,8 @@ import type {
     CoachCode,
     CoachWorkoutPlan,
     CommunityGroup,
+    CommunityGroupChallenge,
+    CommunityGroupChallengeEntry,
     CommunityGroupKind,
     CommunityInvite,
     CommunityMessage,
@@ -22,6 +24,12 @@ import type {
     UserRole,
     WorkoutSession,
 } from './types';
+import {
+    buildCommunityGroupChallengeEntry,
+    getCommunityGroupChallengeStatus,
+    sortCommunityGroupChallengeEntries,
+    sortCommunityGroupChallenges,
+} from './communityChallenges';
 
 const WORKOUT_CACHE_TTL_MS = 5 * 60 * 1000;
 const WORKOUT_PERSISTED_CACHE_TTL_MS = 60 * 60 * 1000;
@@ -704,6 +712,67 @@ export const getCommunityMessages = async (
     return snap.docs
         .map((d) => d.data() as CommunityMessage)
         .sort((a, b) => a.createdAt - b.createdAt);
+};
+
+export const saveCommunityGroupChallenge = async (
+    challenge: CommunityGroupChallenge
+): Promise<void> => {
+    await setDoc(doc(db, 'communityGroupChallenges', challenge.id), challenge);
+};
+
+export const getCommunityGroupChallenges = async (
+    groupId: string,
+    maxResults = 20
+): Promise<CommunityGroupChallenge[]> => {
+    const q = query(
+        collection(db, 'communityGroupChallenges'),
+        where('groupId', '==', groupId),
+        limit(maxResults)
+    );
+    const snap = await getDocs(q);
+    const challenges = snap.docs
+        .map((d) => d.data() as CommunityGroupChallenge)
+        .map((challenge) => ({
+            ...challenge,
+            status: getCommunityGroupChallengeStatus(challenge),
+        }));
+    return sortCommunityGroupChallenges(challenges);
+};
+
+export const getCommunityGroupChallengeEntries = async (
+    challengeId: string,
+    maxResults = 80
+): Promise<CommunityGroupChallengeEntry[]> => {
+    const q = query(
+        collection(db, 'communityGroupChallengeEntries'),
+        where('challengeId', '==', challengeId),
+        limit(maxResults)
+    );
+    const snap = await getDocs(q);
+    return sortCommunityGroupChallengeEntries(
+        snap.docs.map((d) => d.data() as CommunityGroupChallengeEntry)
+    );
+};
+
+export const syncCommunityGroupChallengeProgress = async (
+    challenge: CommunityGroupChallenge,
+    userId: string,
+    userName: string
+): Promise<CommunityGroupChallengeEntry> => {
+    const workouts = await getUserWorkouts(userId, challenge.period === 'yearly' ? 520 : 240);
+    const entryId = `${challenge.id}_${userId}`;
+    const existingSnap = await getDoc(doc(db, 'communityGroupChallengeEntries', entryId));
+    const existing = existingSnap.exists() ? existingSnap.data() as CommunityGroupChallengeEntry : null;
+    const payload = buildCommunityGroupChallengeEntry({
+        challenge,
+        userId,
+        userName,
+        workouts,
+        existingJoinedAt: existing?.joinedAt,
+    });
+
+    await setDoc(doc(db, 'communityGroupChallengeEntries', payload.id), payload, { merge: true });
+    return payload;
 };
 
 export const saveCommunityReport = async (report: CommunityReport): Promise<void> => {
