@@ -10,7 +10,8 @@
     "preview": "vite preview",
     "validate:exercise-library": "node --experimental-strip-types __tests__/exerciseLibraryService.test.ts",
     "validate:health-checks": "node --experimental-strip-types __tests__/healthCheckService.test.ts",
-    "validate:repeat-workout": "node --experimental-strip-types __tests__/repeatWorkoutPlan.test.ts"
+    "validate:repeat-workout": "node --experimental-strip-types __tests__/repeatWorkoutPlan.test.ts",
+    "validate:readiness-guidance": "node --experimental-strip-types __tests__/readinessGuidance.test.ts"
   },
   "devDependencies": {
     "@tailwindcss/vite": "^4.2.0",

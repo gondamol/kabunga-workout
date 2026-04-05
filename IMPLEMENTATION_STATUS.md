@@ -25,7 +25,7 @@
 - [x] Deploy updated Firestore rules for readiness summaries
 
 ## Still Pending
-- [ ] Repeat Last Workout fast-lane flow
+- [x] Repeat Last Workout fast-lane flow
+- [x] Nutrition and recovery recommendations tied to training readiness
 - [ ] Group challenges / leaderboards in Community
-- [ ] Nutrition and recovery recommendations tied to training readiness
 - [ ] Moderator / reporting tools for community spaces

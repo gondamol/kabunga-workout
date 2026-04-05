@@ -14,6 +14,7 @@ import dayjs from 'dayjs';
 import { getOneRepMaxPromptStatus, getOneRepMaxSnoozeUntil } from '../lib/oneRepMaxes';
 import { formatProgressionInsightTarget, getDashboardProgressionInsight } from '../lib/progressionInsights';
 import { getWorkoutHeadline } from '../lib/workoutSummary';
+import { buildReadinessRecoveryGuidance, summarizeDailyNutrition, type GuidanceTone } from '../lib/readinessGuidance';
 import HealthCheckForm from '../components/HealthCheckForm';
 
 const getReadinessTone = (status: ReadinessStatus): {
@@ -51,6 +52,39 @@ const getReadinessTone = (status: ReadinessStatus): {
         border: 'border-red/20',
         surface: 'from-red/12 via-bg-card to-bg-surface',
         label: 'Recovery',
+    };
+};
+
+const getGuidanceTone = (tone: GuidanceTone): {
+    border: string;
+    badge: string;
+    surface: string;
+} => {
+    if (tone === 'green') {
+        return {
+            border: 'border-green/20',
+            badge: 'bg-green/15 text-green',
+            surface: 'bg-green/5',
+        };
+    }
+    if (tone === 'cyan') {
+        return {
+            border: 'border-cyan/20',
+            badge: 'bg-cyan/15 text-cyan',
+            surface: 'bg-cyan/5',
+        };
+    }
+    if (tone === 'amber') {
+        return {
+            border: 'border-amber/20',
+            badge: 'bg-amber/15 text-amber',
+            surface: 'bg-amber/5',
+        };
+    }
+    return {
+        border: 'border-red/20',
+        badge: 'bg-red/15 text-red',
+        surface: 'bg-red/5',
     };
 };
 
@@ -327,8 +361,13 @@ export default function DashboardPage() {
             return { day: dayjs(day).format('ddd'), count, date: day };
         });
     }, [workouts]);
+    const todayNutrition = useMemo(() => summarizeDailyNutrition(todayMeals), [todayMeals]);
+    const todayRecoveryGuidance = useMemo(
+        () => (todayReadiness ? buildReadinessRecoveryGuidance(todayReadiness, todayNutrition) : null),
+        [todayReadiness, todayNutrition]
+    );
 
-    const todayCalories = todayMeals.reduce((sum, m) => sum + m.calories, 0);
+    const todayCalories = todayNutrition.calories;
 
     const firstName = profile?.displayName?.split(' ')[0] || 'Champion';
 
@@ -408,6 +447,45 @@ export default function DashboardPage() {
                         </div>
                     </div>
                 )
+            )}
+
+            {todayReadiness && todayRecoveryGuidance && (
+                <div className="glass rounded-3xl p-5 animate-fade-in">
+                    <div className="flex items-start justify-between gap-3">
+                        <div>
+                            <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-cyan">Fuel & Recovery</p>
+                            <h2 className="text-lg font-bold mt-1">{todayRecoveryGuidance.headline}</h2>
+                            <p className="text-sm text-text-secondary mt-2">{todayRecoveryGuidance.summary}</p>
+                        </div>
+                        <button
+                            onClick={() => navigate('/nutrition')}
+                            className="rounded-2xl border border-border px-3 py-2 text-xs font-semibold text-text-primary"
+                        >
+                            Log Food
+                        </button>
+                    </div>
+                    <div className="mt-4 space-y-2">
+                        {todayRecoveryGuidance.items.map((item) => {
+                            const tone = getGuidanceTone(item.tone);
+                            return (
+                                <div
+                                    key={item.id}
+                                    className={`rounded-2xl border ${tone.border} ${tone.surface} p-3`}
+                                >
+                                    <div className="flex items-start justify-between gap-3">
+                                        <div>
+                                            <p className="text-sm font-semibold">{item.title}</p>
+                                            <p className="text-xs text-text-secondary mt-1">{item.detail}</p>
+                                        </div>
+                                        <span className={`rounded-full px-2 py-1 text-[10px] font-semibold ${tone.badge}`}>
+                                            {item.tone}
+                                        </span>
+                                    </div>
+                                </div>
+                            );
+                        })}
+                    </div>
+                </div>
             )}
 
             {!activeSession && latestWorkout && (
@@ -655,9 +733,9 @@ export default function DashboardPage() {
                     <span className="text-text-muted text-sm">kcal</span>
                 </div>
                 <div className="flex gap-4 mt-2">
-                    <MacroPill label="Protein" value={todayMeals.reduce((s, m) => s + m.protein, 0)} color="text-cyan" />
-                    <MacroPill label="Carbs" value={todayMeals.reduce((s, m) => s + m.carbs, 0)} color="text-amber" />
-                    <MacroPill label="Fat" value={todayMeals.reduce((s, m) => s + m.fat, 0)} color="text-red" />
+                    <MacroPill label="Protein" value={todayNutrition.protein} color="text-cyan" />
+                    <MacroPill label="Carbs" value={todayNutrition.carbs} color="text-amber" />
+                    <MacroPill label="Fat" value={todayNutrition.fat} color="text-red" />
                 </div>
             </div>
 
