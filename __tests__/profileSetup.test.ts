@@ -28,19 +28,6 @@ const buildProfile = (overrides: Partial<UserProfile> = {}): UserProfile => ({
     ...overrides,
 });
 
-type CompletedOnboardingInput = Parameters<typeof buildCompletedOnboarding>[0];
-
-const validateCompletedOnboardingInput = (input: CompletedOnboardingInput): CompletedOnboardingInput => input;
-
-// @ts-expect-error buildCompletedOnboarding should reject nullable fields
-buildCompletedOnboarding({
-    primaryGoal: null,
-    trainingEnvironment: 'full_gym',
-    supportMode: 'solo',
-    experienceLevel: 'intermediate',
-    trainingDaysPerWeek: 4,
-});
-
 export function validateProfileSetup(): ValidationResult {
     const errors: string[] = [];
     let passed = 0;
@@ -60,6 +47,13 @@ export function validateProfileSetup(): ValidationResult {
         errors.push('✗ Undefined profile should be incomplete');
     }
 
+    if (isProfileSetupComplete(buildProfile({ onboarding: DEFAULT_USER_ONBOARDING })) === false) {
+        passed++;
+    } else {
+        failed++;
+        errors.push('✗ Default onboarding should be incomplete');
+    }
+
     const missingField = buildProfile({
         onboarding: {
             primaryGoal: 'strength',
@@ -77,13 +71,13 @@ export function validateProfileSetup(): ValidationResult {
         errors.push('✗ Missing onboarding field should be incomplete');
     }
 
-    const completedOnboarding = buildCompletedOnboarding(validateCompletedOnboardingInput({
+    const completedOnboarding = buildCompletedOnboarding({
         primaryGoal: 'strength',
         trainingEnvironment: 'full_gym',
         supportMode: 'solo',
         experienceLevel: 'intermediate',
         trainingDaysPerWeek: 4,
-    }));
+    });
     const completed = buildProfile({
         onboarding: completedOnboarding,
     });
@@ -94,33 +88,53 @@ export function validateProfileSetup(): ValidationResult {
         errors.push('✗ Completed onboarding should be treated as complete');
     }
 
-    if (getPrimaryGoalLabel('strength') === 'Build strength') {
-        passed++;
-    } else {
-        failed++;
-        errors.push('✗ Strength label should be human-readable');
-    }
+    const invalidTrainingDaysCases = [
+        { value: 0, label: 'zero' },
+        { value: -1, label: 'negative' },
+        { value: Number.NaN, label: 'NaN' },
+    ];
+    invalidTrainingDaysCases.forEach(({ value, label }) => {
+        const invalidDays = buildProfile({
+            onboarding: buildCompletedOnboarding({
+                primaryGoal: 'muscle',
+                trainingEnvironment: 'minimal_equipment',
+                supportMode: 'with_friends',
+                experienceLevel: 'beginner',
+                trainingDaysPerWeek: value,
+            }),
+        });
+        if (isProfileSetupComplete(invalidDays) === false) {
+            passed++;
+        } else {
+            failed++;
+            errors.push(`✗ ${label} training days should be incomplete`);
+        }
+    });
 
-    if (getTrainingEnvironmentLabel('minimal_equipment') === 'Minimal equipment') {
-        passed++;
-    } else {
-        failed++;
-        errors.push('✗ Training environment label should be human-readable');
-    }
+    const labelExpectations: Array<[string, string, string]> = [
+        ['strength', getPrimaryGoalLabel('strength'), 'Build strength'],
+        ['muscle', getPrimaryGoalLabel('muscle'), 'Build muscle'],
+        ['fat_loss', getPrimaryGoalLabel('fat_loss'), 'Lose fat'],
+        ['general_fitness', getPrimaryGoalLabel('general_fitness'), 'General fitness'],
+        ['full_gym', getTrainingEnvironmentLabel('full_gym'), 'Full gym'],
+        ['minimal_equipment', getTrainingEnvironmentLabel('minimal_equipment'), 'Minimal equipment'],
+        ['home_bodyweight', getTrainingEnvironmentLabel('home_bodyweight'), 'Home / bodyweight'],
+        ['solo', getSupportModeLabel('solo'), 'Solo'],
+        ['with_coach', getSupportModeLabel('with_coach'), 'With coach'],
+        ['with_friends', getSupportModeLabel('with_friends'), 'With friends'],
+        ['beginner', getExperienceLevelLabel('beginner'), 'Beginner'],
+        ['intermediate', getExperienceLevelLabel('intermediate'), 'Intermediate'],
+        ['advanced', getExperienceLevelLabel('advanced'), 'Advanced'],
+    ];
 
-    if (getSupportModeLabel('with_coach') === 'With coach') {
-        passed++;
-    } else {
-        failed++;
-        errors.push('✗ Support mode label should be human-readable');
-    }
-
-    if (getExperienceLevelLabel('advanced') === 'Advanced') {
-        passed++;
-    } else {
-        failed++;
-        errors.push('✗ Experience level label should be human-readable');
-    }
+    labelExpectations.forEach(([value, actual, expected], index) => {
+        if (actual === expected) {
+            passed++;
+        } else {
+            failed++;
+            errors.push(`✗ Label helper check ${index + 1} failed for ${value}`);
+        }
+    });
 
     return { passed, failed, errors };
 }

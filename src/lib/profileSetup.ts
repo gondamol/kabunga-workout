@@ -7,21 +7,13 @@ import type {
     UserProfile,
 } from './types';
 
-export interface CompletedUserOnboarding {
-    primaryGoal: PrimaryGoal;
-    trainingEnvironment: TrainingEnvironment;
-    supportMode: SupportMode;
-    experienceLevel: ExperienceLevel;
-    trainingDaysPerWeek: number;
-    completedAt: number;
-}
+type StrictOnboardingFields = {
+    [K in keyof Omit<UserOnboarding, 'completedAt'>]-?: NonNullable<UserOnboarding[K]>;
+};
 
-export type BuildCompletedOnboardingInput = {
-    primaryGoal: PrimaryGoal;
-    trainingEnvironment: TrainingEnvironment;
-    supportMode: SupportMode;
-    experienceLevel: ExperienceLevel;
-    trainingDaysPerWeek: number;
+export type BuildCompletedOnboardingInput = StrictOnboardingFields;
+export type CompletedUserOnboarding = StrictOnboardingFields & {
+    completedAt: number;
 };
 
 export const DEFAULT_USER_ONBOARDING: UserOnboarding = {
@@ -40,6 +32,12 @@ export const buildCompletedOnboarding = (
     completedAt: Date.now(),
 });
 
+const isPositiveInteger = (value: number | null | undefined): value is number =>
+    value !== null &&
+    value !== undefined &&
+    Number.isInteger(value) &&
+    value > 0;
+
 export const isProfileSetupComplete = (profile: UserProfile | null | undefined): boolean => {
     const onboarding = profile?.onboarding;
     return (
@@ -55,32 +53,42 @@ export const isProfileSetupComplete = (profile: UserProfile | null | undefined):
         onboarding.experienceLevel !== undefined &&
         onboarding.trainingDaysPerWeek !== null &&
         onboarding.trainingDaysPerWeek !== undefined &&
+        isPositiveInteger(onboarding.trainingDaysPerWeek) &&
         onboarding.completedAt !== null &&
         onboarding.completedAt !== undefined
     );
 };
 
-export const getPrimaryGoalLabel = (goal: PrimaryGoal): string => {
-    if (goal === 'strength') return 'Build strength';
-    if (goal === 'muscle') return 'Build muscle';
-    if (goal === 'fat_loss') return 'Lose fat';
-    return 'General fitness';
-};
+const PRIMARY_GOAL_LABELS = {
+    strength: 'Build strength',
+    muscle: 'Build muscle',
+    fat_loss: 'Lose fat',
+    general_fitness: 'General fitness',
+} satisfies Record<PrimaryGoal, string>;
 
-export const getTrainingEnvironmentLabel = (environment: TrainingEnvironment): string => {
-    if (environment === 'full_gym') return 'Full gym';
-    if (environment === 'minimal_equipment') return 'Minimal equipment';
-    return 'Home / bodyweight';
-};
+const TRAINING_ENVIRONMENT_LABELS = {
+    full_gym: 'Full gym',
+    minimal_equipment: 'Minimal equipment',
+    home_bodyweight: 'Home / bodyweight',
+} satisfies Record<TrainingEnvironment, string>;
 
-export const getSupportModeLabel = (mode: SupportMode): string => {
-    if (mode === 'solo') return 'Solo';
-    if (mode === 'with_coach') return 'With coach';
-    return 'With friends';
-};
+const SUPPORT_MODE_LABELS = {
+    solo: 'Solo',
+    with_coach: 'With coach',
+    with_friends: 'With friends',
+} satisfies Record<SupportMode, string>;
 
-export const getExperienceLevelLabel = (level: ExperienceLevel): string => {
-    if (level === 'beginner') return 'Beginner';
-    if (level === 'intermediate') return 'Intermediate';
-    return 'Advanced';
-};
+const EXPERIENCE_LEVEL_LABELS = {
+    beginner: 'Beginner',
+    intermediate: 'Intermediate',
+    advanced: 'Advanced',
+} satisfies Record<ExperienceLevel, string>;
+
+export const getPrimaryGoalLabel = (goal: PrimaryGoal): string => PRIMARY_GOAL_LABELS[goal];
+
+export const getTrainingEnvironmentLabel = (environment: TrainingEnvironment): string =>
+    TRAINING_ENVIRONMENT_LABELS[environment];
+
+export const getSupportModeLabel = (mode: SupportMode): string => SUPPORT_MODE_LABELS[mode];
+
+export const getExperienceLevelLabel = (level: ExperienceLevel): string => EXPERIENCE_LEVEL_LABELS[level];
