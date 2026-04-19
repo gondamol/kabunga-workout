@@ -30,6 +30,7 @@ import {
     shareWorkoutImage,
 } from '../lib/workoutSummary';
 import { formatEffortValue, formatSetPerformance } from '../lib/exerciseRules';
+import { SESSION_SUMMARY_THEME } from '../lib/sessionDetailPresentation';
 
 export default function SessionDetailPage() {
     const { id } = useParams<{ id: string }>();
@@ -158,7 +159,7 @@ export default function SessionDetailPage() {
 
     if (loading) {
         return (
-            <div className="max-w-lg mx-auto px-4 pt-6 pb-4">
+            <div className="shell-page pt-6 pb-4">
                 <div className="flex justify-center items-center min-h-screen">
                     <div className="w-10 h-10 border-3 border-accent border-t-transparent rounded-full animate-spin" />
                 </div>
@@ -168,7 +169,7 @@ export default function SessionDetailPage() {
 
     if (error || !session || !workoutStats) {
         return (
-            <div className="max-w-lg mx-auto px-4 pt-6 pb-24">
+            <div className="shell-page pt-6 pb-24">
                 <button
                     onClick={handleBack}
                     className="flex items-center gap-2 text-text-secondary hover:text-text-primary mb-6"
@@ -193,7 +194,7 @@ export default function SessionDetailPage() {
         : null;
 
     return (
-        <div className="max-w-lg mx-auto px-4 pt-6 pb-24 space-y-5">
+        <div className="shell-page pt-6 pb-24 space-y-5">
             <div className="flex items-start justify-between gap-3">
                 <div>
                     <button
@@ -207,21 +208,21 @@ export default function SessionDetailPage() {
                     <h1 className="text-2xl font-bold mt-1">Session Summary</h1>
                     <p className="text-xs text-text-muted mt-2">{formatRelativeTime(session.startedAt)}</p>
                 </div>
-                <button
+                    <button
                     onClick={() => navigate('/history')}
-                    className="px-3 py-2 rounded-xl border border-border text-xs text-text-secondary shrink-0"
+                    className="px-3 py-2 rounded-xl border border-border bg-white text-xs text-text-secondary shrink-0"
                 >
                     Calendar
                 </button>
             </div>
 
-            <div className="relative overflow-hidden rounded-[28px] border border-accent/20 bg-[#0b1120] px-5 py-5">
-                <div className="absolute -top-16 left-[-10%] w-48 h-48 rounded-full bg-accent/20 blur-3xl pointer-events-none" />
-                <div className="absolute -bottom-12 right-[-10%] w-40 h-40 rounded-full bg-cyan/20 blur-3xl pointer-events-none" />
+            <div className={`relative overflow-hidden ${SESSION_SUMMARY_THEME.heroCard}`}>
+                <div className="absolute -top-16 left-[-10%] h-48 w-48 rounded-full bg-accent/10 blur-3xl pointer-events-none" />
+                <div className="absolute -bottom-12 right-[-10%] h-40 w-40 rounded-full bg-cyan/10 blur-3xl pointer-events-none" />
                 <div className="relative">
                     <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-cyan">Kabunga Session</p>
-                    <h2 className="text-2xl font-black mt-2 leading-tight">{workoutStats.headline}</h2>
-                    <p className="text-sm text-text-secondary mt-2">
+                    <h2 className={`mt-2 text-2xl font-black leading-tight ${SESSION_SUMMARY_THEME.primaryText}`}>{workoutStats.headline}</h2>
+                    <p className={`mt-2 text-sm ${SESSION_SUMMARY_THEME.secondaryText}`}>
                         {formatDurationHuman(session.duration)} • {session.exercises.length} exercises • {workoutStats.totalReps} reps
                     </p>
 
@@ -249,14 +250,14 @@ export default function SessionDetailPage() {
                         <PreviewMetric label="Completion" value={`${completionPct}%`} sub="of planned sets" />
                     </div>
 
-                    <div className="rounded-2xl bg-white/5 border border-white/8 p-4 mt-4">
-                        <p className="text-[11px] uppercase tracking-wide text-text-muted">
+                    <div className={SESSION_SUMMARY_THEME.topLiftCard}>
+                        <p className={`text-[11px] uppercase tracking-wide ${SESSION_SUMMARY_THEME.mutedText}`}>
                             {workoutStats.topExercise?.metric === 'reps' ? 'Top Movement' : 'Top Lift'}
                         </p>
-                        <p className="text-base font-semibold mt-2">
+                        <p className={`mt-2 text-base font-semibold ${SESSION_SUMMARY_THEME.primaryText}`}>
                             {workoutStats.topExercise?.name || 'No single lift recorded'}
                         </p>
-                        <p className="text-xs text-text-secondary mt-1">
+                        <p className={`mt-1 text-xs ${SESSION_SUMMARY_THEME.secondaryText}`}>
                             {topExerciseEffort
                                 ? `${topExerciseEffort.value} ${topExerciseEffort.unit}`
                                 : 'Bodyweight or timed emphasis'}
@@ -264,9 +265,9 @@ export default function SessionDetailPage() {
                     </div>
 
                     {workoutStats.bestSet && (
-                        <div className="rounded-2xl bg-cyan/10 border border-cyan/15 p-4 mt-4">
+                        <div className={SESSION_SUMMARY_THEME.bestSetCard}>
                             <p className="text-[11px] uppercase tracking-wide text-cyan font-semibold">Best Set Callout</p>
-                            <p className="text-sm font-semibold mt-2">
+                            <p className={`mt-2 text-sm font-semibold ${SESSION_SUMMARY_THEME.primaryText}`}>
                                 {workoutStats.bestSet.exerciseName} • {formatSetPerformance(
                                     workoutStats.bestSet.weight,
                                     workoutStats.bestSet.reps
@@ -501,10 +502,10 @@ function MetricCard({
 
 function PreviewMetric({ label, value, sub }: { label: string; value: string; sub: string }) {
     return (
-        <div className="rounded-2xl bg-white/5 border border-white/8 px-4 py-3">
-            <p className="text-[11px] uppercase tracking-wide text-text-muted">{label}</p>
-            <p className="text-xl font-black mt-2">{value}</p>
-            <p className="text-xs text-text-secondary mt-1">{sub}</p>
+        <div className={SESSION_SUMMARY_THEME.previewMetric}>
+            <p className={`text-[11px] uppercase tracking-wide ${SESSION_SUMMARY_THEME.mutedText}`}>{label}</p>
+            <p className={`mt-2 text-xl font-black ${SESSION_SUMMARY_THEME.primaryText}`}>{value}</p>
+            <p className={`mt-1 text-xs ${SESSION_SUMMARY_THEME.secondaryText}`}>{sub}</p>
         </div>
     );
 }
