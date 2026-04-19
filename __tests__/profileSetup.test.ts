@@ -94,20 +94,24 @@ export function validateProfileSetup(): ValidationResult {
         { value: Number.NaN, label: 'NaN' },
     ];
     invalidTrainingDaysCases.forEach(({ value, label }) => {
-        const invalidDays = buildProfile({
-            onboarding: buildCompletedOnboarding({
+        try {
+            buildCompletedOnboarding({
                 primaryGoal: 'muscle',
                 trainingEnvironment: 'minimal_equipment',
                 supportMode: 'with_friends',
                 experienceLevel: 'beginner',
                 trainingDaysPerWeek: value,
-            }),
-        });
-        if (isProfileSetupComplete(invalidDays) === false) {
-            passed++;
-        } else {
+            });
             failed++;
-            errors.push(`✗ ${label} training days should be incomplete`);
+            errors.push(`✗ ${label} training days should throw`);
+        } catch (error) {
+            const message = error instanceof Error ? error.message : String(error);
+            if (message === 'trainingDaysPerWeek must be a positive integer') {
+                passed++;
+            } else {
+                failed++;
+                errors.push(`✗ ${label} training days threw the wrong error`);
+            }
         }
     });
 

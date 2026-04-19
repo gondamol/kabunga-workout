@@ -25,18 +25,24 @@ export const DEFAULT_USER_ONBOARDING: UserOnboarding = {
     completedAt: null,
 };
 
-export const buildCompletedOnboarding = (
-    input: BuildCompletedOnboardingInput
-): CompletedUserOnboarding => ({
-    ...input,
-    completedAt: Date.now(),
-});
-
 const isPositiveInteger = (value: number | null | undefined): value is number =>
     value !== null &&
     value !== undefined &&
     Number.isInteger(value) &&
     value > 0;
+
+export const buildCompletedOnboarding = (
+    input: BuildCompletedOnboardingInput
+): CompletedUserOnboarding => {
+    if (!isPositiveInteger(input.trainingDaysPerWeek)) {
+        throw new Error('trainingDaysPerWeek must be a positive integer');
+    }
+
+    return {
+        ...input,
+        completedAt: Date.now(),
+    };
+};
 
 export const isProfileSetupComplete = (profile: UserProfile | null | undefined): boolean => {
     const onboarding = profile?.onboarding;
