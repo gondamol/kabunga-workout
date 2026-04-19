@@ -1,4 +1,18 @@
 // ─── User ───
+export type PrimaryGoal = 'strength' | 'muscle' | 'fat_loss' | 'general_fitness';
+export type TrainingEnvironment = 'full_gym' | 'minimal_equipment' | 'home_bodyweight';
+export type SupportMode = 'solo' | 'with_coach' | 'with_friends';
+export type ExperienceLevel = 'beginner' | 'intermediate' | 'advanced';
+
+export interface UserOnboarding {
+    primaryGoal: PrimaryGoal | null;
+    trainingEnvironment: TrainingEnvironment | null;
+    supportMode: SupportMode | null;
+    experienceLevel: ExperienceLevel | null;
+    trainingDaysPerWeek: number | null;
+    completedAt?: number | null;
+}
+
 export interface UserProfile {
     uid: string;
     email: string;
@@ -6,6 +20,7 @@ export interface UserProfile {
     photoURL: string | null;
     role?: UserRole;
     coachCode?: string | null;
+    onboarding?: UserOnboarding | null;
     oneRepMaxPromptSnoozeUntil?: number | null;
     oneRepMaxPromptLastShownAt?: number | null;
     createdAt: number;
