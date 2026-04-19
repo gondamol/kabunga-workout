@@ -149,11 +149,14 @@ export default function ProfilePage() {
     };
 
     return (
-        <div className="max-w-lg mx-auto px-4 pt-6 pb-4 space-y-6">
-            <h1 className="text-2xl font-bold animate-fade-in">Profile</h1>
+        <div className="shell-page pt-6 pb-4 space-y-6">
+            <div className="animate-fade-in">
+                <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-accent">Account</p>
+                <h1 className="mt-1 font-display text-2xl font-bold tracking-tight">Profile</h1>
+            </div>
 
             <div className="glass rounded-2xl p-6 flex items-center gap-4 animate-fade-in stagger-1">
-                <div className="w-16 h-16 rounded-2xl gradient-primary flex items-center justify-center text-white text-2xl font-black shrink-0">
+                <div className="w-16 h-16 rounded-2xl bg-accent/10 text-accent flex items-center justify-center text-2xl font-black shrink-0 overflow-hidden">
                     {profile?.photoURL ? (
                         <img src={profile.photoURL} alt="" className="w-full h-full rounded-2xl object-cover" />
                     ) : (

@@ -1,0 +1,131 @@
+import { buildDashboardPrimaryCard, buildReadinessStrip } from '../src/lib/dashboardPresentation.ts';
+import type { Exercise, HealthCheck, ReadinessScore, WorkoutSession } from '../src/lib/types.ts';
+
+type ValidationResult = {
+    passed: number;
+    failed: number;
+    errors: string[];
+};
+
+const buildExercise = (overrides: Partial<Exercise> = {}): Exercise => ({
+    id: 'exercise-1',
+    name: 'Bench Press',
+    sets: [],
+    notes: '',
+    ...overrides,
+});
+
+const buildWorkout = (overrides: Partial<WorkoutSession> = {}): WorkoutSession => ({
+    id: 'workout-1',
+    userId: 'user-1',
+    startedAt: 1,
+    endedAt: 1,
+    duration: 2400,
+    exercises: [buildExercise()],
+    mediaUrls: [],
+    caloriesEstimate: 320,
+    notes: '',
+    status: 'completed',
+    createdAt: 1,
+    updatedAt: 1,
+    ...overrides,
+});
+
+const buildReadiness = (overrides: Partial<ReadinessScore> = {}): ReadinessScore => ({
+    athleteId: 'user-1',
+    date: '2026-04-19',
+    score: 7,
+    status: 'good',
+    warnings: [],
+    recommendations: ['Train as planned'],
+    updatedAt: 1,
+    ...overrides,
+});
+
+const buildHealthCheck = (overrides: Partial<HealthCheck> = {}): HealthCheck => ({
+    athleteId: 'user-1',
+    date: '2026-04-19',
+    sleepQuality: 4,
+    soreness: 3,
+    mood: 'normal',
+    painNotes: null,
+    createdAt: 1,
+    updatedAt: 1,
+    ...overrides,
+});
+
+export function validateDashboardPresentation(): ValidationResult {
+    const errors: string[] = [];
+    let passed = 0;
+    let failed = 0;
+
+    const activeCard = buildDashboardPrimaryCard({
+        activeSession: buildWorkout({
+            status: 'active',
+            exercises: [buildExercise({ name: 'Front Squat' })],
+        }),
+        latestWorkout: null,
+    });
+
+    if (activeCard.title === "Resume today's workout" && activeCard.ctaLabel === 'Resume workout') {
+        passed++;
+    } else {
+        failed++;
+        errors.push(`✗ Active session card was wrong: ${JSON.stringify(activeCard)}`);
+    }
+
+    const repeatCard = buildDashboardPrimaryCard({
+        activeSession: null,
+        latestWorkout: buildWorkout(),
+    });
+
+    if (repeatCard.title === "Today's plan" && repeatCard.ctaLabel === 'Start workout') {
+        passed++;
+    } else {
+        failed++;
+        errors.push(`✗ Latest workout fallback card was wrong: ${JSON.stringify(repeatCard)}`);
+    }
+
+    const readinessStrip = buildReadinessStrip({
+        readiness: buildReadiness(),
+        healthCheck: buildHealthCheck(),
+    });
+
+    if (readinessStrip.label === 'Readiness' && readinessStrip.value.includes('7/10') && readinessStrip.ctaLabel === 'Edit') {
+        passed++;
+    } else {
+        failed++;
+        errors.push(`✗ Existing readiness strip was wrong: ${JSON.stringify(readinessStrip)}`);
+    }
+
+    const missingStrip = buildReadinessStrip({
+        readiness: null,
+        healthCheck: null,
+    });
+
+    if (missingStrip.ctaLabel === 'Add check-in' && missingStrip.tone === 'empty') {
+        passed++;
+    } else {
+        failed++;
+        errors.push(`✗ Missing readiness strip was wrong: ${JSON.stringify(missingStrip)}`);
+    }
+
+    return { passed, failed, errors };
+}
+
+const reportValidationResult = () => {
+    const result = validateDashboardPresentation();
+    console.log(`Dashboard Presentation Validation: ${result.passed} passed, ${result.failed} failed`);
+    if (result.errors.length > 0) {
+        console.error('Errors:');
+        result.errors.forEach((error) => console.error(error));
+    } else {
+        console.log('✓ All validations passed!');
+    }
+    return result;
+};
+
+if (typeof process !== 'undefined' && typeof window === 'undefined') {
+    const result = reportValidationResult();
+    if (result.failed > 0) process.exitCode = 1;
+}

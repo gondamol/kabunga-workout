@@ -15,6 +15,7 @@ import { getOneRepMaxPromptStatus, getOneRepMaxSnoozeUntil } from '../lib/oneRep
 import { formatProgressionInsightTarget, getDashboardProgressionInsight } from '../lib/progressionInsights';
 import { getWorkoutHeadline } from '../lib/workoutSummary';
 import { buildReadinessRecoveryGuidance, summarizeDailyNutrition, type GuidanceTone } from '../lib/readinessGuidance';
+import { buildDashboardPrimaryCard, buildReadinessStrip } from '../lib/dashboardPresentation';
 import HealthCheckForm from '../components/HealthCheckForm';
 
 const getReadinessTone = (status: ReadinessStatus): {
@@ -126,7 +127,7 @@ export default function DashboardPage() {
                 setOneRepMaxes(maxes);
                 setTodayHealthCheck(healthCheck);
                 setTodayReadiness(readiness);
-                setShowHealthForm(!healthCheck);
+                setShowHealthForm(false);
             } catch (err) {
                 console.warn('Failed to load dashboard data:', err);
             } finally {
@@ -368,100 +369,148 @@ export default function DashboardPage() {
     );
 
     const todayCalories = todayNutrition.calories;
+    const primaryCard = useMemo(
+        () => buildDashboardPrimaryCard({ activeSession, latestWorkout }),
+        [activeSession, latestWorkout]
+    );
+    const readinessStrip = useMemo(
+        () => buildReadinessStrip({ readiness: todayReadiness, healthCheck: todayHealthCheck }),
+        [todayHealthCheck, todayReadiness]
+    );
+    const readinessStripBadgeClass = readinessStrip.tone === 'empty'
+        ? 'bg-bg-input text-text-secondary'
+        : readinessTone?.badge ?? 'bg-bg-input text-text-secondary';
+    const readinessStripDotClass = readinessStrip.tone === 'empty'
+        ? 'bg-border-light'
+        : readinessStrip.tone === 'excellent'
+            ? 'bg-green'
+            : readinessStrip.tone === 'good'
+                ? 'bg-cyan'
+                : readinessStrip.tone === 'moderate'
+                    ? 'bg-amber'
+                    : 'bg-red';
+    const handlePrimaryAction = () => {
+        if (activeSession) {
+            navigate('/active-workout');
+            return;
+        }
+        navigate('/workout');
+    };
 
-    const firstName = profile?.displayName?.split(' ')[0] || 'Champion';
+    const firstName = profile?.displayName?.split(' ')[0] || 'Athlete';
 
     return (
-        <div className="max-w-lg mx-auto px-4 pt-6 pb-4 space-y-6">
-            {/* Header */}
-            <div className="animate-fade-in">
-                <p className="text-text-secondary text-sm">
-                    {dayjs().format('dddd, MMM D')}
-                </p>
-                <h1 className="text-2xl font-bold mt-1">
-                    Hey, <span className="gradient-text">{firstName}</span> 👋
+        <div className="shell-page pt-6 pb-6 space-y-5">
+            <header className="animate-fade-in">
+                <p className="text-sm text-text-secondary">{dayjs().format('dddd, MMM D')}</p>
+                <h1 className="mt-1 font-display text-[2rem] font-bold tracking-tight text-text-primary">
+                    Ready, {firstName}?
                 </h1>
-            </div>
+                <p className="mt-2 max-w-sm text-sm text-text-secondary">
+                    Keep today simple: see the plan, check your readiness, and move into the session.
+                </p>
+            </header>
 
-            {/* Active session banner */}
-            {activeSession && (
-                <button
-                    id="resume-workout-btn"
-                    onClick={() => navigate('/active-workout')}
-                    className="w-full glass rounded-2xl p-4 flex items-center gap-3 animate-pulse-glow"
-                >
-                    <div className="w-12 h-12 rounded-xl bg-green/20 flex items-center justify-center">
-                        <Zap size={24} className="text-green" />
+            <section className="glass rounded-[28px] p-5 animate-fade-in">
+                <div className="flex items-start justify-between gap-3">
+                    <div>
+                        <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-accent">
+                            {primaryCard.eyebrow}
+                        </p>
+                        <h2 className="mt-2 font-display text-[1.75rem] font-bold tracking-tight text-text-primary">
+                            {primaryCard.title}
+                        </h2>
+                        <p className="mt-2 text-sm text-text-secondary">{primaryCard.detail}</p>
                     </div>
-                    <div className="flex-1 text-left">
-                        <p className="font-semibold text-green">Workout in progress</p>
-                        <p className="text-xs text-text-secondary">{activeSession.exercises.length} exercises — tap to resume</p>
+                    <div className={`flex h-12 w-12 items-center justify-center rounded-2xl ${activeSession ? 'bg-cyan/12' : 'bg-green/12'}`}>
+                        {activeSession ? (
+                            <Zap size={22} className="text-cyan" />
+                        ) : (
+                            <Plus size={22} className="text-green" />
+                        )}
                     </div>
-                    <ChevronRight size={20} className="text-text-muted" />
-                </button>
-            )}
+                </div>
 
-            {(showHealthForm || !todayHealthCheck || !todayReadiness) ? (
+                <div className="mt-4 grid grid-cols-3 gap-2 text-center">
+                    <div className="rounded-2xl bg-bg-surface px-3 py-3">
+                        <p className="text-[10px] uppercase tracking-wide text-text-muted">Week</p>
+                        <p className="mt-1 text-base font-bold text-text-primary">{stats.weeklyWorkouts}</p>
+                    </div>
+                    <div className="rounded-2xl bg-bg-surface px-3 py-3">
+                        <p className="text-[10px] uppercase tracking-wide text-text-muted">Streak</p>
+                        <p className="mt-1 text-base font-bold text-text-primary">{stats.streak} days</p>
+                    </div>
+                    <div className="rounded-2xl bg-bg-surface px-3 py-3">
+                        <p className="text-[10px] uppercase tracking-wide text-text-muted">Food</p>
+                        <p className="mt-1 text-base font-bold text-text-primary">{todayCalories} kcal</p>
+                    </div>
+                </div>
+
+                <div className="mt-4 flex gap-2">
+                    <button
+                        id="start-workout-btn"
+                        onClick={handlePrimaryAction}
+                        className="flex-1 rounded-2xl gradient-primary px-4 py-4 text-base font-semibold text-white shadow-lg shadow-accent/20 transition-transform active:scale-[0.98]"
+                    >
+                        {primaryCard.ctaLabel}
+                    </button>
+                    {!activeSession && latestWorkout && (
+                        <button
+                            onClick={() => handleRepeatLastWorkout(false)}
+                            className="rounded-2xl border border-border bg-white px-4 py-4 text-sm font-semibold text-text-primary transition-transform active:scale-[0.98]"
+                        >
+                            Last session
+                        </button>
+                    )}
+                </div>
+            </section>
+
+            <button
+                type="button"
+                onClick={() => setShowHealthForm((current) => !current)}
+                className="glass w-full rounded-[24px] p-4 text-left animate-fade-in"
+            >
+                <div className="flex items-center justify-between gap-3">
+                    <div className="flex items-center gap-3">
+                        <span className={`h-3 w-3 rounded-full ${readinessStripDotClass}`} />
+                        <div>
+                            <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-cyan">
+                                {readinessStrip.label}
+                            </p>
+                            <p className="mt-1 text-base font-bold text-text-primary">{readinessStrip.value}</p>
+                            <p className="mt-1 text-sm text-text-secondary">{readinessStrip.detail}</p>
+                        </div>
+                    </div>
+                    <span className={`rounded-full px-3 py-1 text-xs font-semibold ${readinessStripBadgeClass}`}>
+                        {readinessStrip.ctaLabel}
+                    </span>
+                </div>
+            </button>
+
+            {showHealthForm && (
                 <HealthCheckForm
                     athleteId={user?.uid || ''}
                     date={todayKey}
                     initialValue={todayHealthCheck}
                     saving={savingHealthCheck}
                     onComplete={handleSaveHealthCheck}
-                    onCancel={todayHealthCheck ? () => setShowHealthForm(false) : undefined}
+                    onCancel={() => setShowHealthForm(false)}
                 />
-            ) : (
-                todayReadiness && readinessTone && (
-                    <div className={`rounded-3xl border bg-gradient-to-br ${readinessTone.surface} ${readinessTone.border} p-5 animate-fade-in`}>
-                        <div className="flex items-start justify-between gap-3">
-                            <div>
-                                <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-text-muted">Daily Readiness</p>
-                                <h2 className="text-lg font-bold mt-1">Score {todayReadiness.score}/10</h2>
-                                <p className="text-sm text-text-secondary mt-2">
-                                    {todayReadiness.warnings.length > 0
-                                        ? todayReadiness.warnings.join(' • ')
-                                        : 'No recovery flags reported today.'}
-                                </p>
-                            </div>
-                            <div className={`rounded-2xl px-3 py-2 text-sm font-semibold ${readinessTone.badge}`}>
-                                {readinessTone.label}
-                            </div>
-                        </div>
-                        <div className="mt-4 flex flex-wrap gap-2">
-                            {todayReadiness.recommendations.slice(0, 2).map((recommendation) => (
-                                <span
-                                    key={recommendation}
-                                    className="rounded-full border border-border bg-bg-surface px-3 py-1 text-[11px] text-text-secondary"
-                                >
-                                    {recommendation}
-                                </span>
-                            ))}
-                        </div>
-                        <div className="mt-4">
-                            <button
-                                onClick={() => setShowHealthForm(true)}
-                                className="w-full py-3 rounded-2xl border border-border text-sm font-semibold text-text-primary"
-                            >
-                                Edit Check-In
-                            </button>
-                        </div>
-                    </div>
-                )
             )}
 
             {todayReadiness && todayRecoveryGuidance && (
-                <div className="glass rounded-3xl p-5 animate-fade-in">
+                <div className="glass rounded-[28px] p-5 animate-fade-in">
                     <div className="flex items-start justify-between gap-3">
                         <div>
-                            <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-cyan">Fuel & Recovery</p>
-                            <h2 className="text-lg font-bold mt-1">{todayRecoveryGuidance.headline}</h2>
-                            <p className="text-sm text-text-secondary mt-2">{todayRecoveryGuidance.summary}</p>
+                            <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-cyan">Recovery support</p>
+                            <h2 className="mt-1 text-lg font-bold text-text-primary">{todayRecoveryGuidance.headline}</h2>
+                            <p className="mt-2 text-sm text-text-secondary">{todayRecoveryGuidance.summary}</p>
                         </div>
                         <button
                             onClick={() => navigate('/nutrition')}
-                            className="rounded-2xl border border-border px-3 py-2 text-xs font-semibold text-text-primary"
+                            className="rounded-2xl border border-border bg-white px-3 py-2 text-xs font-semibold text-text-primary"
                         >
-                            Log Food
+                            Food today
                         </button>
                     </div>
                     <div className="mt-4 space-y-2">
@@ -475,7 +524,7 @@ export default function DashboardPage() {
                                     <div className="flex items-start justify-between gap-3">
                                         <div>
                                             <p className="text-sm font-semibold">{item.title}</p>
-                                            <p className="text-xs text-text-secondary mt-1">{item.detail}</p>
+                                            <p className="mt-1 text-xs text-text-secondary">{item.detail}</p>
                                         </div>
                                         <span className={`rounded-full px-2 py-1 text-[10px] font-semibold ${tone.badge}`}>
                                             {item.tone}
@@ -488,84 +537,29 @@ export default function DashboardPage() {
                 </div>
             )}
 
-            {!activeSession && latestWorkout && (
-                <div className="glass rounded-3xl p-5 animate-fade-in">
-                    <div className="flex items-start justify-between gap-3">
-                        <div>
-                            <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-cyan">Fast Lane</p>
-                            <h2 className="text-lg font-bold mt-1">Repeat Last Workout</h2>
-                            <p className="text-sm text-text-secondary mt-2">{getWorkoutHeadline(latestWorkout)}</p>
-                        </div>
-                        <div className="rounded-2xl bg-cyan/10 px-3 py-2 text-xs font-semibold text-cyan">
-                            {formatRelativeTime(latestWorkout.startedAt)}
-                        </div>
-                    </div>
-                    <div className="mt-4 grid grid-cols-3 gap-2 text-center">
-                        <div className="rounded-xl bg-bg-card p-2">
-                            <p className="text-[10px] text-text-muted">Exercises</p>
-                            <p className="text-sm font-semibold">{latestWorkout.exercises.length}</p>
-                        </div>
-                        <div className="rounded-xl bg-bg-card p-2">
-                            <p className="text-[10px] text-text-muted">Duration</p>
-                            <p className="text-sm font-semibold">{formatDurationHuman(latestWorkout.duration)}</p>
-                        </div>
-                        <div className="rounded-xl bg-bg-card p-2">
-                            <p className="text-[10px] text-text-muted">Calories</p>
-                            <p className="text-sm font-semibold">{Math.round(latestWorkout.caloriesEstimate)}</p>
-                        </div>
-                    </div>
-                    <div className="mt-4 flex gap-2">
-                        <button
-                            onClick={() => handleRepeatLastWorkout(false)}
-                            className="flex-1 py-3 rounded-2xl border border-border text-sm font-semibold text-text-primary"
-                        >
-                            Load For Edit
-                        </button>
-                        <button
-                            onClick={() => handleRepeatLastWorkout(true)}
-                            className="flex-1 py-3 rounded-2xl gradient-primary text-white text-sm font-semibold"
-                        >
-                            Start Now
-                        </button>
-                    </div>
-                </div>
-            )}
-
-            {/* Start Workout CTA */}
-            {!activeSession && (
-                <button
-                    id="start-workout-btn"
-                    onClick={() => navigate('/workout')}
-                    className="w-full py-5 rounded-3xl gradient-primary text-white font-bold text-lg flex items-center justify-center gap-3 active:scale-[0.97] transition-transform shadow-xl shadow-accent/25 animate-fade-in"
-                >
-                    <Plus size={24} strokeWidth={3} />
-                    Start Workout
-                </button>
-            )}
-
             {oneRepMaxStatus.shouldPrompt && (
-                <div className="rounded-3xl border border-amber/20 bg-gradient-to-br from-amber/15 via-bg-card to-bg-surface p-5 animate-fade-in">
+                <div className="glass rounded-[28px] p-5 animate-fade-in">
                     <div className="flex items-start justify-between gap-3">
                         <div>
-                            <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-amber">Performance Check</p>
-                            <h2 className="text-lg font-bold mt-1">Update your 1RM</h2>
-                            <p className="text-sm text-text-secondary mt-2">{oneRepMaxStatus.reason}</p>
+                            <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-amber">Strength profile</p>
+                            <h2 className="mt-1 text-lg font-bold text-text-primary">Update your 1RM</h2>
+                            <p className="mt-2 text-sm text-text-secondary">{oneRepMaxStatus.reason}</p>
                         </div>
-                        <div className="w-11 h-11 rounded-2xl bg-amber/15 flex items-center justify-center shrink-0">
+                        <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-amber/12 shrink-0">
                             <BarChart3 size={20} className="text-amber" />
                         </div>
                     </div>
                     <div className="mt-4 flex gap-2">
                         <button
                             onClick={() => navigate('/profile?focus=one-rep-maxes')}
-                            className="flex-1 py-3 rounded-2xl bg-amber text-bg-primary font-semibold"
+                            className="flex-1 rounded-2xl bg-amber px-4 py-3 font-semibold text-white"
                         >
-                            Update Now
+                            Update now
                         </button>
                         <button
                             onClick={() => void handleSnoozeOneRepMaxPrompt()}
                             disabled={savingPromptState}
-                            className="px-4 py-3 rounded-2xl border border-border text-sm text-text-secondary flex items-center gap-2 disabled:opacity-50"
+                            className="flex items-center gap-2 rounded-2xl border border-border bg-white px-4 py-3 text-sm text-text-secondary disabled:opacity-50"
                         >
                             <TimerReset size={15} />
                             7 days
@@ -574,13 +568,12 @@ export default function DashboardPage() {
                 </div>
             )}
 
-            {/* Stats Grid */}
             <div className="grid grid-cols-2 gap-3 animate-fade-in stagger-1">
                 <StatCard
                     icon={<Dumbbell size={20} className="text-accent" />}
-                    label="This Week"
+                    label="This week"
                     value={`${stats.weeklyWorkouts}`}
-                    sub="workouts"
+                    sub="sessions"
                 />
                 <StatCard
                     icon={<Flame size={20} className="text-amber" />}
@@ -590,7 +583,7 @@ export default function DashboardPage() {
                 />
                 <StatCard
                     icon={<Clock size={20} className="text-cyan" />}
-                    label="Total Time"
+                    label="Time"
                     value={formatDurationHuman(stats.totalDuration)}
                     sub="this month"
                 />
@@ -598,107 +591,109 @@ export default function DashboardPage() {
                     icon={<TrendingUp size={20} className="text-green" />}
                     label="Calories"
                     value={`${Math.round(stats.totalCalories)}`}
-                    sub="burned (est.)"
+                    sub="burned"
                 />
             </div>
 
-            {/* Weekly Chart */}
-            <div className="glass rounded-2xl p-4 animate-fade-in stagger-2 min-w-0">
-                <h3 className="text-sm font-semibold text-text-secondary mb-4">This Week</h3>
+            <div className="glass rounded-[28px] p-4 animate-fade-in stagger-2 min-w-0">
+                <div className="mb-4 flex items-center justify-between">
+                    <h3 className="text-sm font-semibold text-text-primary">Weekly progress</h3>
+                    <span className="text-xs text-text-muted">{trendInsights.last7Count}/7 sessions</span>
+                </div>
                 <div ref={chartContainerRef} className="h-36 w-full min-w-0">
                     {isChartReady ? (
                         <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={1}>
-                            <BarChart data={chartData} barSize={28}>
+                            <BarChart data={chartData} barSize={26}>
                                 <XAxis dataKey="day" axisLine={false} tickLine={false} />
                                 <YAxis hide allowDecimals={false} />
                                 <Tooltip
                                     cursor={false}
                                     contentStyle={{
-                                        background: '#1a1a3e',
-                                        border: '1px solid rgba(139,92,246,0.2)',
+                                        background: '#ffffff',
+                                        border: '1px solid #dfe8d8',
                                         borderRadius: '12px',
                                         fontSize: '12px',
-                                        color: '#f1f5f9',
+                                        color: '#172119',
+                                        boxShadow: '0 12px 32px rgba(23,33,25,0.08)',
                                     }}
                                 />
                                 <Bar dataKey="count" radius={[8, 8, 0, 0]} name="Workouts">
                                     {chartData.map((entry, i) => (
                                         <Cell
                                             key={i}
-                                            fill={entry.count > 0 ? '#8b5cf6' : 'rgba(139,92,246,0.15)'}
+                                            fill={entry.count > 0 ? '#2563eb' : 'rgba(37,99,235,0.14)'}
                                         />
                                     ))}
                                 </Bar>
                             </BarChart>
                         </ResponsiveContainer>
                     ) : (
-                        <div className="h-full w-full rounded-xl bg-bg-card/50" />
+                        <div className="h-full w-full rounded-2xl bg-bg-surface" />
                     )}
                 </div>
             </div>
 
-            <div className="glass rounded-2xl p-4 animate-fade-in stagger-2">
-                <div className="flex items-center justify-between mb-3">
-                    <h3 className="text-sm font-semibold text-text-secondary">Strength Trends</h3>
+            <div className="glass rounded-[28px] p-4 animate-fade-in stagger-2">
+                <div className="mb-3 flex items-center justify-between">
+                    <h3 className="text-sm font-semibold text-text-primary">Strength trends</h3>
                     <span className="text-xs text-text-muted">{trendInsights.last7Count}/7 sessions</span>
                 </div>
                 <div className="grid grid-cols-2 gap-3">
-                    <div className="rounded-xl bg-bg-card p-3">
-                        <p className="text-[11px] uppercase tracking-wide text-text-muted">Volume (7d)</p>
-                        <p className="text-lg font-bold mt-1">{trendInsights.lastVolume}</p>
-                        <p className={`text-xs mt-1 ${trendInsights.volumeDeltaPct >= 0 ? 'text-green' : 'text-red'}`}>
-                            {trendInsights.volumeDeltaPct >= 0 ? '+' : ''}{trendInsights.volumeDeltaPct}% vs prior week
+                    <div className="rounded-2xl bg-bg-surface p-3">
+                        <p className="text-[11px] uppercase tracking-wide text-text-muted">Volume</p>
+                        <p className="mt-1 text-lg font-bold">{trendInsights.lastVolume}</p>
+                        <p className={`mt-1 text-xs ${trendInsights.volumeDeltaPct >= 0 ? 'text-green' : 'text-red'}`}>
+                            {trendInsights.volumeDeltaPct >= 0 ? '+' : ''}{trendInsights.volumeDeltaPct}% vs last week
                         </p>
                     </div>
-                    <div className="rounded-xl bg-bg-card p-3">
-                        <p className="text-[11px] uppercase tracking-wide text-text-muted">Avg Duration</p>
-                        <p className="text-lg font-bold mt-1">{formatDurationHuman(trendInsights.currentAvgDuration)}</p>
-                        <p className={`text-xs mt-1 ${trendInsights.durationDeltaPct >= 0 ? 'text-amber' : 'text-cyan'}`}>
-                            {trendInsights.durationDeltaPct >= 0 ? '+' : ''}{trendInsights.durationDeltaPct}% vs prior week
+                    <div className="rounded-2xl bg-bg-surface p-3">
+                        <p className="text-[11px] uppercase tracking-wide text-text-muted">Avg duration</p>
+                        <p className="mt-1 text-lg font-bold">{formatDurationHuman(trendInsights.currentAvgDuration)}</p>
+                        <p className={`mt-1 text-xs ${trendInsights.durationDeltaPct >= 0 ? 'text-amber' : 'text-cyan'}`}>
+                            {trendInsights.durationDeltaPct >= 0 ? '+' : ''}{trendInsights.durationDeltaPct}% vs last week
                         </p>
                     </div>
                 </div>
-                <div className="rounded-xl bg-bg-card p-3 mt-3">
-                    <p className="text-[11px] uppercase tracking-wide text-text-muted">Top Lift (30d by volume)</p>
-                    <p className="text-sm font-semibold mt-1">{trendInsights.topExerciseName}</p>
-                    <p className="text-xs text-text-secondary mt-1">{trendInsights.topExerciseVolume} kg·reps</p>
+                <div className="mt-3 rounded-2xl bg-bg-surface p-3">
+                    <p className="text-[11px] uppercase tracking-wide text-text-muted">Top lift in the last 30 days</p>
+                    <p className="mt-1 text-sm font-semibold">{trendInsights.topExerciseName}</p>
+                    <p className="mt-1 text-xs text-text-secondary">{trendInsights.topExerciseVolume} kg·reps</p>
                 </div>
             </div>
 
             {progressionInsight && (
-                <div className="glass rounded-2xl p-4 animate-fade-in stagger-3">
+                <div className="glass rounded-[28px] p-4 animate-fade-in stagger-3">
                     <div className="flex items-center justify-between gap-3">
                         <div>
-                            <p className="text-[11px] uppercase tracking-wide text-cyan font-semibold">Next Progression</p>
-                            <h3 className="text-base font-bold mt-1">{progressionInsight.exerciseName}</h3>
+                            <p className="text-[11px] uppercase tracking-wide text-cyan font-semibold">Next progression</p>
+                            <h3 className="mt-1 text-base font-bold">{progressionInsight.exerciseName}</h3>
                         </div>
                         <button
                             onClick={() => navigate('/workout')}
-                            className="px-3 py-2 rounded-xl border border-border text-xs text-text-secondary"
+                            className="rounded-xl border border-border bg-white px-3 py-2 text-xs text-text-secondary"
                         >
-                            Open Planner
+                            Open planner
                         </button>
                     </div>
-                    <p className="text-xl font-black mt-3">{formatProgressionInsightTarget(progressionInsight)}</p>
-                    <p className="text-xs text-text-secondary mt-1">{progressionInsight.reason}</p>
+                    <p className="mt-3 text-xl font-black">{formatProgressionInsightTarget(progressionInsight)}</p>
+                    <p className="mt-1 text-xs text-text-secondary">{progressionInsight.reason}</p>
                 </div>
             )}
 
-            {/* Challenge Progress */}
             {challenges.length > 0 && (
                 <div className="animate-fade-in stagger-3">
-                    <div className="flex items-center justify-between mb-3">
-                        <h3 className="text-sm font-semibold text-text-secondary">Active Challenges</h3>
-                        <button onClick={() => navigate('/challenges')} className="text-xs text-accent font-medium">
-                            View All
+                    <div className="mb-3 flex items-center justify-between">
+                        <h3 className="text-sm font-semibold text-text-primary">Active challenges</h3>
+                        <button onClick={() => navigate('/challenges')} className="text-xs font-medium text-accent">
+                            View all
                         </button>
                     </div>
                     <div className="space-y-3">
                         {challenges.slice(0, 2).map((c) => {
                             const pct = Math.min(100, Math.round((c.currentCount / c.targetCount) * 100));
                             return (
-                                <div key={c.id} className="glass rounded-2xl p-4">
-                                    <div className="flex items-center justify-between mb-2">
+                                <div key={c.id} className="glass rounded-[24px] p-4">
+                                    <div className="mb-2 flex items-center justify-between">
                                         <div className="flex items-center gap-2">
                                             <Trophy size={16} className="text-amber" />
                                             <span className="text-sm font-medium">{c.title}</span>
@@ -707,7 +702,7 @@ export default function DashboardPage() {
                                             {c.currentCount}/{c.targetCount}
                                         </span>
                                     </div>
-                                    <div className="w-full h-2 bg-bg-input rounded-full overflow-hidden">
+                                    <div className="h-2 w-full overflow-hidden rounded-full bg-bg-input">
                                         <div
                                             className="h-full rounded-full gradient-primary transition-all duration-500"
                                             style={{ width: `${pct}%` }}
@@ -720,35 +715,76 @@ export default function DashboardPage() {
                 </div>
             )}
 
-            {/* Nutrition Summary */}
-            <div className="glass rounded-2xl p-4 animate-fade-in stagger-4">
-                <div className="flex items-center justify-between mb-2">
-                    <h3 className="text-sm font-semibold text-text-secondary">Today's Nutrition</h3>
-                    <button onClick={() => navigate('/nutrition')} className="text-xs text-accent font-medium">
-                        Log Food
+            <div className="glass rounded-[28px] p-4 animate-fade-in stagger-4">
+                <div className="mb-2 flex items-center justify-between">
+                    <h3 className="text-sm font-semibold text-text-primary">Food today</h3>
+                    <button onClick={() => navigate('/nutrition')} className="text-xs font-medium text-accent">
+                        Log food
                     </button>
                 </div>
                 <div className="flex items-baseline gap-1">
                     <span className="text-2xl font-bold">{todayCalories}</span>
-                    <span className="text-text-muted text-sm">kcal</span>
+                    <span className="text-sm text-text-muted">kcal</span>
                 </div>
-                <div className="flex gap-4 mt-2">
+                <div className="mt-2 flex gap-4">
                     <MacroPill label="Protein" value={todayNutrition.protein} color="text-cyan" />
                     <MacroPill label="Carbs" value={todayNutrition.carbs} color="text-amber" />
                     <MacroPill label="Fat" value={todayNutrition.fat} color="text-red" />
                 </div>
             </div>
 
-            {/* Recent Sessions */}
+            {!activeSession && latestWorkout && (
+                <div className="glass rounded-[28px] p-5 animate-fade-in">
+                    <div className="flex items-start justify-between gap-3">
+                        <div>
+                            <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-cyan">Last session</p>
+                            <h2 className="mt-1 text-lg font-bold text-text-primary">{getWorkoutHeadline(latestWorkout)}</h2>
+                            <p className="mt-2 text-sm text-text-secondary">Most recent workout from {formatRelativeTime(latestWorkout.startedAt)}.</p>
+                        </div>
+                        <div className="rounded-2xl bg-cyan/10 px-3 py-2 text-xs font-semibold text-cyan">
+                            {latestWorkout.exercises.length} ex
+                        </div>
+                    </div>
+                    <div className="mt-4 grid grid-cols-3 gap-2 text-center">
+                        <div className="rounded-2xl bg-bg-surface p-2">
+                            <p className="text-[10px] text-text-muted">Duration</p>
+                            <p className="text-sm font-semibold">{formatDurationHuman(latestWorkout.duration)}</p>
+                        </div>
+                        <div className="rounded-2xl bg-bg-surface p-2">
+                            <p className="text-[10px] text-text-muted">Calories</p>
+                            <p className="text-sm font-semibold">{Math.round(latestWorkout.caloriesEstimate)}</p>
+                        </div>
+                        <div className="rounded-2xl bg-bg-surface p-2">
+                            <p className="text-[10px] text-text-muted">Date</p>
+                            <p className="text-sm font-semibold">{dayjs(latestWorkout.startedAt).format('MMM D')}</p>
+                        </div>
+                    </div>
+                    <div className="mt-4 flex gap-2">
+                        <button
+                            onClick={() => handleRepeatLastWorkout(false)}
+                            className="flex-1 rounded-2xl border border-border bg-white py-3 text-sm font-semibold text-text-primary"
+                        >
+                            Load for edit
+                        </button>
+                        <button
+                            onClick={() => handleRepeatLastWorkout(true)}
+                            className="flex-1 rounded-2xl gradient-primary py-3 text-sm font-semibold text-white"
+                        >
+                            Start now
+                        </button>
+                    </div>
+                </div>
+            )}
+
             {workouts.length > 0 && (
                 <div className="animate-fade-in stagger-5">
-                    <div className="flex items-center justify-between mb-3">
-                        <h3 className="text-sm font-semibold text-text-secondary">Recent Sessions</h3>
+                    <div className="mb-3 flex items-center justify-between">
+                        <h3 className="text-sm font-semibold text-text-primary">Recent sessions</h3>
                         <button
                             onClick={() => navigate('/history')}
-                            className="text-xs text-accent font-medium"
+                            className="text-xs font-medium text-accent"
                         >
-                            Open Calendar
+                            Open calendar
                         </button>
                     </div>
                     <div className="space-y-2">
@@ -756,13 +792,13 @@ export default function DashboardPage() {
                             <button
                                 key={w.id}
                                 onClick={() => navigate(`/history/${w.id}`)}
-                                className="w-full glass rounded-2xl p-4 flex items-center gap-3 text-left"
+                                className="glass flex w-full items-center gap-3 rounded-[24px] p-4 text-left"
                             >
-                                <div className="w-10 h-10 rounded-xl bg-accent/20 flex items-center justify-center">
+                                <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-accent/10">
                                     <Dumbbell size={18} className="text-accent" />
                                 </div>
-                                <div className="flex-1 min-w-0">
-                                    <p className="text-sm font-medium truncate">
+                                <div className="min-w-0 flex-1">
+                                    <p className="truncate text-sm font-medium">
                                         {getWorkoutHeadline(w)}
                                     </p>
                                     <p className="text-xs text-text-muted">
@@ -778,27 +814,16 @@ export default function DashboardPage() {
                     </div>
                 </div>
             )}
-
-            {/* Empty state */}
-            {!loadingWorkouts && workouts.length === 0 && !activeSession && (
-                <div className="text-center py-12 animate-fade-in">
-                    <div className="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-accent/10 mb-4">
-                        <Dumbbell size={32} className="text-accent" />
-                    </div>
-                    <h3 className="text-lg font-semibold mb-1">No workouts yet</h3>
-                    <p className="text-text-secondary text-sm">Start your first one and track your progress.</p>
-                </div>
-            )}
         </div>
     );
 }
 
 function StatCard({ icon, label, value, sub }: { icon: React.ReactNode; label: string; value: string; sub: string }) {
     return (
-        <div className="glass rounded-2xl p-4">
+        <div className="glass rounded-[24px] p-4">
             <div className="flex items-center gap-2 mb-2">
                 {icon}
-                <span className="text-xs text-text-muted">{label}</span>
+                <span className="text-xs uppercase tracking-wide text-text-muted">{label}</span>
             </div>
             <p className="text-xl font-bold">{value}</p>
             <p className="text-xs text-text-muted">{sub}</p>

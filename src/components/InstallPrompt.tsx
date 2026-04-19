@@ -49,14 +49,14 @@ export default function InstallPrompt() {
     if (!deferredPrompt || dismissed) return null;
 
     return (
-        <div className="fixed top-4 left-4 right-4 z-[100] glass-strong rounded-2xl p-4 animate-slide-up max-w-lg mx-auto">
+        <div className="fixed top-4 left-4 right-4 z-[100] mx-auto max-w-lg rounded-[24px] border border-border bg-white/95 p-4 shadow-[0_16px_40px_rgba(23,33,25,0.08)] backdrop-blur-xl animate-slide-up">
             <div className="flex items-start gap-3">
-                <div className="w-10 h-10 rounded-xl gradient-primary flex items-center justify-center shrink-0">
-                    <Download size={20} className="text-white" />
+                <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-accent/10 text-accent shrink-0">
+                    <Download size={20} />
                 </div>
                 <div className="flex-1 min-w-0">
                     <h3 className="font-semibold text-sm text-text-primary">Install Kabunga</h3>
-                    <p className="text-xs text-text-secondary mt-0.5">Add to home screen for the best gym experience.</p>
+                    <p className="text-xs text-text-secondary mt-0.5">Add it to your home screen for a cleaner, faster training flow.</p>
                 </div>
                 <button onClick={handleDismiss} className="text-text-muted p-1">
                     <X size={16} />
@@ -64,7 +64,7 @@ export default function InstallPrompt() {
             </div>
             <button
                 onClick={handleInstall}
-                className="mt-3 w-full py-2.5 rounded-xl gradient-primary text-white text-sm font-semibold active:scale-[0.98] transition-transform"
+                className="mt-3 w-full rounded-xl gradient-primary py-2.5 text-sm font-semibold text-white transition-transform active:scale-[0.98]"
             >
                 Install App
             </button>

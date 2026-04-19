@@ -137,8 +137,11 @@ export default function NutritionPage() {
     };
 
     return (
-        <div className="max-w-lg mx-auto px-4 pt-6 pb-4 space-y-6">
-            <h1 className="text-2xl font-bold animate-fade-in">Nutrition</h1>
+        <div className="shell-page pt-6 pb-4 space-y-6">
+            <div className="animate-fade-in">
+                <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-accent">Training support</p>
+                <h1 className="mt-1 font-display text-2xl font-bold tracking-tight">Nutrition</h1>
+            </div>
 
             {/* Date picker */}
             <div className="flex items-center justify-between glass rounded-2xl px-4 py-3 animate-fade-in">

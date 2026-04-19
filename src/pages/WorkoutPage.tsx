@@ -223,10 +223,13 @@ export default function WorkoutPage() {
     };
 
     return (
-        <div className="max-w-lg mx-auto px-4 pt-6 pb-24 space-y-5">
+        <div className="shell-page pt-6 pb-24 space-y-5">
             {/* Header */}
             <div className="flex items-center justify-between animate-fade-in">
-                <h1 className="text-2xl font-bold">Workout</h1>
+                <div>
+                    <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-accent">Today&apos;s training</p>
+                    <h1 className="mt-1 font-display text-2xl font-bold tracking-tight">Workout</h1>
+                </div>
                 <div className="flex gap-1 bg-bg-card rounded-xl p-1">
                     <button
                         onClick={() => setTab('plan')}
@@ -247,7 +250,7 @@ export default function WorkoutPage() {
                 <>
                     {/* Tip banner */}
                     <p className="text-xs text-text-muted px-1">
-                        Set up your exercises below — sets, reps, weight — then tap <strong className="text-text-primary">Start Workout</strong>. You'll move straight to doing them one by one.
+                        Review the plan below, make any adjustments you need, then tap <strong className="text-text-primary">Start workout</strong>.
                     </p>
 
                     {activeSession?.scheduledWorkoutId && (
@@ -273,7 +276,7 @@ export default function WorkoutPage() {
                             <div className="flex items-center justify-between gap-2 mb-2">
                                 <p className="text-sm font-semibold flex items-center gap-2">
                                     <Users size={15} className="text-accent" />
-                                    Coach Plan For Today
+                                    Today&apos;s coach plan
                                 </p>
                                 <span className="text-xs text-text-muted">{todayCoachPlans.length} assigned</span>
                             </div>
@@ -313,8 +316,8 @@ export default function WorkoutPage() {
                         <div className="glass rounded-2xl p-4 animate-fade-in">
                             <div className="flex items-start justify-between gap-3">
                                 <div>
-                                    <p className="text-[11px] font-semibold uppercase tracking-wide text-cyan">Fast Lane</p>
-                                    <h3 className="text-base font-bold mt-1">Repeat Last Workout</h3>
+                                    <p className="text-[11px] font-semibold uppercase tracking-wide text-cyan">Last session</p>
+                                    <h3 className="text-base font-bold mt-1">Repeat your last workout</h3>
                                     <p className="text-sm text-text-secondary mt-1">{getWorkoutHeadline(latestWorkout)}</p>
                                 </div>
                                 <div className="rounded-2xl bg-cyan/10 px-3 py-2 text-xs font-semibold text-cyan">
@@ -346,7 +349,7 @@ export default function WorkoutPage() {
                                     onClick={() => handleRepeatLastWorkout(true)}
                                     className="flex-1 py-3 rounded-2xl gradient-primary text-white text-sm font-semibold"
                                 >
-                                    Start Now
+                                    Start now
                                 </button>
                             </div>
                         </div>
@@ -359,9 +362,9 @@ export default function WorkoutPage() {
                                 <div className="w-16 h-16 rounded-2xl bg-accent/10 flex items-center justify-center mx-auto mb-4">
                                     <Dumbbell size={28} className="text-accent" />
                                 </div>
-                                <h3 className="font-bold text-base mb-1">Build your workout</h3>
+                                <h3 className="font-bold text-base mb-1">Build today&apos;s plan</h3>
                                 <p className="text-sm text-text-secondary mb-5">
-                                    Add your warmup, main lifts and cooldown — then hit Start
+                                    Add your warm-up, main lifts, and accessories, then move into the session.
                                 </p>
                                 <button
                                     onClick={() => setShowPicker(true)}

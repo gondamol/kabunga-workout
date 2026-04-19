@@ -64,12 +64,12 @@ export function HealthCheckForm({
     };
 
     return (
-        <div className="rounded-3xl border border-border bg-bg-card p-4 space-y-4">
+        <div className="rounded-[28px] border border-border bg-bg-card p-5 shadow-sm space-y-5">
             <div>
-                <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-cyan">Daily Readiness</p>
-                <h3 className="text-lg font-bold mt-1">Health Check</h3>
+                <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-cyan">Daily check-in</p>
+                <h3 className="text-lg font-bold mt-1">Update readiness</h3>
                 <p className="text-sm text-text-secondary mt-1">
-                    Quick recovery check before training. Optional body metrics stay athlete-only.
+                    Quick recovery context before training. Optional body metrics stay athlete-only.
                 </p>
             </div>
 
@@ -81,10 +81,10 @@ export function HealthCheckForm({
                             key={value}
                             type="button"
                             onClick={() => setCheck((current) => ({ ...current, sleepQuality: value as HealthCheck['sleepQuality'] }))}
-                            className={`rounded-2xl px-2 py-3 text-sm font-semibold border ${
+                            className={`rounded-2xl px-2 py-3 text-sm font-semibold border transition-colors ${
                                 check.sleepQuality === value
                                     ? 'border-cyan bg-cyan/15 text-cyan'
-                                    : 'border-border bg-bg-surface text-text-secondary'
+                                    : 'border-border bg-bg-input text-text-secondary'
                             }`}
                         >
                             {value}
@@ -120,10 +120,10 @@ export function HealthCheckForm({
                             key={mood}
                             type="button"
                             onClick={() => setMood(mood)}
-                            className={`rounded-2xl px-3 py-3 text-sm font-semibold border capitalize ${
+                            className={`rounded-2xl px-3 py-3 text-sm font-semibold border capitalize transition-colors ${
                                 check.mood === mood
                                     ? 'border-cyan bg-cyan/15 text-cyan'
-                                    : 'border-border bg-bg-surface text-text-secondary'
+                                    : 'border-border bg-bg-input text-text-secondary'
                             }`}
                         >
                             {mood}
@@ -145,7 +145,7 @@ export function HealthCheckForm({
                             bodyWeightKg: event.target.value ? Number(event.target.value) : undefined,
                         }))}
                         placeholder="Optional"
-                        className="mt-1 w-full bg-bg-input border border-border rounded-2xl py-2.5 px-3"
+                        className="mt-1 w-full bg-bg-input border border-border rounded-2xl py-3 px-3"
                     />
                 </label>
                 <label className="text-sm text-text-secondary">
@@ -160,7 +160,7 @@ export function HealthCheckForm({
                             bodyFatPercent: event.target.value ? Number(event.target.value) : undefined,
                         }))}
                         placeholder="Optional"
-                        className="mt-1 w-full bg-bg-input border border-border rounded-2xl py-2.5 px-3"
+                        className="mt-1 w-full bg-bg-input border border-border rounded-2xl py-3 px-3"
                     />
                 </label>
             </div>
@@ -175,7 +175,7 @@ export function HealthCheckForm({
                         painNotes: event.target.value,
                     }))}
                     placeholder="Optional. Example: left shoulder feels tight."
-                    className="mt-1 w-full bg-bg-input border border-border rounded-2xl py-2.5 px-3"
+                    className="mt-1 w-full bg-bg-input border border-border rounded-2xl py-3 px-3"
                 />
             </label>
 
@@ -184,7 +184,7 @@ export function HealthCheckForm({
                     type="button"
                     onClick={() => void handleSubmit()}
                     disabled={saving}
-                    className="flex-1 py-3 rounded-2xl gradient-primary text-white font-semibold disabled:opacity-50"
+                    className="flex-1 py-3 rounded-2xl gradient-primary text-white font-semibold shadow-lg shadow-accent/15 disabled:opacity-50"
                 >
                     {saving ? 'Saving...' : initialValue ? 'Update Check-In' : 'Save Check-In'}
                 </button>
@@ -193,7 +193,7 @@ export function HealthCheckForm({
                         type="button"
                         onClick={onCancel}
                         disabled={saving}
-                        className="px-4 py-3 rounded-2xl border border-border text-text-secondary disabled:opacity-50"
+                        className="px-4 py-3 rounded-2xl border border-border bg-white text-text-secondary disabled:opacity-50"
                     >
                         Cancel
                     </button>

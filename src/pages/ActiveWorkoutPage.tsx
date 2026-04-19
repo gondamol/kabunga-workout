@@ -329,7 +329,7 @@ export default function ActiveWorkoutPage() {
     const timerAlarmLabel = timerAlarmMinutes > 0 ? `Alarm ${timerAlarmMinutes}m` : 'Alarm off';
 
     return (
-        <div className="max-w-lg mx-auto flex flex-col min-h-screen px-4 pt-4 pb-6">
+        <div className="active-workout-shell max-w-lg mx-auto flex flex-col min-h-screen px-4 pt-4 pb-6">
             {/* Rest timer overlay */}
             <RestTimer />
 
