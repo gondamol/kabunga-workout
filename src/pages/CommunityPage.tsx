@@ -8,6 +8,7 @@ import {
     Plus,
     RefreshCcw,
     Send,
+    Share2,
     Trophy,
     Users,
 } from 'lucide-react';
@@ -59,6 +60,10 @@ import {
     sortCommunityReports,
 } from '../lib/communityModeration';
 import { copyToClipboard } from '../lib/utils';
+import {
+    buildCommunityCreationConfig,
+    buildCommunityInviteShareMessage,
+} from '../lib/communityPresentation';
 
 const createId = (): string => `${Math.random().toString(36).slice(2, 10)}${Date.now().toString(36)}`;
 
@@ -124,7 +129,7 @@ export default function CommunityPage() {
 
     const [groupName, setGroupName] = useState('');
     const [groupDescription, setGroupDescription] = useState('');
-    const [groupKind, setGroupKind] = useState<CommunityGroupKind>('coach');
+    const [groupKind, setGroupKind] = useState<CommunityGroupKind>('mixed');
     const [groupIsPublic, setGroupIsPublic] = useState(false);
     const [selectedAthleteIds, setSelectedAthleteIds] = useState<string[]>([]);
     const [creatingGroup, setCreatingGroup] = useState(false);
@@ -133,6 +138,7 @@ export default function CommunityPage() {
     const [regeneratingInvite, setRegeneratingInvite] = useState(false);
 
     const role = profile?.role === 'coach' ? 'coach' : 'athlete';
+    const creationConfig = useMemo(() => buildCommunityCreationConfig(role), [role]);
 
     const groupMap = useMemo(() => {
         const map = new Map<string, CommunityGroup>();
@@ -349,6 +355,11 @@ export default function CommunityPage() {
         setGroupMemberSelection((current) => current.filter((athleteId) => available.has(athleteId)));
     }, [selectedGroup, availableAthletesForSelectedGroup]);
 
+    useEffect(() => {
+        if (creationConfig.kindOptions.some((option) => option.value === groupKind)) return;
+        setGroupKind(creationConfig.defaultKind);
+    }, [creationConfig, groupKind]);
+
     const toggleAthlete = (athleteId: string) => {
         setSelectedAthleteIds((current) => (
             current.includes(athleteId)
@@ -419,6 +430,40 @@ export default function CommunityPage() {
         else toast.error('Could not copy invite code');
     };
 
+    const handleShareInviteCode = async () => {
+        if (!selectedGroup?.inviteCode) {
+            toast.error('No invite code yet');
+            return;
+        }
+
+        const message = buildCommunityInviteShareMessage({
+            groupName: selectedGroup.name,
+            inviteCode: selectedGroup.inviteCode,
+            ownerName: selectedGroup.ownerName,
+        });
+        const url = typeof window !== 'undefined' ? `${window.location.origin}/community` : undefined;
+
+        if (typeof navigator.share === 'function') {
+            try {
+                await navigator.share({
+                    title: `${selectedGroup.name} on Kabunga Workout`,
+                    text: message,
+                    url,
+                });
+                toast.success('Invite ready to send');
+                return;
+            } catch (error) {
+                if (error && typeof error === 'object' && 'name' in error && error.name === 'AbortError') {
+                    return;
+                }
+            }
+        }
+
+        const ok = await copyToClipboard(url ? `${message}\n\n${url}` : message);
+        if (ok) toast.success('Invite copied to clipboard');
+        else toast.error('Could not share invite');
+    };
+
     const handleRegenerateInviteCode = async () => {
         if (!selectedGroup || !user || !isSelectedGroupOwner) return;
         if (!confirm('Regenerate invite code? Old code will stop working.')) return;
@@ -467,7 +512,7 @@ export default function CommunityPage() {
         }
     };
 
-    const handleCreateCoachGroup = async () => {
+    const handleCreateGroup = async () => {
         if (!user) return;
         if (groupName.trim().length < 3) {
             toast.error('Group name should be at least 3 characters');
@@ -482,14 +527,14 @@ export default function CommunityPage() {
                 description: groupDescription.trim(),
                 kind: groupKind,
                 ownerId: user.uid,
-                ownerName: profile?.displayName || user.displayName || 'Coach',
+                ownerName: profile?.displayName || user.displayName || (role === 'coach' ? 'Coach' : 'Member'),
                 isPublic: groupIsPublic,
                 memberIds: selectedAthleteIds,
             });
             toast.success(group.inviteCode ? `Community group created. Invite: ${group.inviteCode}` : 'Community group created');
             setGroupName('');
             setGroupDescription('');
-            setGroupKind('coach');
+            setGroupKind(creationConfig.defaultKind);
             setGroupIsPublic(false);
             setSelectedAthleteIds([]);
             await loadGroups();
@@ -732,8 +777,16 @@ export default function CommunityPage() {
                 )}
 
                 {myGroups.length === 0 ? (
-                    <div className="rounded-xl bg-bg-card p-3 text-sm text-text-secondary">
-                        You are not in any group yet. Join a public group below.
+                    <div className="rounded-xl bg-bg-card p-3 text-sm text-text-secondary space-y-3">
+                        <p>You are not in any group yet. Create your own circle or join a public group below.</p>
+                        <button
+                            type="button"
+                            onClick={() => document.getElementById('community-create-group')?.scrollIntoView({ behavior: 'smooth', block: 'start' })}
+                            className="inline-flex items-center gap-2 rounded-xl border border-accent/30 bg-accent/8 px-3 py-2 text-xs font-semibold text-accent"
+                        >
+                            <Plus size={13} />
+                            Create my group
+                        </button>
                     </div>
                 ) : (
                     <div className="flex gap-2 overflow-x-auto pb-1">
@@ -822,6 +875,14 @@ export default function CommunityPage() {
                                     </p>
                                 </div>
                                 <div className="flex items-center gap-2">
+                                    <button
+                                        onClick={() => void handleShareInviteCode()}
+                                        disabled={!selectedGroup.inviteCode}
+                                        className="inline-flex items-center gap-1 text-xs text-accent disabled:opacity-40"
+                                    >
+                                        <Share2 size={12} />
+                                        Share
+                                    </button>
                                     <button
                                         onClick={() => void handleCopyInviteCode()}
                                         disabled={!selectedGroup.inviteCode}
@@ -1273,94 +1334,91 @@ export default function CommunityPage() {
                 </div>
             )}
 
-            {role === 'coach' && (
-                <div className="glass rounded-2xl p-4 space-y-3">
-                    <div>
-                        <h3 className="text-sm font-semibold">Create Coach Group</h3>
-                        <p className="text-xs text-text-muted mt-1">
-                            Build a private group for selected athletes, or make it public for wider community.
-                        </p>
-                    </div>
-
-                    <label className="text-xs text-text-secondary block">
-                        Group Name
-                        <input
-                            type="text"
-                            value={groupName}
-                            onChange={(event) => setGroupName(event.target.value)}
-                            placeholder="Amollo Strength Circle"
-                            className="mt-1 w-full bg-bg-input border border-border rounded-xl py-2 px-3"
-                        />
-                    </label>
-
-                    <label className="text-xs text-text-secondary block">
-                        Description
-                        <textarea
-                            value={groupDescription}
-                            onChange={(event) => setGroupDescription(event.target.value)}
-                            rows={2}
-                            placeholder="Weekly check-ins, accountability, and session prep"
-                            className="mt-1 w-full bg-bg-input border border-border rounded-xl py-2 px-3"
-                        />
-                    </label>
-
-                    <div className="grid grid-cols-2 gap-2">
-                        <label className="text-xs text-text-secondary block">
-                            Group Type
-                            <select
-                                value={groupKind}
-                                onChange={(event) => setGroupKind(event.target.value as CommunityGroupKind)}
-                                className="mt-1 w-full bg-bg-input border border-border rounded-xl py-2 px-3"
-                            >
-                                <option value="coach">Coach Group</option>
-                                <option value="women">Women</option>
-                                <option value="men">Men</option>
-                                <option value="mixed">Mixed</option>
-                            </select>
-                        </label>
-                        <label className="text-xs text-text-secondary block">
-                            Visibility
-                            <select
-                                value={groupIsPublic ? 'public' : 'private'}
-                                onChange={(event) => setGroupIsPublic(event.target.value === 'public')}
-                                className="mt-1 w-full bg-bg-input border border-border rounded-xl py-2 px-3"
-                            >
-                                <option value="private">Private</option>
-                                <option value="public">Public</option>
-                            </select>
-                        </label>
-                    </div>
-
-                    {coachAthletes.length > 0 && (
-                        <div className="rounded-xl border border-border bg-bg-card p-3 space-y-2">
-                            <p className="text-xs font-semibold text-text-secondary">Add Athletes</p>
-                            <div className="space-y-1 max-h-40 overflow-y-auto">
-                                {coachAthletes.map((athlete) => {
-                                    const selected = selectedAthleteIds.includes(athlete.athleteId);
-                                    return (
-                                        <button
-                                            key={athlete.athleteId}
-                                            onClick={() => toggleAthlete(athlete.athleteId)}
-                                            className={`w-full rounded-lg border px-2 py-2 text-left text-xs ${selected ? 'border-accent bg-accent/10 text-accent' : 'border-border bg-bg-surface text-text-secondary'}`}
-                                        >
-                                            {athlete.athleteName} ({athlete.athleteEmail})
-                                        </button>
-                                    );
-                                })}
-                            </div>
-                        </div>
-                    )}
-
-                    <button
-                        onClick={() => void handleCreateCoachGroup()}
-                        disabled={creatingGroup}
-                        className="w-full py-3 rounded-xl gradient-primary text-white font-semibold disabled:opacity-50 flex items-center justify-center gap-2"
-                    >
-                        <Plus size={14} />
-                        {creatingGroup ? 'Creating...' : 'Create Group'}
-                    </button>
+            <div id="community-create-group" className="glass rounded-2xl p-4 space-y-3">
+                <div>
+                    <h3 className="text-sm font-semibold">{creationConfig.title}</h3>
+                    <p className="text-xs text-text-muted mt-1">
+                        {creationConfig.description}
+                    </p>
                 </div>
-            )}
+
+                <label className="text-xs text-text-secondary block">
+                    Group Name
+                    <input
+                        type="text"
+                        value={groupName}
+                        onChange={(event) => setGroupName(event.target.value)}
+                        placeholder={creationConfig.namePlaceholder}
+                        className="mt-1 w-full bg-bg-input border border-border rounded-xl py-2 px-3"
+                    />
+                </label>
+
+                <label className="text-xs text-text-secondary block">
+                    Description
+                    <textarea
+                        value={groupDescription}
+                        onChange={(event) => setGroupDescription(event.target.value)}
+                        rows={2}
+                        placeholder={creationConfig.descriptionPlaceholder}
+                        className="mt-1 w-full bg-bg-input border border-border rounded-xl py-2 px-3"
+                    />
+                </label>
+
+                <div className="grid grid-cols-2 gap-2">
+                    <label className="text-xs text-text-secondary block">
+                        Group Type
+                        <select
+                            value={groupKind}
+                            onChange={(event) => setGroupKind(event.target.value as CommunityGroupKind)}
+                            className="mt-1 w-full bg-bg-input border border-border rounded-xl py-2 px-3"
+                        >
+                            {creationConfig.kindOptions.map((option) => (
+                                <option key={option.value} value={option.value}>{option.label}</option>
+                            ))}
+                        </select>
+                    </label>
+                    <label className="text-xs text-text-secondary block">
+                        Visibility
+                        <select
+                            value={groupIsPublic ? 'public' : 'private'}
+                            onChange={(event) => setGroupIsPublic(event.target.value === 'public')}
+                            className="mt-1 w-full bg-bg-input border border-border rounded-xl py-2 px-3"
+                        >
+                            <option value="private">Private</option>
+                            <option value="public">Public</option>
+                        </select>
+                    </label>
+                </div>
+
+                {role === 'coach' && coachAthletes.length > 0 && (
+                    <div className="rounded-xl border border-border bg-bg-card p-3 space-y-2">
+                        <p className="text-xs font-semibold text-text-secondary">Add Athletes</p>
+                        <div className="space-y-1 max-h-40 overflow-y-auto">
+                            {coachAthletes.map((athlete) => {
+                                const selected = selectedAthleteIds.includes(athlete.athleteId);
+                                return (
+                                    <button
+                                        key={athlete.athleteId}
+                                        onClick={() => toggleAthlete(athlete.athleteId)}
+                                        className={`w-full rounded-lg border px-2 py-2 text-left text-xs ${selected ? 'border-accent bg-accent/10 text-accent' : 'border-border bg-bg-surface text-text-secondary'}`}
+                                    >
+                                        {athlete.athleteName} ({athlete.athleteEmail})
+                                    </button>
+                                );
+                            })}
+                        </div>
+                    </div>
+                )}
+
+                <button
+                    onClick={() => void handleCreateGroup()}
+                    disabled={creatingGroup}
+                    className="w-full py-3 rounded-xl gradient-primary text-white font-semibold disabled:opacity-50 flex items-center justify-center gap-2"
+                >
+                    <Plus size={14} />
+                    {creatingGroup ? 'Creating...' : creationConfig.ctaLabel}
+                </button>
+            </div>
         </div>
     );
 }
