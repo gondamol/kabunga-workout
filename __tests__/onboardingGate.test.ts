@@ -63,6 +63,32 @@ export function validateOnboardingGate(): ValidationResult {
         errors.push(`Expected unauthenticated users to receive no redirect, got ${noRedirectWhenLoggedOut}`);
     }
 
+    const stayOnOnboardingWhenIncomplete = resolveOnboardingRedirect({
+        pathname: '/onboarding',
+        isAuthenticated: true,
+        profileLoaded: true,
+        isProfileComplete: false,
+    });
+    if (stayOnOnboardingWhenIncomplete === null) {
+        passed++;
+    } else {
+        failed++;
+        errors.push(`Expected incomplete users already on /onboarding to stay there, got ${stayOnOnboardingWhenIncomplete}`);
+    }
+
+    const noRedirectForCompleteUserElsewhere = resolveOnboardingRedirect({
+        pathname: '/dashboard',
+        isAuthenticated: true,
+        profileLoaded: true,
+        isProfileComplete: true,
+    });
+    if (noRedirectForCompleteUserElsewhere === null) {
+        passed++;
+    } else {
+        failed++;
+        errors.push(`Expected complete users outside /onboarding to receive no redirect, got ${noRedirectForCompleteUserElsewhere}`);
+    }
+
     return { passed, failed, errors };
 }
 

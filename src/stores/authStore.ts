@@ -21,6 +21,29 @@ interface AuthState {
     logout: () => Promise<void>;
 }
 
+export function resolveProfileLoadState({
+    requestUserUid,
+    activeUserUid,
+    loadedProfile,
+    currentProfile,
+    fallbackProfile,
+}: {
+    requestUserUid: string;
+    activeUserUid: string | null | undefined;
+    loadedProfile: UserProfile | null;
+    currentProfile: UserProfile | null;
+    fallbackProfile: UserProfile;
+}): { profile: UserProfile; profileLoaded: true } | null {
+    if (activeUserUid !== requestUserUid) {
+        return null;
+    }
+
+    return {
+        profile: loadedProfile ?? (currentProfile?.uid === requestUserUid ? currentProfile : fallbackProfile),
+        profileLoaded: true,
+    };
+}
+
 const parseAuthTimestamp = (value: string | null | undefined): number | null => {
     if (!value) return null;
     const parsed = Date.parse(value);
@@ -135,26 +158,33 @@ onAuthStateChanged(auth, async (user) => {
         // Then try to load their profile in the background
         getDoc(doc(db, 'users', user.uid))
             .then((snap) => {
-                if (snap.exists()) {
-                    useAuthStore.setState({
-                        profile: snap.data() as UserProfile,
-                        profileLoaded: true,
-                    });
-                    return;
-                }
-                const currentProfile = useAuthStore.getState().profile;
-                useAuthStore.setState({
-                    profile: currentProfile?.uid === user.uid ? currentProfile : buildFallbackProfile(user),
-                    profileLoaded: true,
+                const currentState = useAuthStore.getState();
+                const nextProfileState = resolveProfileLoadState({
+                    requestUserUid: user.uid,
+                    activeUserUid: currentState.user?.uid,
+                    loadedProfile: snap.exists() ? (snap.data() as UserProfile) : null,
+                    currentProfile: currentState.profile,
+                    fallbackProfile: buildFallbackProfile(user),
                 });
+
+                if (nextProfileState) {
+                    useAuthStore.setState(nextProfileState);
+                }
             })
             .catch((err) => {
                 console.warn('Could not load user profile:', err.message);
-                const currentProfile = useAuthStore.getState().profile;
-                useAuthStore.setState({
-                    profile: currentProfile?.uid === user.uid ? currentProfile : buildFallbackProfile(user),
-                    profileLoaded: true,
+                const currentState = useAuthStore.getState();
+                const nextProfileState = resolveProfileLoadState({
+                    requestUserUid: user.uid,
+                    activeUserUid: currentState.user?.uid,
+                    loadedProfile: null,
+                    currentProfile: currentState.profile,
+                    fallbackProfile: buildFallbackProfile(user),
                 });
+
+                if (nextProfileState) {
+                    useAuthStore.setState(nextProfileState);
+                }
             });
     } else {
         useAuthStore.setState({ user: null, profile: null, initialized: true, profileLoaded: false });
