@@ -94,6 +94,23 @@ export function validateProfileSetup(): ValidationResult {
         errors.push('✗ Missing onboarding field should be incomplete');
     }
 
+    const invalidPersistedGoal = buildProfile({
+        onboarding: {
+            primaryGoal: 'mystery' as never,
+            trainingEnvironment: 'full_gym',
+            supportMode: 'solo',
+            experienceLevel: 'intermediate',
+            trainingDaysPerWeek: 4,
+            completedAt: Date.now(),
+        },
+    });
+    if (isProfileSetupComplete(invalidPersistedGoal) === false) {
+        passed++;
+    } else {
+        failed++;
+        errors.push('✗ Invalid persisted primaryGoal should be incomplete');
+    }
+
     const undefinedCompletedAt = buildProfile({
         onboarding: {
             primaryGoal: 'strength',
@@ -109,6 +126,23 @@ export function validateProfileSetup(): ValidationResult {
     } else {
         failed++;
         errors.push('✗ Undefined completedAt should be incomplete');
+    }
+
+    const invalidPersistedCompletedAt = buildProfile({
+        onboarding: {
+            primaryGoal: 'strength',
+            trainingEnvironment: 'full_gym',
+            supportMode: 'solo',
+            experienceLevel: 'intermediate',
+            trainingDaysPerWeek: 4,
+            completedAt: Number.NaN,
+        },
+    });
+    if (isProfileSetupComplete(invalidPersistedCompletedAt) === false) {
+        passed++;
+    } else {
+        failed++;
+        errors.push('✗ Invalid persisted completedAt should be incomplete');
     }
 
     const completedOnboarding = buildCompletedOnboarding({

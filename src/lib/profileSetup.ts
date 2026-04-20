@@ -56,6 +56,11 @@ const isPositiveInteger = (value: number | null | undefined): value is number =>
     Number.isInteger(value) &&
     value > 0;
 
+const isPositiveFiniteNumber = (value: unknown): value is number =>
+    typeof value === 'number' &&
+    Number.isFinite(value) &&
+    value > 0;
+
 const hasOwn = <T extends object, K extends PropertyKey>(
     object: T,
     key: K
@@ -98,19 +103,14 @@ export const isProfileSetupComplete = (profile: UserProfile | null | undefined):
     return (
         onboarding !== null &&
         onboarding !== undefined &&
-        onboarding.primaryGoal !== null &&
-        onboarding.primaryGoal !== undefined &&
-        onboarding.trainingEnvironment !== null &&
-        onboarding.trainingEnvironment !== undefined &&
-        onboarding.supportMode !== null &&
-        onboarding.supportMode !== undefined &&
-        onboarding.experienceLevel !== null &&
-        onboarding.experienceLevel !== undefined &&
+        isPrimaryGoal(onboarding.primaryGoal) &&
+        isTrainingEnvironment(onboarding.trainingEnvironment) &&
+        isSupportMode(onboarding.supportMode) &&
+        isExperienceLevel(onboarding.experienceLevel) &&
         onboarding.trainingDaysPerWeek !== null &&
         onboarding.trainingDaysPerWeek !== undefined &&
         isPositiveInteger(onboarding.trainingDaysPerWeek) &&
-        onboarding.completedAt !== null &&
-        onboarding.completedAt !== undefined
+        isPositiveFiniteNumber(onboarding.completedAt)
     );
 };
 
