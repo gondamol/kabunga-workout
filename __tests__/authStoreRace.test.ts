@@ -96,6 +96,33 @@ export async function validateAuthStoreRaceGuard(): Promise<ValidationResult> {
     const existingRequestedProfile = buildProfile('user-a', 'Existing Athlete');
     const activeOtherProfile = buildProfile('user-b', 'Other Athlete');
     const fallbackRequestedProfile = buildProfile('user-a', 'Fallback Athlete');
+    const optimisticNewUserProfile: UserProfile = {
+        ...buildProfile('user-c', 'Optimistic Athlete'),
+        onboarding: {
+            primaryGoal: 'strength',
+            trainingEnvironment: null,
+            supportMode: null,
+            experienceLevel: null,
+            trainingDaysPerWeek: null,
+        },
+    };
+    const seededCoreOnlyProfile = {
+        uid: 'user-c',
+        email: 'user-c@example.com',
+        displayName: 'Optimistic Athlete',
+        photoURL: null,
+        createdAt: 5,
+    } as UserProfile;
+    const fallbackNewUserProfile: UserProfile = {
+        ...buildProfile('user-c', 'Fallback New Athlete'),
+        onboarding: {
+            primaryGoal: null,
+            trainingEnvironment: null,
+            supportMode: null,
+            experienceLevel: null,
+            trainingDaysPerWeek: null,
+        },
+    };
 
     const logoutResult = resolveProfileLoadState({
         requestUserUid: 'user-a',
@@ -151,6 +178,28 @@ export async function validateAuthStoreRaceGuard(): Promise<ValidationResult> {
     } else {
         failed++;
         errors.push('Expected active profile load to apply the fetched user profile.');
+    }
+
+    const partialFoundProfileResult = resolveProfileLoadState({
+        requestUserUid: 'user-c',
+        activeUserUid: 'user-c',
+        requestToken: 3,
+        activeRequestToken: 3,
+        outcome: { status: 'found', profile: seededCoreOnlyProfile },
+        currentProfile: optimisticNewUserProfile,
+        currentProfileLoaded: true,
+        fallbackProfile: fallbackNewUserProfile,
+    });
+    if (
+        partialFoundProfileResult?.profile?.uid === 'user-c' &&
+        partialFoundProfileResult.profile.onboarding?.primaryGoal === 'strength' &&
+        partialFoundProfileResult.profileLoaded &&
+        partialFoundProfileResult.profileLoadError === null
+    ) {
+        passed++;
+    } else {
+        failed++;
+        errors.push('Expected a core-only found Firestore profile to preserve the optimistic onboarding defaults/progress for a first-run user.');
     }
 
     const missingDocResult = resolveProfileLoadState({

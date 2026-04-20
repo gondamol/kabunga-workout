@@ -49,8 +49,23 @@ export function resolveProfileLoadState({
     }
 
     if (outcome.status === 'found') {
+        const baseProfile = currentProfile?.uid === outcome.profile.uid ? currentProfile : fallbackProfile;
+        const hydratedProfile: UserProfile = {
+            ...baseProfile,
+            ...outcome.profile,
+            uid: outcome.profile.uid ?? baseProfile.uid,
+            email: outcome.profile.email ?? baseProfile.email,
+            displayName: outcome.profile.displayName ?? baseProfile.displayName,
+            photoURL: outcome.profile.photoURL ?? baseProfile.photoURL,
+            role: outcome.profile.role ?? baseProfile.role,
+            coachCode: outcome.profile.coachCode ?? baseProfile.coachCode,
+            onboarding: outcome.profile.onboarding ?? baseProfile.onboarding,
+            createdAt: outcome.profile.createdAt ?? baseProfile.createdAt,
+            updatedAt: outcome.profile.updatedAt ?? baseProfile.updatedAt,
+        };
+
         return {
-            profile: outcome.profile,
+            profile: hydratedProfile,
             profileLoaded: true,
             profileLoadError: null,
         };
