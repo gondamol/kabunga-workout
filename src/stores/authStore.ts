@@ -2,7 +2,7 @@ import { create } from 'zustand';
 import {
     User, onAuthStateChanged,
     signInWithEmailAndPassword, createUserWithEmailAndPassword,
-    signInWithPopup, GoogleAuthProvider, signOut, updateProfile,
+    signInWithPopup, GoogleAuthProvider, signOut, updateProfile, getAdditionalUserInfo,
 } from 'firebase/auth';
 import { doc, setDoc, getDoc } from 'firebase/firestore';
 import { auth, db } from '../lib/firebase';
@@ -87,6 +87,7 @@ export const useAuthStore = create<AuthState>((set) => ({
         try {
             const provider = new GoogleAuthProvider();
             const cred = await signInWithPopup(auth, provider);
+            const isNewUser = getAdditionalUserInfo(cred)?.isNewUser ?? false;
 
             const profile: UserProfile = {
                 uid: cred.user.uid,
@@ -100,13 +101,19 @@ export const useAuthStore = create<AuthState>((set) => ({
                 updatedAt: Date.now(),
             };
 
-            // Set user immediately
-            set({ user: cred.user, profile, profileLoaded: true, loading: false });
+            if (isNewUser) {
+                // New Google users can onboard immediately using the optimistic profile.
+                set({ user: cred.user, profile, profileLoaded: true, loading: false });
 
-            // Save/update profile in background
-            saveProfileWithTimeout(profile).catch((err) => {
-                console.warn('Google profile save failed:', err.message);
-            });
+                // Save/update profile in background
+                saveProfileWithTimeout(profile).catch((err) => {
+                    console.warn('Google profile save failed:', err.message);
+                });
+                return;
+            }
+
+            // Returning Google users should wait for Firestore so existing onboarding state wins.
+            set({ user: cred.user, profile: null, profileLoaded: false, loading: false });
         } catch (err) {
             set({ loading: false });
             throw err;
