@@ -121,9 +121,9 @@ export default function OnboardingPage() {
                 ? { ...currentProfile, onboarding, updatedAt: now }
                 : buildFallbackProfile(user, onboarding);
 
-            await updateUserProfile(user.uid, nextProfile);
+            await updateUserProfile(user.uid, { onboarding });
 
-            useAuthStore.setState({ profile: nextProfile, profileLoaded: true });
+            useAuthStore.setState({ profile: nextProfile, profileLoaded: true, profileLoadError: null });
 
             toast.success('Your training path is ready');
             navigate('/', { replace: true });
