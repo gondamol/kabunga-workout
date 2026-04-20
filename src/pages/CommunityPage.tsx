@@ -63,6 +63,7 @@ import { copyToClipboard } from '../lib/utils';
 import {
     buildCommunityCreationConfig,
     buildCommunityInviteShareMessage,
+    buildCommunityLandingEmptyState,
 } from '../lib/communityPresentation';
 
 const createId = (): string => `${Math.random().toString(36).slice(2, 10)}${Date.now().toString(36)}`;
@@ -139,6 +140,14 @@ export default function CommunityPage() {
 
     const role = profile?.role === 'coach' ? 'coach' : 'athlete';
     const creationConfig = useMemo(() => buildCommunityCreationConfig(role), [role]);
+    const creationUnitLabel = role === 'coach' ? 'Group' : 'Circle';
+    const landingEmptyState = useMemo(
+        () => buildCommunityLandingEmptyState({
+            hasGroups: myGroups.length > 0,
+            supportMode: profile?.onboarding?.supportMode,
+        }),
+        [myGroups.length, profile?.onboarding?.supportMode]
+    );
 
     const groupMap = useMemo(() => {
         const map = new Map<string, CommunityGroup>();
@@ -189,12 +198,12 @@ export default function CommunityPage() {
             const failures: string[] = [];
             const mine = mineResult.status === 'fulfilled' ? mineResult.value : [];
             if (mineResult.status !== 'fulfilled') {
-                failures.push(getFriendlyError('Could not load your groups', mineResult.reason));
+                failures.push(getFriendlyError('Could not load your circles', mineResult.reason));
             }
 
             const publicList = publicResult.status === 'fulfilled' ? publicResult.value : [];
             if (publicResult.status !== 'fulfilled') {
-                failures.push(getFriendlyError('Could not load public groups', publicResult.reason));
+                failures.push(getFriendlyError('Could not load public circles', publicResult.reason));
             }
 
             const athletes = coachAthletesResult.status === 'fulfilled' ? coachAthletesResult.value : [];
@@ -219,10 +228,10 @@ export default function CommunityPage() {
                 console.warn('Community load failures:', failures);
             }
         } catch (error) {
-            const message = getFriendlyError('Could not load community groups', error);
+            const message = getFriendlyError('Could not load circles', error);
             setGroupsError(message);
             toast.error(message, { id: 'community-groups-load' });
-            console.warn('Failed to load community groups:', error);
+            console.warn('Failed to load circles:', error);
         } finally {
             setLoadingGroups(false);
         }
@@ -408,7 +417,7 @@ export default function CommunityPage() {
         setAddingMembers(true);
         try {
             await addMembersToCommunityGroup(selectedGroup.id, groupMemberSelection);
-            toast.success('Members added to group');
+            toast.success('Members added to circle');
             setGroupMemberSelection([]);
             await loadGroups();
             setSelectedGroupId(selectedGroup.id);
@@ -490,14 +499,14 @@ export default function CommunityPage() {
             await loadGroups();
             setSelectedGroupId(group.id);
         } catch (error) {
-            console.warn('Join group failed:', error);
-            toast.error(getFriendlyError('Could not join group', error));
+            console.warn('Join circle failed:', error);
+            toast.error(getFriendlyError('Could not join circle', error));
         }
     };
 
     const handleLeaveGroup = async (group: CommunityGroup) => {
         if (!user) return;
-        if (!confirm(`Leave ${group.name}?`)) return;
+        if (!confirm(`Leave ${group.name} circle?`)) return;
         try {
             await leaveCommunityGroup(group.id, user.uid);
             toast.success(`Left ${group.name}`);
@@ -507,15 +516,15 @@ export default function CommunityPage() {
                 setMessages([]);
             }
         } catch (error) {
-            console.warn('Leave group failed:', error);
-            toast.error(getFriendlyError('Could not leave group', error));
+            console.warn('Leave circle failed:', error);
+            toast.error(getFriendlyError('Could not leave circle', error));
         }
     };
 
     const handleCreateGroup = async () => {
         if (!user) return;
         if (groupName.trim().length < 3) {
-            toast.error('Group name should be at least 3 characters');
+            toast.error('Circle name should be at least 3 characters');
             return;
         }
 
@@ -531,7 +540,7 @@ export default function CommunityPage() {
                 isPublic: groupIsPublic,
                 memberIds: selectedAthleteIds,
             });
-            toast.success(group.inviteCode ? `Community group created. Invite: ${group.inviteCode}` : 'Community group created');
+            toast.success(group.inviteCode ? `Circle created. Invite: ${group.inviteCode}` : 'Circle created');
             setGroupName('');
             setGroupDescription('');
             setGroupKind(creationConfig.defaultKind);
@@ -540,8 +549,8 @@ export default function CommunityPage() {
             await loadGroups();
             setSelectedGroupId(group.id);
         } catch (error) {
-            console.warn('Create group failed:', error);
-            toast.error(getFriendlyError('Could not create group', error));
+            console.warn('Create circle failed:', error);
+            toast.error(getFriendlyError('Could not create circle', error));
         } finally {
             setCreatingGroup(false);
         }
@@ -711,10 +720,10 @@ export default function CommunityPage() {
             <div className="glass rounded-3xl p-5">
                 <div className="flex items-center justify-between gap-3">
                     <div>
-                        <p className="text-xs uppercase tracking-wide text-text-muted">Kabunga Community</p>
-                        <h1 className="text-2xl font-black mt-1">Groups & Chat</h1>
+                        <p className="text-xs uppercase tracking-wide text-text-muted">Kabunga Circle</p>
+                        <h1 className="text-2xl font-black mt-1">Circles & Chat</h1>
                         <p className="text-xs text-text-secondary mt-1">
-                            Connect, learn, and stay accountable with your training circle.
+                            Bring your gym friends, coach group, or lifting crew into one accountability space.
                         </p>
                     </div>
                     <div className="w-11 h-11 rounded-2xl bg-accent/20 flex items-center justify-center text-accent">
@@ -724,12 +733,13 @@ export default function CommunityPage() {
             </div>
 
             <div className="glass rounded-2xl p-4 space-y-2">
-                <p className="text-sm font-semibold">Join With Invite Code</p>
+                <p className="text-sm font-semibold">Join a circle with code</p>
                 <p className="text-xs text-text-secondary">
-                    Got a private group invite from your coach? Paste the code and join directly.
+                    Got a private circle invite from your coach or crew? Paste the code and join directly.
                 </p>
                 <div className="flex items-center gap-2">
                     <input
+                        id="community-invite-code"
                         type="text"
                         value={inviteCodeInput}
                         onChange={(event) => setInviteCodeInput(event.target.value.toUpperCase())}
@@ -750,7 +760,7 @@ export default function CommunityPage() {
                 <div className="flex items-center justify-between">
                     <h3 className="text-sm font-semibold flex items-center gap-2">
                         <Users size={16} className="text-accent" />
-                        My Groups
+                        {landingEmptyState.title}
                     </h3>
                     <div className="flex items-center gap-2">
                         {loadingGroups && <span className="text-xs text-text-muted">Refreshing...</span>}
@@ -778,15 +788,24 @@ export default function CommunityPage() {
 
                 {myGroups.length === 0 ? (
                     <div className="rounded-xl bg-bg-card p-3 text-sm text-text-secondary space-y-3">
-                        <p>You are not in any group yet. Create your own circle or join a public group below.</p>
-                        <button
-                            type="button"
-                            onClick={() => document.getElementById('community-create-group')?.scrollIntoView({ behavior: 'smooth', block: 'start' })}
-                            className="inline-flex items-center gap-2 rounded-xl border border-accent/30 bg-accent/8 px-3 py-2 text-xs font-semibold text-accent"
-                        >
-                            <Plus size={13} />
-                            Create my group
-                        </button>
+                        <p>{landingEmptyState.detail}</p>
+                        <div className="flex flex-wrap gap-2">
+                            <button
+                                type="button"
+                                onClick={() => document.getElementById('community-create-group')?.scrollIntoView({ behavior: 'smooth', block: 'start' })}
+                                className="inline-flex items-center gap-2 rounded-xl border border-accent/30 bg-accent/8 px-3 py-2 text-xs font-semibold text-accent"
+                            >
+                                <Plus size={13} />
+                                Create a circle
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => document.getElementById('community-invite-code')?.focus()}
+                                className="inline-flex items-center gap-2 rounded-xl border border-border bg-white px-3 py-2 text-xs font-semibold text-text-primary"
+                            >
+                                Join with code
+                            </button>
+                        </div>
                     </div>
                 ) : (
                     <div className="flex gap-2 overflow-x-auto pb-1">
@@ -810,12 +829,12 @@ export default function CommunityPage() {
 
                 {discoverGroups.length > 0 && (
                     <div className="space-y-2">
-                        <p className="text-xs text-text-muted">Discover Public Groups</p>
+                        <p className="text-xs text-text-muted">Discover circles</p>
                         {discoverGroups.map((group) => (
                             <div key={group.id} className="rounded-xl border border-border bg-bg-card p-3 flex items-center justify-between gap-2">
                                 <div>
                                     <p className="text-sm font-semibold">{group.name}</p>
-                                    <p className="text-xs text-text-secondary mt-1 line-clamp-1">{group.description || 'Open community group'}</p>
+                                    <p className="text-xs text-text-secondary mt-1 line-clamp-1">{group.description || 'Open training circle'}</p>
                                 </div>
                                 <button
                                     onClick={() => void handleJoinGroup(group)}
@@ -837,7 +856,7 @@ export default function CommunityPage() {
                             <p className="text-xs text-text-secondary mt-1">{selectedGroup.description || 'No description yet.'}</p>
                             <p className="text-[11px] text-text-muted mt-1 flex items-center gap-1">
                                 {selectedGroup.isPublic ? <Globe size={11} /> : <Lock size={11} />}
-                                {selectedGroup.isPublic ? 'Public group' : 'Private group'}
+                                {selectedGroup.isPublic ? 'Public circle' : 'Private circle'}
                             </p>
                         </div>
                         <div className="flex items-center gap-3">
@@ -900,7 +919,7 @@ export default function CommunityPage() {
                                 </div>
                             </div>
                             <p className="text-[11px] text-text-muted">
-                                Members can join private groups using this code. Regenerating disables the old code.
+                                Members can join private circles using this code. Regenerating disables the old code.
                             </p>
                         </div>
                     )}
@@ -1343,7 +1362,7 @@ export default function CommunityPage() {
                 </div>
 
                 <label className="text-xs text-text-secondary block">
-                    Group Name
+                    {creationUnitLabel} Name
                     <input
                         type="text"
                         value={groupName}
@@ -1366,7 +1385,7 @@ export default function CommunityPage() {
 
                 <div className="grid grid-cols-2 gap-2">
                     <label className="text-xs text-text-secondary block">
-                        Group Type
+                        {creationUnitLabel} Type
                         <select
                             value={groupKind}
                             onChange={(event) => setGroupKind(event.target.value as CommunityGroupKind)}

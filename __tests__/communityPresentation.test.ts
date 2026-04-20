@@ -1,6 +1,7 @@
 import {
     buildCommunityCreationConfig,
     buildCommunityInviteShareMessage,
+    buildCommunityLandingEmptyState,
 } from '../src/lib/communityPresentation.ts';
 
 type ValidationResult = {
@@ -55,6 +56,21 @@ export function validateCommunityPresentation(): ValidationResult {
     } else {
         failed++;
         errors.push(`✗ Invite share message was wrong: ${inviteMessage}`);
+    }
+
+    const landingEmptyState = buildCommunityLandingEmptyState({
+        hasGroups: false,
+        supportMode: 'with_friends',
+    });
+
+    if (
+        landingEmptyState.title === 'Create your training circle'
+        && landingEmptyState.ctaLabel === 'Create or join a circle'
+    ) {
+        passed++;
+    } else {
+        failed++;
+        errors.push(`✗ Community landing empty state was wrong: ${JSON.stringify(landingEmptyState)}`);
     }
 
     return { passed, failed, errors };

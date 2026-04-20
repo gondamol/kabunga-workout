@@ -57,7 +57,7 @@ type SectionProps = {
 
 function OnboardingSection({ title, description, children }: SectionProps) {
     return (
-        <section className="glass rounded-[28px] p-5 space-y-4">
+        <section className="soft-panel p-5 space-y-4">
             <div>
                 <h2 className="text-base font-semibold text-text-primary">{title}</h2>
                 <p className="mt-1 text-sm text-text-secondary">{description}</p>
@@ -137,16 +137,22 @@ export default function OnboardingPage() {
 
     return (
         <div className="shell-page pt-8 pb-10 space-y-6">
-            <section className="glass rounded-[32px] border border-white/60 bg-white/90 p-6 shadow-[0_24px_64px_rgba(23,33,25,0.08)]">
-                <div className="inline-flex rounded-full bg-accent/10 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.18em] text-accent">
-                    Build your training path
+            <section className="athlete-spotlight p-6 shadow-[0_24px_64px_rgba(23,33,25,0.08)]">
+                <span className="floating-stat-chip absolute left-5 top-5 text-[11px] font-semibold text-text-primary">
+                    Goal-led setup
+                </span>
+                <span className="floating-stat-chip absolute right-5 top-16 text-[11px] font-semibold text-text-primary">
+                    3 quick steps
+                </span>
+                <div className="absolute inset-x-0 bottom-0 p-6">
+                    <div className="eyebrow-chip">Build your training path</div>
+                    <h1 className="mt-4 font-display text-3xl font-bold tracking-tight text-text-primary">
+                        Tell Kabunga how you train
+                    </h1>
+                    <p className="mt-2 max-w-xl text-sm text-text-secondary">
+                        We&apos;ll shape your home screen around your goal, setup, and the kind of support you want.
+                    </p>
                 </div>
-                <h1 className="mt-4 font-display text-3xl font-bold tracking-tight text-text-primary">
-                    Tell Kabunga how you train
-                </h1>
-                <p className="mt-2 max-w-xl text-sm text-text-secondary">
-                    We&apos;ll shape your home screen around your goal, setup, and the kind of support you want.
-                </p>
             </section>
 
             <OnboardingSection

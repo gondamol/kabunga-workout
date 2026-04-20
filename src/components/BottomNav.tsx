@@ -4,7 +4,7 @@ import { Home, Play, Dumbbell, User, MessagesSquare } from 'lucide-react';
 const navItems = [
     { to: '/', icon: Home, label: 'Home' },
     { to: '/workout', icon: Play, label: 'Workout' },
-    { to: '/community', icon: MessagesSquare, label: 'Community' },
+    { to: '/community', icon: MessagesSquare, label: 'Circle' },
     { to: '/iron-protocol', icon: Dumbbell, label: 'Iron' },
     { to: '/profile', icon: User, label: 'Profile' },
 ];

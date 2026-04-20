@@ -1,4 +1,4 @@
-import type { CommunityGroupKind, UserRole } from './types';
+import type { CommunityGroupKind, SupportMode, UserRole } from './types';
 
 export interface CommunityKindOption {
     value: CommunityGroupKind;
@@ -52,6 +52,28 @@ export const buildCommunityCreationConfig = (role: UserRole): CommunityCreationC
     };
 };
 
+export const buildCommunityLandingEmptyState = ({
+    hasGroups,
+    supportMode,
+}: {
+    hasGroups: boolean;
+    supportMode: SupportMode | null | undefined;
+}) => {
+    if (hasGroups) {
+        return {
+            title: 'Your circles',
+            detail: "Open your training circle, keep the chat moving, and sync this week's work.",
+            ctaLabel: 'Open circle',
+        };
+    }
+
+    return {
+        title: supportMode === 'with_friends' ? 'Create your training circle' : 'Add a circle when you want accountability',
+        detail: 'Circles help friends, crews, and small teams stay aligned through shared progress and invites.',
+        ctaLabel: 'Create or join a circle',
+    };
+};
+
 export const buildCommunityInviteShareMessage = ({
     groupName,
     inviteCode,
@@ -62,8 +84,8 @@ export const buildCommunityInviteShareMessage = ({
     ownerName: string;
 }): string => {
     return [
-        `${ownerName} invited you to join "${groupName}" on Kabunga Workout.`,
-        `Open the Community tab and enter invite code ${inviteCode} to join.`,
-        'Track sessions together, compare progress, and keep each other accountable.',
+        `${ownerName} invited you to join the "${groupName}" circle on Kabunga Workout.`,
+        `Open the Circle tab and enter invite code ${inviteCode} to join.`,
+        'Train together, compare progress, and keep each other accountable.',
     ].join('\n');
 };

@@ -1,5 +1,11 @@
-import { buildDashboardPrimaryCard, buildReadinessStrip } from '../src/lib/dashboardPresentation.ts';
-import type { Exercise, HealthCheck, ReadinessScore, WorkoutSession } from '../src/lib/types.ts';
+import {
+    buildCircleShortcutCard,
+    buildDashboardGoalHero,
+    buildDashboardPrimaryCard,
+    buildDashboardProgressEmptyState,
+    buildReadinessStrip,
+} from '../src/lib/dashboardPresentation.ts';
+import type { Exercise, HealthCheck, ReadinessScore, UserProfile, WorkoutSession } from '../src/lib/types.ts';
 
 type ValidationResult = {
     passed: number;
@@ -26,6 +32,26 @@ const buildWorkout = (overrides: Partial<WorkoutSession> = {}): WorkoutSession =
     caloriesEstimate: 320,
     notes: '',
     status: 'completed',
+    createdAt: 1,
+    updatedAt: 1,
+    ...overrides,
+});
+
+const buildProfile = (overrides: Partial<UserProfile> = {}): UserProfile => ({
+    uid: 'user-1',
+    email: 'athlete@example.com',
+    displayName: 'Aurel',
+    photoURL: null,
+    role: 'athlete',
+    coachCode: null,
+    onboarding: {
+        primaryGoal: 'strength',
+        trainingEnvironment: 'full_gym',
+        supportMode: 'with_friends',
+        experienceLevel: 'intermediate',
+        trainingDaysPerWeek: 4,
+        completedAt: 1,
+    },
     createdAt: 1,
     updatedAt: 1,
     ...overrides,
@@ -108,6 +134,43 @@ export function validateDashboardPresentation(): ValidationResult {
     } else {
         failed++;
         errors.push(`✗ Missing readiness strip was wrong: ${JSON.stringify(missingStrip)}`);
+    }
+
+    const hero = buildDashboardGoalHero({
+        profile: buildProfile(),
+        activeSession: null,
+        latestWorkout: null,
+    });
+
+    if (hero.eyebrow === 'Strength block' && hero.ctaLabel === 'Build first session') {
+        passed++;
+    } else {
+        failed++;
+        errors.push(`✗ Goal hero was wrong: ${JSON.stringify(hero)}`);
+    }
+
+    const emptyState = buildDashboardProgressEmptyState({
+        profile: buildProfile(),
+        workoutCount: 0,
+    });
+
+    if (emptyState.title.includes('first strength session') && emptyState.ctaLabel === 'Start workout') {
+        passed++;
+    } else {
+        failed++;
+        errors.push(`✗ Progress empty state was wrong: ${JSON.stringify(emptyState)}`);
+    }
+
+    const circleShortcut = buildCircleShortcutCard({
+        profile: buildProfile(),
+        hasCircle: false,
+    });
+
+    if (circleShortcut.ctaLabel === 'Create or join a circle') {
+        passed++;
+    } else {
+        failed++;
+        errors.push(`✗ Circle shortcut card was wrong: ${JSON.stringify(circleShortcut)}`);
     }
 
     return { passed, failed, errors };

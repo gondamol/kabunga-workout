@@ -50,19 +50,40 @@ export default function LoginPage() {
     };
 
     return (
-        <div className="relative min-h-screen overflow-hidden bg-bg-primary px-6 py-12">
-            <div className="pointer-events-none absolute right-[-18%] top-[-10%] h-[52vw] w-[52vw] rounded-full bg-accent/10 blur-3xl" />
-            <div className="pointer-events-none absolute bottom-[-14%] left-[-12%] h-[42vw] w-[42vw] rounded-full bg-cyan/10 blur-3xl" />
+        <div className="relative min-h-screen overflow-hidden shell-aurora px-6 py-12">
+            <div className="pointer-events-none absolute right-[-18%] top-[-10%] h-[52vw] w-[52vw] rounded-full bg-cyan/10 blur-3xl" />
+            <div className="pointer-events-none absolute bottom-[-14%] left-[-12%] h-[42vw] w-[42vw] rounded-full bg-accent/10 blur-3xl" />
 
             <div className="relative z-10 mx-auto flex min-h-[calc(100dvh-6rem)] w-full max-w-sm items-center">
-                <div className="w-full rounded-[32px] border border-border bg-white/92 p-6 shadow-[0_24px_64px_rgba(23,33,25,0.08)] backdrop-blur-xl animate-fade-in">
-                    <div className="mb-8 text-center">
+                <div className="premium-hero-card w-full p-6 shadow-[0_28px_72px_rgba(23,33,25,0.10)] animate-fade-in">
+                    <div className="mb-8">
                         <div className="mb-4 inline-flex h-[72px] w-[72px] items-center justify-center rounded-[24px] bg-accent/10 text-accent shadow-[0_14px_32px_rgba(30,88,50,0.12)]">
                             <Dumbbell size={34} />
                         </div>
-                        <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-accent">Balanced modern training</p>
+                        <div className="mb-4 flex flex-wrap gap-2">
+                            <span className="floating-stat-chip text-[11px] font-semibold text-text-primary">Today&apos;s plan</span>
+                            <span className="floating-stat-chip text-[11px] font-semibold text-text-primary">Progress</span>
+                            <span className="floating-stat-chip text-[11px] font-semibold text-text-primary">Circle</span>
+                        </div>
+                        <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-accent">Performance-first training</p>
                         <h1 className="mt-3 font-display text-3xl font-bold tracking-tight text-text-primary">Kabunga</h1>
-                        <p className="mt-2 text-sm text-text-secondary">Plan your sessions, train with focus, and keep recovery in view.</p>
+                        <p className="mt-2 text-sm text-text-secondary">
+                            Serious workout tracking, clearer progress, and accountability when you want it.
+                        </p>
+                        <div className="mt-4 grid grid-cols-3 gap-2">
+                            <div className="soft-panel px-3 py-3 text-center">
+                                <p className="text-[10px] uppercase tracking-wide text-text-muted">Focus</p>
+                                <p className="mt-1 text-sm font-bold text-text-primary">Goal-led</p>
+                            </div>
+                            <div className="soft-panel px-3 py-3 text-center">
+                                <p className="text-[10px] uppercase tracking-wide text-text-muted">Flow</p>
+                                <p className="mt-1 text-sm font-bold text-text-primary">Fast start</p>
+                            </div>
+                            <div className="soft-panel px-3 py-3 text-center">
+                                <p className="text-[10px] uppercase tracking-wide text-text-muted">Support</p>
+                                <p className="mt-1 text-sm font-bold text-text-primary">Readiness</p>
+                            </div>
+                        </div>
                     </div>
 
                     <form onSubmit={handleSubmit} className="space-y-4">
@@ -165,11 +186,11 @@ export default function LoginPage() {
 
                     <div className="mt-5 flex items-center justify-center gap-2 text-[11px] uppercase tracking-[0.18em] text-text-muted">
                         <span className="h-1.5 w-1.5 rounded-full bg-green" />
-                        Today's plan
+                        Train
                         <span className="h-1.5 w-1.5 rounded-full bg-cyan" />
-                        Progress
+                        Track
                         <span className="h-1.5 w-1.5 rounded-full bg-amber" />
-                        Readiness
+                        Recover
                     </div>
                 </div>
             </div>
