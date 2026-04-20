@@ -11,16 +11,21 @@ type ValidationResult = {
 type ResolveProfileLoadStateInput = {
     requestUserUid: string;
     activeUserUid: string | null | undefined;
-    loadedProfile: UserProfile | null;
+    outcome:
+        | { status: 'found'; profile: UserProfile }
+        | { status: 'missing' }
+        | { status: 'error'; errorMessage: string };
     currentProfile: UserProfile | null;
+    currentProfileLoaded: boolean;
     fallbackProfile: UserProfile;
 };
 
 type ResolveProfileLoadState = (
     input: ResolveProfileLoadStateInput
 ) => {
-    profile: UserProfile;
-    profileLoaded: true;
+    profile: UserProfile | null;
+    profileLoaded: boolean;
+    profileLoadError: string | null;
 } | null;
 
 const buildProfile = (uid: string, displayName: string): UserProfile => ({
@@ -70,8 +75,9 @@ export async function validateAuthStoreRaceGuard(): Promise<ValidationResult> {
     const logoutResult = resolveProfileLoadState({
         requestUserUid: 'user-a',
         activeUserUid: null,
-        loadedProfile: requestedUserProfile,
+        outcome: { status: 'found', profile: requestedUserProfile },
         currentProfile: existingRequestedProfile,
+        currentProfileLoaded: true,
         fallbackProfile: fallbackRequestedProfile,
     });
     if (logoutResult === null) {
@@ -84,8 +90,9 @@ export async function validateAuthStoreRaceGuard(): Promise<ValidationResult> {
     const accountSwitchResult = resolveProfileLoadState({
         requestUserUid: 'user-a',
         activeUserUid: 'user-b',
-        loadedProfile: requestedUserProfile,
+        outcome: { status: 'found', profile: requestedUserProfile },
         currentProfile: activeOtherProfile,
+        currentProfileLoaded: true,
         fallbackProfile: fallbackRequestedProfile,
     });
     if (accountSwitchResult === null) {
@@ -98,11 +105,17 @@ export async function validateAuthStoreRaceGuard(): Promise<ValidationResult> {
     const successfulLoadResult = resolveProfileLoadState({
         requestUserUid: 'user-a',
         activeUserUid: 'user-a',
-        loadedProfile: requestedUserProfile,
+        outcome: { status: 'found', profile: requestedUserProfile },
         currentProfile: existingRequestedProfile,
+        currentProfileLoaded: true,
         fallbackProfile: fallbackRequestedProfile,
     });
-    if (successfulLoadResult?.profile.uid === 'user-a' && successfulLoadResult.profile.displayName === 'Loaded Athlete' && successfulLoadResult.profileLoaded) {
+    if (
+        successfulLoadResult?.profile?.uid === 'user-a' &&
+        successfulLoadResult.profile.displayName === 'Loaded Athlete' &&
+        successfulLoadResult.profileLoaded &&
+        successfulLoadResult.profileLoadError === null
+    ) {
         passed++;
     } else {
         failed++;
@@ -112,15 +125,58 @@ export async function validateAuthStoreRaceGuard(): Promise<ValidationResult> {
     const missingDocResult = resolveProfileLoadState({
         requestUserUid: 'user-a',
         activeUserUid: 'user-a',
-        loadedProfile: null,
+        outcome: { status: 'missing' },
         currentProfile: existingRequestedProfile,
+        currentProfileLoaded: true,
         fallbackProfile: fallbackRequestedProfile,
     });
-    if (missingDocResult?.profile.displayName === 'Existing Athlete' && missingDocResult.profileLoaded) {
+    if (
+        missingDocResult?.profile?.displayName === 'Fallback Athlete' &&
+        missingDocResult.profileLoaded &&
+        missingDocResult.profileLoadError === null
+    ) {
         passed++;
     } else {
         failed++;
-        errors.push('Expected missing-doc profile load to preserve the current matching profile.');
+        errors.push('Expected confirmed missing-doc loads to use the fallback profile path.');
+    }
+
+    const readErrorWithoutCurrentProfile = resolveProfileLoadState({
+        requestUserUid: 'user-a',
+        activeUserUid: 'user-a',
+        outcome: { status: 'error', errorMessage: 'network down' },
+        currentProfile: null,
+        currentProfileLoaded: false,
+        fallbackProfile: fallbackRequestedProfile,
+    });
+    if (
+        readErrorWithoutCurrentProfile?.profile === null &&
+        readErrorWithoutCurrentProfile.profileLoaded === false &&
+        readErrorWithoutCurrentProfile.profileLoadError === 'network down'
+    ) {
+        passed++;
+    } else {
+        failed++;
+        errors.push('Expected read errors without an authoritative current profile to avoid fallback data and remain not-loaded.');
+    }
+
+    const readErrorWithCurrentProfile = resolveProfileLoadState({
+        requestUserUid: 'user-a',
+        activeUserUid: 'user-a',
+        outcome: { status: 'error', errorMessage: 'temporary outage' },
+        currentProfile: existingRequestedProfile,
+        currentProfileLoaded: true,
+        fallbackProfile: fallbackRequestedProfile,
+    });
+    if (
+        readErrorWithCurrentProfile?.profile?.displayName === 'Existing Athlete' &&
+        readErrorWithCurrentProfile.profileLoaded === true &&
+        readErrorWithCurrentProfile.profileLoadError === 'temporary outage'
+    ) {
+        passed++;
+    } else {
+        failed++;
+        errors.push('Expected read errors with an authoritative current profile to preserve that profile instead of synthesizing fallback data.');
     }
 
     return { passed, failed, errors };

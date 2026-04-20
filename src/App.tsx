@@ -26,8 +26,27 @@ import OnboardingPage from './pages/OnboardingPage';
 import { isProfileSetupComplete } from './lib/profileSetup';
 import { resolveOnboardingRedirect } from './lib/onboardingGate';
 
+export function resolveProtectedRouteState({
+    initialized,
+    timedOut,
+    hasUser,
+    profileLoaded,
+    profileLoadError,
+}: {
+    initialized: boolean;
+    timedOut: boolean;
+    hasUser: boolean;
+    profileLoaded: boolean;
+    profileLoadError: string | null;
+}): 'auth-loading' | 'redirect-login' | 'profile-loading' | 'profile-error' | 'render' {
+    if (!initialized && !timedOut) return 'auth-loading';
+    if (!hasUser) return 'redirect-login';
+    if (!profileLoaded) return profileLoadError ? 'profile-error' : 'profile-loading';
+    return 'render';
+}
+
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
-    const { user, initialized } = useAuthStore();
+    const { user, initialized, profileLoaded, profileLoadError } = useAuthStore();
     const [timedOut, setTimedOut] = useState(false);
 
     useEffect(() => {
@@ -36,14 +55,44 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
         return () => clearTimeout(t);
     }, []);
 
-    if (!initialized && !timedOut) {
+    const routeState = resolveProtectedRouteState({
+        initialized,
+        timedOut,
+        hasUser: Boolean(user),
+        profileLoaded,
+        profileLoadError,
+    });
+
+    if (routeState === 'auth-loading' || routeState === 'profile-loading') {
         return (
             <div className="flex items-center justify-center min-h-screen bg-bg-primary">
                 <div className="w-10 h-10 border-3 border-accent border-t-transparent rounded-full animate-spin" />
             </div>
         );
     }
-    if (!user) return <Navigate to="/login" replace />;
+
+    if (routeState === 'redirect-login') return <Navigate to="/login" replace />;
+
+    if (routeState === 'profile-error') {
+        return (
+            <div className="flex min-h-screen items-center justify-center bg-bg-primary px-6">
+                <div className="max-w-sm rounded-3xl border border-white/10 bg-white/5 p-6 text-center shadow-lg backdrop-blur">
+                    <h1 className="text-lg font-semibold text-text-primary">We couldn&apos;t load your profile</h1>
+                    <p className="mt-2 text-sm text-text-secondary">
+                        Please refresh to try again. Your protected pages will stay paused until your account data is available.
+                    </p>
+                    <button
+                        type="button"
+                        onClick={() => window.location.reload()}
+                        className="mt-4 inline-flex rounded-full bg-accent px-4 py-2 text-sm font-medium text-white"
+                    >
+                        Refresh
+                    </button>
+                </div>
+            </div>
+        );
+    }
+
     return <>{children}</>;
 }
 

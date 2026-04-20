@@ -13,6 +13,7 @@ interface AuthState {
     user: User | null;
     profile: UserProfile | null;
     profileLoaded: boolean;
+    profileLoadError: string | null;
     loading: boolean;
     initialized: boolean;
     signIn: (email: string, password: string) => Promise<void>;
@@ -24,23 +25,47 @@ interface AuthState {
 export function resolveProfileLoadState({
     requestUserUid,
     activeUserUid,
-    loadedProfile,
+    outcome,
     currentProfile,
+    currentProfileLoaded,
     fallbackProfile,
 }: {
     requestUserUid: string;
     activeUserUid: string | null | undefined;
-    loadedProfile: UserProfile | null;
+    outcome:
+        | { status: 'found'; profile: UserProfile }
+        | { status: 'missing' }
+        | { status: 'error'; errorMessage: string };
     currentProfile: UserProfile | null;
+    currentProfileLoaded: boolean;
     fallbackProfile: UserProfile;
-}): { profile: UserProfile; profileLoaded: true } | null {
+}): { profile: UserProfile | null; profileLoaded: boolean; profileLoadError: string | null } | null {
     if (activeUserUid !== requestUserUid) {
         return null;
     }
 
+    if (outcome.status === 'found') {
+        return {
+            profile: outcome.profile,
+            profileLoaded: true,
+            profileLoadError: null,
+        };
+    }
+
+    if (outcome.status === 'missing') {
+        return {
+            profile: fallbackProfile,
+            profileLoaded: true,
+            profileLoadError: null,
+        };
+    }
+
+    const hasCurrentProfile = currentProfileLoaded && currentProfile?.uid === requestUserUid;
+
     return {
-        profile: loadedProfile ?? (currentProfile?.uid === requestUserUid ? currentProfile : fallbackProfile),
-        profileLoaded: true,
+        profile: hasCurrentProfile ? currentProfile : null,
+        profileLoaded: Boolean(hasCurrentProfile),
+        profileLoadError: outcome.errorMessage,
     };
 }
 
@@ -75,6 +100,7 @@ export const useAuthStore = create<AuthState>((set) => ({
     user: null,
     profile: null,
     profileLoaded: false,
+    profileLoadError: null,
     loading: false,
     initialized: false,
 
@@ -104,7 +130,7 @@ export const useAuthStore = create<AuthState>((set) => ({
             });
 
             // Step 2: Set user immediately so the app navigates right away
-            set({ user: cred.user, profile, profileLoaded: true, loading: false });
+            set({ user: cred.user, profile, profileLoaded: true, profileLoadError: null, loading: false });
         } catch (err) {
             set({ loading: false });
             throw err;
@@ -126,12 +152,12 @@ export const useAuthStore = create<AuthState>((set) => ({
             if (isNewUser) {
                 // New Google users can onboard immediately using the optimistic local profile.
                 // We intentionally do not persist this incomplete onboarding state here.
-                set({ user: cred.user, profile, profileLoaded: true, loading: false });
+                set({ user: cred.user, profile, profileLoaded: true, profileLoadError: null, loading: false });
                 return;
             }
 
             // Returning Google users should wait for Firestore so existing onboarding state wins.
-            set({ user: cred.user, profile: null, profileLoaded: false, loading: false });
+            set({ user: cred.user, profile: null, profileLoaded: false, profileLoadError: null, loading: false });
         } catch (err) {
             set({ loading: false });
             throw err;
@@ -140,7 +166,7 @@ export const useAuthStore = create<AuthState>((set) => ({
 
     logout: async () => {
         await signOut(auth);
-        set({ user: null, profile: null, profileLoaded: false });
+        set({ user: null, profile: null, profileLoaded: false, profileLoadError: null });
     },
 }));
 
@@ -150,9 +176,10 @@ onAuthStateChanged(auth, async (user) => {
         // User is logged in — set them immediately without waiting for Firestore
         useAuthStore.setState((state) => ({
             user,
-            profile: state.profile?.uid === user.uid ? state.profile : buildFallbackProfile(user),
+            profile: state.profileLoaded && state.profile?.uid === user.uid ? state.profile : null,
             initialized: true,
-            profileLoaded: false,
+            profileLoaded: state.profileLoaded && state.profile?.uid === user.uid,
+            profileLoadError: null,
         }));
 
         // Then try to load their profile in the background
@@ -162,8 +189,11 @@ onAuthStateChanged(auth, async (user) => {
                 const nextProfileState = resolveProfileLoadState({
                     requestUserUid: user.uid,
                     activeUserUid: currentState.user?.uid,
-                    loadedProfile: snap.exists() ? (snap.data() as UserProfile) : null,
+                    outcome: snap.exists()
+                        ? { status: 'found', profile: snap.data() as UserProfile }
+                        : { status: 'missing' },
                     currentProfile: currentState.profile,
+                    currentProfileLoaded: currentState.profileLoaded,
                     fallbackProfile: buildFallbackProfile(user),
                 });
 
@@ -177,8 +207,12 @@ onAuthStateChanged(auth, async (user) => {
                 const nextProfileState = resolveProfileLoadState({
                     requestUserUid: user.uid,
                     activeUserUid: currentState.user?.uid,
-                    loadedProfile: null,
+                    outcome: {
+                        status: 'error',
+                        errorMessage: err?.message ?? 'Could not load user profile.',
+                    },
                     currentProfile: currentState.profile,
+                    currentProfileLoaded: currentState.profileLoaded,
                     fallbackProfile: buildFallbackProfile(user),
                 });
 
@@ -187,6 +221,12 @@ onAuthStateChanged(auth, async (user) => {
                 }
             });
     } else {
-        useAuthStore.setState({ user: null, profile: null, initialized: true, profileLoaded: false });
+        useAuthStore.setState({
+            user: null,
+            profile: null,
+            initialized: true,
+            profileLoaded: false,
+            profileLoadError: null,
+        });
     }
 });
