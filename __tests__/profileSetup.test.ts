@@ -28,6 +28,18 @@ const buildProfile = (overrides: Partial<UserProfile> = {}): UserProfile => ({
     ...overrides,
 });
 
+const buildBareProfile = (): UserProfile =>
+    ({
+        uid: 'user-1',
+        email: 'athlete@example.com',
+        displayName: 'Aurel',
+        photoURL: null,
+        role: 'athlete',
+        coachCode: null,
+        createdAt: 1,
+        updatedAt: 1,
+    }) as UserProfile;
+
 export function validateProfileSetup(): ValidationResult {
     const errors: string[] = [];
     let passed = 0;
@@ -54,6 +66,13 @@ export function validateProfileSetup(): ValidationResult {
         errors.push('✗ Default onboarding should be incomplete');
     }
 
+    if (isProfileSetupComplete(buildBareProfile()) === false) {
+        passed++;
+    } else {
+        failed++;
+        errors.push('✗ Omitted onboarding should be incomplete');
+    }
+
     const missingField = buildProfile({
         onboarding: {
             primaryGoal: 'strength',
@@ -69,6 +88,23 @@ export function validateProfileSetup(): ValidationResult {
     } else {
         failed++;
         errors.push('✗ Missing onboarding field should be incomplete');
+    }
+
+    const undefinedCompletedAt = buildProfile({
+        onboarding: {
+            primaryGoal: 'strength',
+            trainingEnvironment: 'full_gym',
+            supportMode: 'solo',
+            experienceLevel: 'intermediate',
+            trainingDaysPerWeek: 4,
+            completedAt: undefined,
+        },
+    });
+    if (isProfileSetupComplete(undefinedCompletedAt) === false) {
+        passed++;
+    } else {
+        failed++;
+        errors.push('✗ Undefined completedAt should be incomplete');
     }
 
     const completedOnboarding = buildCompletedOnboarding({
@@ -111,6 +147,69 @@ export function validateProfileSetup(): ValidationResult {
             } else {
                 failed++;
                 errors.push(`✗ ${label} training days threw the wrong error`);
+            }
+        }
+    });
+
+    const invalidOnboardingInputs = [
+        {
+            label: 'goal',
+            input: {
+                primaryGoal: 'invalid-goal' as never,
+                trainingEnvironment: 'full_gym',
+                supportMode: 'solo',
+                experienceLevel: 'intermediate',
+                trainingDaysPerWeek: 4,
+            },
+            message: 'primaryGoal must be a valid onboarding goal',
+        },
+        {
+            label: 'environment',
+            input: {
+                primaryGoal: 'strength',
+                trainingEnvironment: 'warehouse' as never,
+                supportMode: 'solo',
+                experienceLevel: 'intermediate',
+                trainingDaysPerWeek: 4,
+            },
+            message: 'trainingEnvironment must be a valid onboarding environment',
+        },
+        {
+            label: 'support',
+            input: {
+                primaryGoal: 'strength',
+                trainingEnvironment: 'full_gym',
+                supportMode: 'crew' as never,
+                experienceLevel: 'intermediate',
+                trainingDaysPerWeek: 4,
+            },
+            message: 'supportMode must be a valid onboarding support mode',
+        },
+        {
+            label: 'experience',
+            input: {
+                primaryGoal: 'strength',
+                trainingEnvironment: 'full_gym',
+                supportMode: 'solo',
+                experienceLevel: 'expert' as never,
+                trainingDaysPerWeek: 4,
+            },
+            message: 'experienceLevel must be a valid onboarding experience level',
+        },
+    ] as const;
+
+    invalidOnboardingInputs.forEach(({ label, input, message }) => {
+        try {
+            buildCompletedOnboarding(input);
+            failed++;
+            errors.push(`✗ Invalid ${label} should throw`);
+        } catch (error) {
+            const actualMessage = error instanceof Error ? error.message : String(error);
+            if (actualMessage === message) {
+                passed++;
+            } else {
+                failed++;
+                errors.push(`✗ Invalid ${label} threw the wrong error`);
             }
         }
     });
