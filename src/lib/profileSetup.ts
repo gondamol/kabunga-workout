@@ -25,6 +25,31 @@ export const DEFAULT_USER_ONBOARDING: Readonly<UserOnboarding> = Object.freeze({
     completedAt: null,
 });
 
+export const PRIMARY_GOAL_OPTIONS = [
+    'strength',
+    'muscle',
+    'fat_loss',
+    'general_fitness',
+] as const satisfies readonly PrimaryGoal[];
+
+export const TRAINING_ENVIRONMENT_OPTIONS = [
+    'full_gym',
+    'minimal_equipment',
+    'home_bodyweight',
+] as const satisfies readonly TrainingEnvironment[];
+
+export const SUPPORT_MODE_OPTIONS = [
+    'solo',
+    'with_coach',
+    'with_friends',
+] as const satisfies readonly SupportMode[];
+
+export const EXPERIENCE_LEVEL_OPTIONS = [
+    'beginner',
+    'intermediate',
+    'advanced',
+] as const satisfies readonly ExperienceLevel[];
+
 const isPositiveInteger = (value: number | null | undefined): value is number =>
     value !== null &&
     value !== undefined &&

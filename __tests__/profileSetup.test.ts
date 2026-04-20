@@ -1,9 +1,13 @@
 import {
     DEFAULT_USER_ONBOARDING,
     buildCompletedOnboarding,
+    EXPERIENCE_LEVEL_OPTIONS,
     getExperienceLevelLabel,
     getPrimaryGoalLabel,
     getSupportModeLabel,
+    PRIMARY_GOAL_OPTIONS,
+    SUPPORT_MODE_OPTIONS,
+    TRAINING_ENVIRONMENT_OPTIONS,
     getTrainingEnvironmentLabel,
     isProfileSetupComplete,
 } from '../src/lib/profileSetup.ts';
@@ -236,6 +240,57 @@ export function validateProfileSetup(): ValidationResult {
         } else {
             failed++;
             errors.push(`✗ Label helper check ${index + 1} failed for ${value}`);
+        }
+    });
+
+    const optionExpectations: Array<{
+        name: string;
+        options: readonly string[];
+        expected: readonly string[];
+        labels: readonly string[];
+        labelFor: (value: string) => string;
+    }> = [
+        {
+            name: 'primary goals',
+            options: PRIMARY_GOAL_OPTIONS,
+            expected: ['strength', 'muscle', 'fat_loss', 'general_fitness'],
+            labels: ['Build strength', 'Build muscle', 'Lose fat', 'General fitness'],
+            labelFor: getPrimaryGoalLabel,
+        },
+        {
+            name: 'training environments',
+            options: TRAINING_ENVIRONMENT_OPTIONS,
+            expected: ['full_gym', 'minimal_equipment', 'home_bodyweight'],
+            labels: ['Full gym', 'Minimal equipment', 'Home / bodyweight'],
+            labelFor: getTrainingEnvironmentLabel,
+        },
+        {
+            name: 'support modes',
+            options: SUPPORT_MODE_OPTIONS,
+            expected: ['solo', 'with_coach', 'with_friends'],
+            labels: ['Solo', 'With coach', 'With friends'],
+            labelFor: getSupportModeLabel,
+        },
+        {
+            name: 'experience levels',
+            options: EXPERIENCE_LEVEL_OPTIONS,
+            expected: ['beginner', 'intermediate', 'advanced'],
+            labels: ['Beginner', 'Intermediate', 'Advanced'],
+            labelFor: getExperienceLevelLabel,
+        },
+    ];
+
+    optionExpectations.forEach(({ name, options, expected, labels, labelFor }) => {
+        const actual = [...options];
+        const matches =
+            actual.length === expected.length &&
+            actual.every((value, index) => value === expected[index]) &&
+            actual.every((value, index) => labelFor(value) === labels[index]);
+        if (matches) {
+            passed++;
+        } else {
+            failed++;
+            errors.push(`✗ ${name} options should stay aligned with their labels`);
         }
     });
 
