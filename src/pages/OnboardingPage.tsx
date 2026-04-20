@@ -107,6 +107,7 @@ export default function OnboardingPage() {
 
         setSaving(true);
         try {
+            const now = Date.now();
             const onboarding = buildCompletedOnboarding({
                 primaryGoal: draft.primaryGoal!,
                 trainingEnvironment: draft.trainingEnvironment!,
@@ -115,15 +116,14 @@ export default function OnboardingPage() {
                 trainingDaysPerWeek: draft.trainingDaysPerWeek!,
             });
 
-            await updateUserProfile(user.uid, { onboarding });
+            const currentProfile = useAuthStore.getState().profile;
+            const nextProfile = currentProfile
+                ? { ...currentProfile, onboarding, updatedAt: now }
+                : buildFallbackProfile(user, onboarding);
 
-            useAuthStore.setState((state) => {
-                const nextProfile = state.profile
-                    ? { ...state.profile, onboarding, updatedAt: Date.now() }
-                    : buildFallbackProfile(user, onboarding);
+            await updateUserProfile(user.uid, nextProfile);
 
-                return { profile: nextProfile };
-            });
+            useAuthStore.setState({ profile: nextProfile, profileLoaded: true });
 
             toast.success('Your training path is ready');
             navigate('/', { replace: true });

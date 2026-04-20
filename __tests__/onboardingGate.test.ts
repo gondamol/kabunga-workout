@@ -50,6 +50,19 @@ export function validateOnboardingGate(): ValidationResult {
         errors.push(`Expected no redirect while profile is loading, got ${noRedirectWhileLoading}`);
     }
 
+    const noRedirectWhenLoggedOut = resolveOnboardingRedirect({
+        pathname: '/',
+        isAuthenticated: false,
+        profileLoaded: true,
+        isProfileComplete: false,
+    });
+    if (noRedirectWhenLoggedOut === null) {
+        passed++;
+    } else {
+        failed++;
+        errors.push(`Expected unauthenticated users to receive no redirect, got ${noRedirectWhenLoggedOut}`);
+    }
+
     return { passed, failed, errors };
 }
 

@@ -4,7 +4,7 @@ import {
     signInWithEmailAndPassword, createUserWithEmailAndPassword,
     signInWithPopup, GoogleAuthProvider, signOut, updateProfile, getAdditionalUserInfo,
 } from 'firebase/auth';
-import { doc, setDoc, getDoc } from 'firebase/firestore';
+import { doc, getDoc } from 'firebase/firestore';
 import { auth, db } from '../lib/firebase';
 import { DEFAULT_USER_ONBOARDING } from '../lib/profileSetup';
 import type { UserProfile } from '../lib/types';
@@ -21,16 +21,31 @@ interface AuthState {
     logout: () => Promise<void>;
 }
 
-// Helper: save profile to Firestore with a 5-second timeout
-// If it times out, we still let the user in — profile saves later
-const saveProfileWithTimeout = async (profile: UserProfile): Promise<void> => {
-    const timeout = new Promise<void>((_, reject) =>
-        setTimeout(() => reject(new Error('Firestore timeout')), 5000)
-    );
-    await Promise.race([
-        setDoc(doc(db, 'users', profile.uid), profile),
-        timeout,
-    ]);
+const parseAuthTimestamp = (value: string | null | undefined): number | null => {
+    if (!value) return null;
+    const parsed = Date.parse(value);
+    return Number.isFinite(parsed) ? parsed : null;
+};
+
+const buildFallbackProfile = (
+    user: User,
+    overrides: Partial<UserProfile> = {}
+): UserProfile => {
+    const createdAt = overrides.createdAt ?? parseAuthTimestamp(user.metadata.creationTime) ?? Date.now();
+    const updatedAt = overrides.updatedAt ?? Date.now();
+
+    return {
+        uid: user.uid,
+        email: user.email ?? '',
+        displayName: user.displayName || 'Athlete',
+        photoURL: user.photoURL,
+        role: 'athlete',
+        coachCode: null,
+        onboarding: DEFAULT_USER_ONBOARDING,
+        createdAt,
+        updatedAt,
+        ...overrides,
+    };
 };
 
 export const useAuthStore = create<AuthState>((set) => ({
@@ -57,25 +72,16 @@ export const useAuthStore = create<AuthState>((set) => ({
             const cred = await createUserWithEmailAndPassword(auth, email, password);
             await updateProfile(cred.user, { displayName: name });
 
-            const profile: UserProfile = {
-                uid: cred.user.uid,
-                email: cred.user.email!,
+            const now = Date.now();
+            const profile = buildFallbackProfile(cred.user, {
                 displayName: name,
                 photoURL: null,
-                role: 'athlete',
-                coachCode: null,
-                onboarding: DEFAULT_USER_ONBOARDING,
-                createdAt: Date.now(),
-                updatedAt: Date.now(),
-            };
+                createdAt: now,
+                updatedAt: now,
+            });
 
             // Step 2: Set user immediately so the app navigates right away
             set({ user: cred.user, profile, profileLoaded: true, loading: false });
-
-            // Step 3: Save to Firestore in background — don't block login
-            saveProfileWithTimeout(profile).catch((err) => {
-                console.warn('Profile save failed (will retry on next login):', err.message);
-            });
         } catch (err) {
             set({ loading: false });
             throw err;
@@ -89,26 +95,15 @@ export const useAuthStore = create<AuthState>((set) => ({
             const cred = await signInWithPopup(auth, provider);
             const isNewUser = getAdditionalUserInfo(cred)?.isNewUser ?? false;
 
-            const profile: UserProfile = {
-                uid: cred.user.uid,
-                email: cred.user.email!,
+            const profile = buildFallbackProfile(cred.user, {
                 displayName: cred.user.displayName || 'User',
                 photoURL: cred.user.photoURL,
-                role: 'athlete',
-                coachCode: null,
-                onboarding: DEFAULT_USER_ONBOARDING,
-                createdAt: Date.now(),
-                updatedAt: Date.now(),
-            };
+            });
 
             if (isNewUser) {
-                // New Google users can onboard immediately using the optimistic profile.
+                // New Google users can onboard immediately using the optimistic local profile.
+                // We intentionally do not persist this incomplete onboarding state here.
                 set({ user: cred.user, profile, profileLoaded: true, loading: false });
-
-                // Save/update profile in background
-                saveProfileWithTimeout(profile).catch((err) => {
-                    console.warn('Google profile save failed:', err.message);
-                });
                 return;
             }
 
@@ -132,7 +127,7 @@ onAuthStateChanged(auth, async (user) => {
         // User is logged in — set them immediately without waiting for Firestore
         useAuthStore.setState((state) => ({
             user,
-            profile: state.profile?.uid === user.uid ? state.profile : null,
+            profile: state.profile?.uid === user.uid ? state.profile : buildFallbackProfile(user),
             initialized: true,
             profileLoaded: false,
         }));
@@ -147,11 +142,19 @@ onAuthStateChanged(auth, async (user) => {
                     });
                     return;
                 }
-                useAuthStore.setState({ profileLoaded: true });
+                const currentProfile = useAuthStore.getState().profile;
+                useAuthStore.setState({
+                    profile: currentProfile?.uid === user.uid ? currentProfile : buildFallbackProfile(user),
+                    profileLoaded: true,
+                });
             })
             .catch((err) => {
                 console.warn('Could not load user profile:', err.message);
-                useAuthStore.setState({ profileLoaded: true });
+                const currentProfile = useAuthStore.getState().profile;
+                useAuthStore.setState({
+                    profile: currentProfile?.uid === user.uid ? currentProfile : buildFallbackProfile(user),
+                    profileLoaded: true,
+                });
             });
     } else {
         useAuthStore.setState({ user: null, profile: null, initialized: true, profileLoaded: false });
