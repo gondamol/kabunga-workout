@@ -22,6 +22,9 @@ import BottomNav from './components/BottomNav';
 import InstallPrompt from './components/InstallPrompt';
 import OfflineBanner from './components/OfflineBanner';
 import UpdateBanner from './components/UpdateBanner';
+import OnboardingPage from './pages/OnboardingPage';
+import { isProfileSetupComplete } from './lib/profileSetup';
+import { resolveOnboardingRedirect } from './lib/onboardingGate';
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
     const { user, initialized } = useAuthStore();
@@ -45,7 +48,7 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
 }
 
 export default function App() {
-    const { user, initialized } = useAuthStore();
+    const { user, profile, initialized, profileLoaded } = useAuthStore();
     const location = useLocation();
     const [isOnline, setIsOnline] = useState(navigator.onLine);
 
@@ -65,7 +68,22 @@ export default function App() {
         if (isOnline && user) processQueue();
     }, [isOnline, user]);
 
-    const showBottomNav = initialized && user && !location.pathname.includes('/login') && !location.pathname.includes('/active-workout');
+    const onboardingRedirect = resolveOnboardingRedirect({
+        pathname: location.pathname,
+        isAuthenticated: Boolean(user),
+        profileLoaded,
+        isProfileComplete: isProfileSetupComplete(profile),
+    });
+
+    if (onboardingRedirect) {
+        return <Navigate to={onboardingRedirect} replace />;
+    }
+
+    const showBottomNav = initialized &&
+        user &&
+        location.pathname !== '/login' &&
+        location.pathname !== '/active-workout' &&
+        location.pathname !== '/onboarding';
 
     return (
         <div className="flex flex-col min-h-screen bg-bg-primary">
@@ -115,6 +133,9 @@ export default function App() {
                     } />
                     <Route path="/profile" element={
                         <ProtectedRoute><ProfilePage /></ProtectedRoute>
+                    } />
+                    <Route path="/onboarding" element={
+                        <ProtectedRoute><OnboardingPage /></ProtectedRoute>
                     } />
                     <Route path="*" element={<Navigate to="/" replace />} />
                 </Routes>

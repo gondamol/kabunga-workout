@@ -6,11 +6,13 @@ import {
 } from 'firebase/auth';
 import { doc, setDoc, getDoc } from 'firebase/firestore';
 import { auth, db } from '../lib/firebase';
+import { DEFAULT_USER_ONBOARDING } from '../lib/profileSetup';
 import type { UserProfile } from '../lib/types';
 
 interface AuthState {
     user: User | null;
     profile: UserProfile | null;
+    profileLoaded: boolean;
     loading: boolean;
     initialized: boolean;
     signIn: (email: string, password: string) => Promise<void>;
@@ -34,6 +36,7 @@ const saveProfileWithTimeout = async (profile: UserProfile): Promise<void> => {
 export const useAuthStore = create<AuthState>((set) => ({
     user: null,
     profile: null,
+    profileLoaded: false,
     loading: false,
     initialized: false,
 
@@ -61,12 +64,13 @@ export const useAuthStore = create<AuthState>((set) => ({
                 photoURL: null,
                 role: 'athlete',
                 coachCode: null,
+                onboarding: DEFAULT_USER_ONBOARDING,
                 createdAt: Date.now(),
                 updatedAt: Date.now(),
             };
 
             // Step 2: Set user immediately so the app navigates right away
-            set({ user: cred.user, profile, loading: false });
+            set({ user: cred.user, profile, profileLoaded: true, loading: false });
 
             // Step 3: Save to Firestore in background — don't block login
             saveProfileWithTimeout(profile).catch((err) => {
@@ -91,12 +95,13 @@ export const useAuthStore = create<AuthState>((set) => ({
                 photoURL: cred.user.photoURL,
                 role: 'athlete',
                 coachCode: null,
+                onboarding: DEFAULT_USER_ONBOARDING,
                 createdAt: Date.now(),
                 updatedAt: Date.now(),
             };
 
             // Set user immediately
-            set({ user: cred.user, profile, loading: false });
+            set({ user: cred.user, profile, profileLoaded: true, loading: false });
 
             // Save/update profile in background
             saveProfileWithTimeout(profile).catch((err) => {
@@ -110,7 +115,7 @@ export const useAuthStore = create<AuthState>((set) => ({
 
     logout: async () => {
         await signOut(auth);
-        set({ user: null, profile: null });
+        set({ user: null, profile: null, profileLoaded: false });
     },
 }));
 
@@ -118,19 +123,30 @@ export const useAuthStore = create<AuthState>((set) => ({
 onAuthStateChanged(auth, async (user) => {
     if (user) {
         // User is logged in — set them immediately without waiting for Firestore
-        useAuthStore.setState({ user, initialized: true });
+        useAuthStore.setState((state) => ({
+            user,
+            profile: state.profile?.uid === user.uid ? state.profile : null,
+            initialized: true,
+            profileLoaded: false,
+        }));
 
         // Then try to load their profile in the background
         getDoc(doc(db, 'users', user.uid))
             .then((snap) => {
                 if (snap.exists()) {
-                    useAuthStore.setState({ profile: snap.data() as UserProfile });
+                    useAuthStore.setState({
+                        profile: snap.data() as UserProfile,
+                        profileLoaded: true,
+                    });
+                    return;
                 }
+                useAuthStore.setState({ profileLoaded: true });
             })
             .catch((err) => {
                 console.warn('Could not load user profile:', err.message);
+                useAuthStore.setState({ profileLoaded: true });
             });
     } else {
-        useAuthStore.setState({ user: null, profile: null, initialized: true });
+        useAuthStore.setState({ user: null, profile: null, initialized: true, profileLoaded: false });
     }
 });
