@@ -16,6 +16,16 @@ import {
     Play, Dumbbell, Clock, Plus, X, Search, History, Calendar, Users, ClipboardList, LayoutGrid, Sparkles, LoaderCircle, Shield,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
+import {
+    ActionButton,
+    EmptyState,
+    MetricCard,
+    PageHeader,
+    SectionHeader,
+    SegmentedControl,
+    StatChip,
+    WorkoutCard as PlanWorkoutCard,
+} from '../components/ui';
 
 const buildCatalogMetaLine = (item: ExerciseCatalogItem): string => {
     return [item.targetMuscle, item.exerciseType, item.difficulty]
@@ -196,6 +206,22 @@ export default function WorkoutPage() {
             return acc;
         }, {});
     }, [activeTemplate?.progressionRule, history, queue]);
+    const planBreakdown = useMemo(() => {
+        return queue.reduce(
+            (acc, exercise) => {
+                if (exercise.phaseType === 'warmup' || exercise.isWarmup) {
+                    acc.warmup += 1;
+                } else if (exercise.phaseName?.toLowerCase().includes('cooldown')) {
+                    acc.cooldown += 1;
+                } else {
+                    acc.main += 1;
+                }
+                acc.sets += exercise.plannedSets ?? exercise.sets.length ?? 0;
+                return acc;
+            },
+            { warmup: 0, main: 0, cooldown: 0, sets: 0 }
+        );
+    }, [queue]);
     const filteredTemplates = useMemo(() => {
         if (templateCategory === 'All') return BUILT_IN_TEMPLATES;
         return BUILT_IN_TEMPLATES.filter((template) => template.category === templateCategory);
@@ -224,34 +250,65 @@ export default function WorkoutPage() {
 
     return (
         <div className="shell-page pt-6 pb-24 space-y-5">
-            {/* Header */}
-            <div className="flex items-center justify-between animate-fade-in">
-                <div>
-                    <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-accent">Today&apos;s training</p>
-                    <h1 className="mt-1 font-display text-2xl font-bold tracking-tight">Workout</h1>
-                </div>
-                <div className="flex gap-1 bg-bg-card rounded-xl p-1">
-                    <button
-                        onClick={() => setTab('plan')}
-                        className={`px-4 py-1.5 rounded-lg text-xs font-semibold transition-all ${tab === 'plan' ? 'bg-accent text-white' : 'text-text-muted'}`}
-                    >
-                        Plan
-                    </button>
-                    <button
-                        onClick={() => setTab('history')}
-                        className={`px-4 py-1.5 rounded-lg text-xs font-semibold transition-all ${tab === 'history' ? 'bg-accent text-white' : 'text-text-muted'}`}
-                    >
-                        History
-                    </button>
-                </div>
-            </div>
+            <PageHeader
+                eyebrow="Today's training"
+                title="Plan your session"
+                subtitle="Fast lanes first, details when you need them. Bodyweight stays bodyweight when weight is zero."
+                action={
+                    <ActionButton size="icon" variant="secondary" icon={<Search size={19} />} aria-label="Search exercises" onClick={() => setShowPicker(true)} />
+                }
+                className="animate-fade-in"
+            />
+
+            <SegmentedControl
+                ariaLabel="Workout page sections"
+                value={tab}
+                onChange={setTab}
+                options={[
+                    { value: 'plan', label: 'Plan', icon: <ClipboardList size={16} /> },
+                    { value: 'history', label: 'History', icon: <History size={16} /> },
+                ]}
+                className="animate-fade-in"
+            />
 
             {tab === 'plan' && (
                 <>
-                    {/* Tip banner */}
-                    <p className="text-xs text-text-muted px-1">
-                        Review the plan below, make any adjustments you need, then tap <strong className="text-text-primary">Start workout</strong>.
-                    </p>
+                    <section className="grid gap-3 animate-fade-in">
+                        <PlanWorkoutCard
+                            title={activeSession && isTimerRunning ? 'Workout in progress' : 'Start quick session'}
+                            subtitle={activeSession && isTimerRunning ? 'Resume the session already running.' : 'Add one movement, keep it simple, and start moving.'}
+                            tone="primary"
+                            actionLabel={activeSession && isTimerRunning ? 'Resume workout' : queue.length > 0 ? 'Start planned workout' : 'Add exercise'}
+                            onAction={activeSession && isTimerRunning ? () => navigate('/active-workout') : queue.length > 0 ? handleResumeOrStart : () => setShowPicker(true)}
+                            meta={[
+                                { icon: <Dumbbell size={14} />, label: `${queue.length} exercises` },
+                                { icon: <Clock size={14} />, label: `${planBreakdown.sets} sets` },
+                            ]}
+                        />
+                        <div className="grid grid-cols-2 gap-3">
+                            <button
+                                type="button"
+                                onClick={() => setShowTemplatePicker(true)}
+                                className="pressable premium-card p-4 text-left"
+                            >
+                                <LayoutGrid size={20} className="text-primary" />
+                                <p className="mt-3 font-extrabold text-text-primary">Templates</p>
+                                <p className="mt-1 text-xs leading-5 text-text-secondary">Warmup, main work, cooldown.</p>
+                            </button>
+                            <button
+                                type="button"
+                                disabled={!latestWorkout}
+                                onClick={() => handleRepeatLastWorkout(false)}
+                                className="pressable premium-card p-4 text-left disabled:opacity-50"
+                            >
+                                <History size={20} className="text-tertiary" />
+                                <p className="mt-3 font-extrabold text-text-primary">Repeat last</p>
+                                <p className="mt-1 text-xs leading-5 text-text-secondary">
+                                    {latestWorkout ? formatRelativeTime(latestWorkout.startedAt) : 'After your first session.'}
+                                </p>
+                            </button>
+                        </div>
+                    </section>
 
                     {activeSession?.scheduledWorkoutId && (
                         <div className="glass rounded-2xl p-4 animate-fade-in">
@@ -355,31 +412,33 @@ export default function WorkoutPage() {
                         </div>
                     )}
 
+                    <section className="premium-card p-4 animate-fade-in stagger-1">
+                        <SectionHeader
+                            title="Session structure"
+                            subtitle="Keep warmup, main work, and cooldown visible before you start."
+                        />
+                        <div className="mt-4 grid grid-cols-3 gap-2">
+                            <StatChip label="Warmup" value={planBreakdown.warmup} tone={planBreakdown.warmup > 0 ? 'secondary' : 'neutral'} />
+                            <StatChip label="Main" value={planBreakdown.main} tone={planBreakdown.main > 0 ? 'primary' : 'neutral'} />
+                            <StatChip label="Cooldown" value={planBreakdown.cooldown} tone={planBreakdown.cooldown > 0 ? 'tertiary' : 'neutral'} />
+                        </div>
+                    </section>
+
                     {/* Exercise Queue */}
                     <div className="space-y-3 animate-fade-in stagger-1">
                         {queue.length === 0 ? (
-                            <div className="glass rounded-3xl p-8 text-center border-2 border-dashed border-border">
-                                <div className="w-16 h-16 rounded-2xl bg-accent/10 flex items-center justify-center mx-auto mb-4">
-                                    <Dumbbell size={28} className="text-accent" />
-                                </div>
-                                <h3 className="font-bold text-base mb-1">Build today&apos;s plan</h3>
-                                <p className="text-sm text-text-secondary mb-5">
-                                    Add your warm-up, main lifts, and accessories, then move into the session.
-                                </p>
-                                <button
-                                    onClick={() => setShowPicker(true)}
-                                    className="px-6 py-3 rounded-xl gradient-primary text-white font-semibold text-sm active:scale-[0.97] transition-transform"
-                                >
-                                    + Add First Exercise
-                                </button>
-                                <button
-                                    onClick={() => setShowTemplatePicker(true)}
-                                    className="mt-2 px-6 py-3 rounded-xl border border-border text-text-secondary font-semibold text-sm active:scale-[0.97] transition-transform"
-                                >
-                                    <LayoutGrid size={14} className="inline mr-1" />
-                                    Add From Template
-                                </button>
-                            </div>
+                            <EmptyState
+                                icon={<Dumbbell size={28} />}
+                                title="Build today's plan"
+                                description="Add your warm-up, main lifts, and accessories, then move into the session."
+                                actionLabel="Add first exercise"
+                                onAction={() => setShowPicker(true)}
+                                secondaryAction={
+                                    <ActionButton variant="secondary" onClick={() => setShowTemplatePicker(true)} icon={<LayoutGrid size={16} />}>
+                                        Template
+                                    </ActionButton>
+                                }
+                            />
                         ) : (
                             <>
                                 {queue.map((ex, idx) => (
@@ -391,6 +450,7 @@ export default function WorkoutPage() {
                                         plannedReps={ex.plannedReps ?? null}
                                         plannedWeight={ex.plannedWeight ?? null}
                                         suggestion={progressionSuggestions[ex.id] ?? null}
+                                        phaseLabel={ex.phaseType === 'warmup' || ex.isWarmup ? 'Warmup' : ex.phaseName?.toLowerCase().includes('cooldown') ? 'Cooldown' : 'Main'}
                                         onChange={(patch) => updateExercisePlan(ex.id, patch)}
                                         onRemove={() => removeExercise(ex.id)}
                                     />
@@ -440,25 +500,10 @@ export default function WorkoutPage() {
 
                     {/* Quick stats */}
                     {history.length > 0 && (
-                        <div className="glass rounded-2xl p-4 flex items-center justify-around animate-fade-in stagger-3">
-                            <div className="text-center">
-                                <p className="text-lg font-bold">{history.length}</p>
-                                <p className="text-xs text-text-muted">Sessions</p>
-                            </div>
-                            <div className="w-px h-7 bg-border" />
-                            <div className="text-center">
-                                <p className="text-lg font-bold">
-                                    {formatDurationHuman(history.reduce((s, w) => s + w.duration, 0))}
-                                </p>
-                                <p className="text-xs text-text-muted">Total Time</p>
-                            </div>
-                            <div className="w-px h-7 bg-border" />
-                            <div className="text-center">
-                                <p className="text-lg font-bold">
-                                    {Math.round(history.reduce((s, w) => s + w.caloriesEstimate, 0))}
-                                </p>
-                                <p className="text-xs text-text-muted">Calories</p>
-                            </div>
+                        <div className="grid grid-cols-3 gap-3 animate-fade-in stagger-3">
+                            <MetricCard label="Sessions" value={history.length} className="p-3" />
+                            <MetricCard label="Time" value={formatDurationHuman(history.reduce((s, w) => s + w.duration, 0))} className="p-3" />
+                            <MetricCard label="Energy" value={Math.round(history.reduce((s, w) => s + w.caloriesEstimate, 0))} helper="kcal" className="p-3" />
                         </div>
                     )}
                 </>
@@ -858,22 +903,27 @@ interface ExerciseCardProps {
     plannedReps: number | null;
     plannedWeight: number | null;  // null = bodyweight
     suggestion: ProgressionInsight | null;
+    phaseLabel: string;
     onChange: (patch: { plannedSets?: number; plannedReps?: number | null; plannedWeight?: number | null }) => void;
     onRemove: () => void;
 }
 
-function ExerciseCard({ index, name, plannedSets, plannedReps, plannedWeight, suggestion, onChange, onRemove }: ExerciseCardProps) {
+function ExerciseCard({ index, name, plannedSets, plannedReps, plannedWeight, suggestion, phaseLabel, onChange, onRemove }: ExerciseCardProps) {
     return (
-        <div className="glass rounded-2xl p-4 animate-fade-in">
+        <div className="premium-card p-4 animate-fade-in">
             {/* Top row: number + name + remove */}
             <div className="flex items-center gap-3 mb-3">
-                <div className="w-8 h-8 rounded-lg bg-accent/10 flex items-center justify-center shrink-0">
-                    <span className="text-xs font-bold text-accent">{index + 1}</span>
+                <div className="w-9 h-9 rounded-2xl bg-primary-container flex items-center justify-center shrink-0">
+                    <span className="text-xs font-bold text-primary">{index + 1}</span>
                 </div>
-                <p className="flex-1 font-semibold text-sm truncate">{name}</p>
+                <div className="min-w-0 flex-1">
+                    <p className="font-extrabold text-sm truncate">{name}</p>
+                    <p className="mt-0.5 text-[10px] font-bold uppercase tracking-[0.12em] text-text-muted">{phaseLabel}</p>
+                </div>
                 <button
                     onClick={onRemove}
-                    className="p-1.5 text-text-muted hover:text-red active:scale-90 transition-all"
+                    className="touch-target p-1.5 text-text-muted hover:text-red active:scale-90 transition-all"
+                    aria-label={`Remove ${name}`}
                 >
                     <X size={16} />
                 </button>
@@ -955,7 +1005,7 @@ function ExerciseCard({ index, name, plannedSets, plannedReps, plannedWeight, su
             <p className="text-xs text-text-muted mt-2 text-center">
                 {plannedSets} set{plannedSets !== 1 ? 's' : ''}
                 {plannedReps ? ` × ${plannedReps} reps` : ''}
-                {plannedWeight ? ` @ ${plannedWeight}kg` : ' — bodyweight'}
+                {plannedWeight ? ` @ ${plannedWeight}kg` : ' - bodyweight'}
             </p>
 
             {suggestion && (

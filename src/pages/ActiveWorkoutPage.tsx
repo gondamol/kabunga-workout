@@ -20,6 +20,7 @@ import {
 } from 'lucide-react';
 import Webcam from 'react-webcam';
 import { isIronTemplateId } from '../lib/ironProtocol';
+import { ActionButton, EmptyState, ProgressRing, StatChip } from '../components/ui';
 
 const normalizeExerciseName = (name: string): string =>
     name.toLowerCase().trim().replace(/\s+/g, ' ');
@@ -152,6 +153,9 @@ export default function ActiveWorkoutPage() {
     const isLast = currentExerciseIndex === exercises.length - 1;
     const completedSets = currentEx?.sets.filter(s => s.completed).length ?? 0;
     const totalSets = currentEx?.sets.length ?? 0;
+    const sessionCompletedSets = exercises.reduce((sum, exercise) => sum + exercise.sets.filter((setItem) => setItem.completed).length, 0);
+    const sessionTotalSets = exercises.reduce((sum, exercise) => sum + exercise.sets.length, 0);
+    const sessionProgressPct = sessionTotalSets > 0 ? Math.round((sessionCompletedSets / sessionTotalSets) * 100) : 0;
     const allSetsComplete = totalSets > 0 && completedSets === totalSets;
     const isIronSession = isIronTemplateId(activeSession.templateId);
 
@@ -329,33 +333,44 @@ export default function ActiveWorkoutPage() {
     const timerAlarmLabel = timerAlarmMinutes > 0 ? `Alarm ${timerAlarmMinutes}m` : 'Alarm off';
 
     return (
-        <div className="active-workout-shell max-w-lg mx-auto flex flex-col min-h-screen px-4 pt-4 pb-6">
+        <div className="active-workout-shell mx-auto flex min-h-screen max-w-lg flex-col px-4 pb-6 pt-4">
             {/* Rest timer overlay */}
             <RestTimer />
 
             {/* ── Top bar ── */}
-            <div className="flex items-center justify-between mb-5">
-                <button onClick={handleCancel} className="text-sm text-text-muted font-medium px-2 py-2">
-                    Cancel
-                </button>
-                {/* Workout timer */}
-                <button
-                    onClick={() => setTimerRunning(!isTimerRunning)}
-                    className="flex items-center gap-2 px-4 py-2 rounded-xl bg-bg-card"
-                >
-                    {isTimerRunning
-                        ? <Pause size={14} className="text-amber" />
-                        : <Play size={14} className="text-green" />}
-                    <span className="text-xl font-black font-mono gradient-text">
-                        {formatDuration(timerSeconds)}
-                    </span>
-                </button>
-                <button
-                    onClick={() => setShowMenu(!showMenu)}
-                    className="p-2 text-text-muted"
+            <div className="mb-5 rounded-[1.75rem] border border-border bg-bg-card p-4 shadow-lifted">
+                <div className="flex items-center justify-between gap-3">
+                    <ActionButton onClick={handleCancel} size="sm" variant="ghost">
+                        Cancel
+                    </ActionButton>
+                    <button
+                        onClick={() => setTimerRunning(!isTimerRunning)}
+                        className="pressable flex items-center gap-2 rounded-2xl bg-surface-container px-4 py-2"
                     >
-                        <MoreHorizontal size={22} />
+                        {isTimerRunning
+                            ? <Pause size={15} className="text-amber" />
+                            : <Play size={15} className="text-green" />}
+                        <span className="font-display text-2xl font-extrabold tabular-nums text-text-primary">
+                            {formatDuration(timerSeconds)}
+                        </span>
                     </button>
+                    <ActionButton
+                        onClick={() => setShowMenu(!showMenu)}
+                        size="icon"
+                        variant="ghost"
+                        icon={<MoreHorizontal size={22} />}
+                        aria-label="Workout menu"
+                    />
+                </div>
+                <div className="mt-4 flex items-center justify-between gap-4">
+                    <div className="min-w-0">
+                        <p className="text-xs font-bold uppercase tracking-[0.14em] text-accent">Session progress</p>
+                        <p className="mt-1 text-sm text-text-secondary">{sessionCompletedSets}/{sessionTotalSets} sets complete</p>
+                    </div>
+                    <ProgressRing value={sessionProgressPct} size={76} strokeWidth={7} tone="secondary" label="Session progress">
+                        <span className="font-display text-lg font-extrabold text-text-primary">{sessionProgressPct}%</span>
+                    </ProgressRing>
+                </div>
             </div>
 
             {/* Overflow menu */}
@@ -396,7 +411,7 @@ export default function ActiveWorkoutPage() {
             {showMenu && <div className="fixed inset-0 z-40" onClick={() => setShowMenu(false)} />}
 
             {/* ── Exercise progress strip ── */}
-            <div className="flex gap-1.5 mb-5">
+            <div className="mb-5 flex gap-1.5">
                 {exercises.map((ex, i) => {
                     const done = ex.sets.length > 0 && ex.sets.every(s => s.completed);
                     const active = i === currentExerciseIndex;
@@ -404,7 +419,8 @@ export default function ActiveWorkoutPage() {
                         <button
                             key={ex.id}
                             onClick={() => goToExercise(i)}
-                            className={`h-1.5 rounded-full flex-1 transition-all ${done ? 'bg-green' : active ? 'bg-accent' : 'bg-bg-card'
+                            aria-label={`Go to exercise ${i + 1}: ${ex.name}`}
+                            className={`h-2 rounded-full flex-1 transition-all ${done ? 'bg-green' : active ? 'bg-accent' : 'bg-bg-card'
                                 }`}
                         />
                     );
@@ -412,7 +428,8 @@ export default function ActiveWorkoutPage() {
                 {/* Placeholder for "add exercise" */}
                 <button
                     onClick={() => setShowPicker(true)}
-                    className="w-6 h-6 rounded-full bg-bg-card flex items-center justify-center shrink-0 -mt-2"
+                    className="flex h-8 w-8 shrink-0 -mt-3 items-center justify-center rounded-full bg-bg-card"
+                    aria-label="Add exercise"
                 >
                     <Plus size={12} className="text-text-muted" />
                 </button>
@@ -422,13 +439,14 @@ export default function ActiveWorkoutPage() {
             {currentEx ? (
                 <div className="flex-1 flex flex-col">
                     {/* Exercise header */}
-                    <div className="glass rounded-3xl p-5 mb-4">
+                    <div className="rounded-[2rem] border border-border bg-bg-card p-5 mb-4 shadow-lifted">
                         {/* Exercise name + nav */}
                         <div className="flex items-center justify-between mb-2">
                             <button
                                 onClick={prevExercise}
                                 disabled={isFirst}
-                                className="w-9 h-9 rounded-xl glass flex items-center justify-center disabled:opacity-20"
+                                className="touch-target rounded-2xl bg-surface-container flex items-center justify-center disabled:opacity-20"
+                                aria-label="Previous exercise"
                             >
                                 <ChevronLeft size={18} />
                             </button>
@@ -442,13 +460,11 @@ export default function ActiveWorkoutPage() {
                                     </span>
                                 )}
                                 <h2 className="text-2xl font-black">{currentEx.name}</h2>
-                                {currentEx.plannedSets && (
-                                    <p className="text-sm text-text-secondary mt-1">
-                                        Target: {currentEx.plannedSets} sets
-                                        {currentEx.plannedReps ? ` × ${currentEx.plannedReps} reps` : ''}
-                                        {` • ${formatLoadLabel(currentEx.plannedWeight)}`}
-                                    </p>
-                                )}
+                                <div className="mt-3 flex flex-wrap justify-center gap-2">
+                                    <StatChip label="Set" value={`${completedSets}/${totalSets}`} tone={allSetsComplete ? 'secondary' : 'neutral'} />
+                                    {currentEx.plannedReps && <StatChip label="Target" value={`${currentEx.plannedReps} reps`} tone="primary" />}
+                                    <StatChip label="Load" value={formatLoadLabel(currentEx.plannedWeight)} tone="accent" />
+                                </div>
                                 {isIronSession && (
                                     <p className="text-xs text-text-secondary mt-1">
                                         {lastSession
@@ -463,7 +479,8 @@ export default function ActiveWorkoutPage() {
                             <button
                                 onClick={nextExercise}
                                 disabled={isLast}
-                                className="w-9 h-9 rounded-xl glass flex items-center justify-center disabled:opacity-20"
+                                className="touch-target rounded-2xl bg-surface-container flex items-center justify-center disabled:opacity-20"
+                                aria-label="Next exercise"
                             >
                                 <ChevronRight size={18} />
                             </button>
@@ -684,14 +701,13 @@ export default function ActiveWorkoutPage() {
                 </div>
             ) : (
                 /* Empty — add first exercise */
-                <div className="flex-1 flex flex-col items-center justify-center text-center py-12">
-                    <p className="text-text-secondary mb-4">Add an exercise to get started</p>
-                    <button
-                        onClick={() => setShowPicker(true)}
-                        className="px-6 py-3 rounded-xl gradient-primary text-white font-semibold"
-                    >
-                        + Add Exercise
-                    </button>
+                <div className="flex flex-1 items-center justify-center py-12">
+                    <EmptyState
+                        title="Add an exercise to get started"
+                        description="Build the session here if you skipped planning."
+                        actionLabel="Add exercise"
+                        onAction={() => setShowPicker(true)}
+                    />
                 </div>
             )}
 
