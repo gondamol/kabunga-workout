@@ -2,18 +2,20 @@ import { useEffect, useMemo, useState } from 'react';
 import dayjs, { type Dayjs } from 'dayjs';
 import { useNavigate } from 'react-router-dom';
 import toast from 'react-hot-toast';
-import { Calendar, Check, ChevronRight, Dumbbell, Eye, Flame, TrendingUp } from 'lucide-react';
+import { Calendar, Check, ChevronRight, Dumbbell, Eye, Flame, Plus, Search, TrendingUp, X } from 'lucide-react';
 import { useAuthStore } from '../stores/authStore';
 import { useWorkoutStore } from '../stores/workoutStore';
 import {
+    getFitnessDailyConfig,
     getFitnessDailyLogs,
     getOneRepMaxes,
     getUserWorkouts,
+    saveFitnessDailyConfig,
     saveFitnessDailyLog,
     saveOneRepMaxes,
 } from '../lib/firestoreService';
 import { enqueueAction } from '../lib/offlineQueue';
-import type { FitnessDailyLog, OneRepMaxes, WorkoutSession } from '../lib/types';
+import type { DailyTrackLogEntry, FitnessDailyConfig, FitnessDailyLog, GuidedTrackStage, OneRepMaxes, UserDailyTrack, WorkoutSession } from '../lib/types';
 import {
     getIronScheduleForDate,
     getIronTemplateById,
@@ -26,14 +28,27 @@ import {
 import { formatSetPerformance, hasExternalLoad } from '../lib/exerciseRules';
 import { getOneRepMaxPromptStatus } from '../lib/oneRepMaxes';
 import OneRepMaxCard from '../components/OneRepMaxCard';
-
-const dailyTasks = [
-    { key: 'legRaisesDone', label: '10-Min Leg Raises' },
-    { key: 'armCurlsDone', label: '5-Min Arm Curls' },
-    { key: 'barHangDone', label: '3-Min Bar Hang' },
-] as const;
-
-type DailyTaskKey = (typeof dailyTasks)[number]['key'];
+import { searchExercises } from '../lib/exerciseLibraryService';
+import {
+    DAILY_TRACK_LIBRARY,
+    applyGuidedRecommendation,
+    buildLegacyDailyFlags,
+    createUserDailyTrack,
+    dedupeTracksByExerciseName,
+    formatDailyTarget,
+    getGuidedRecommendation,
+    getGuidedStageLabel,
+    getSeasonSummary,
+    getTrackCompletionCount,
+    getTrackEntry,
+    isDailyComplete,
+    nextTrackSortOrder,
+    normalizeFitnessDailyConfig,
+    normalizeFitnessDailyLog,
+    setTrackStage,
+    sortTracks,
+    updateTrackEntry,
+} from '../lib/fitnessDailies';
 
 const normalizeExerciseName = (name: string): string =>
     name.toLowerCase().trim().replace(/\s+/g, ' ');
@@ -43,10 +58,7 @@ const getWeekStart = (date: Dayjs): Dayjs => {
     return date.startOf('day').subtract((date.day() + 6) % 7, 'day');
 };
 
-const isDailyComplete = (log?: FitnessDailyLog): boolean => {
-    if (!log) return false;
-    return !!log.legRaisesDone && !!log.armCurlsDone && !!log.barHangDone;
-};
+const guidedStageOptions: GuidedTrackStage[] = ['assisted', 'bodyweight', 'weighted'];
 
 const pickBestSet = (sessions: WorkoutSession[], exerciseNames: string[]): string => {
     const nameSet = new Set(exerciseNames.map(normalizeExerciseName));
@@ -99,11 +111,15 @@ export default function IronProtocolPage() {
     const { activeSession, initFromTemplatePlan, startFromTemplate } = useWorkoutStore();
 
     const [oneRepMaxes, setOneRepMaxes] = useState<OneRepMaxes | null>(null);
+    const [dailyConfig, setDailyConfig] = useState<FitnessDailyConfig | null>(null);
     const [dailyLogs, setDailyLogs] = useState<Record<string, FitnessDailyLog>>({});
     const [workouts, setWorkouts] = useState<WorkoutSession[]>([]);
     const [showPatternRef, setShowPatternRef] = useState(false);
+    const [showDailyManager, setShowDailyManager] = useState(false);
+    const [dailySearch, setDailySearch] = useState('');
     const [savingMaxes, setSavingMaxes] = useState(false);
     const [updatingDaily, setUpdatingDaily] = useState(false);
+    const [savingDailyConfig, setSavingDailyConfig] = useState(false);
 
     const today = dayjs();
     const todayKey = today.format('YYYY-MM-DD');
@@ -114,24 +130,29 @@ export default function IronProtocolPage() {
         if (!user) return;
         let cancelled = false;
         setOneRepMaxes((prev) => prev ?? normalizeOneRepMaxes(user.uid, null));
+        setDailyConfig((prev) => prev ?? normalizeFitnessDailyConfig(user.uid, null));
 
         const loadFast = async () => {
             try {
-                const [maxes, logs] = await Promise.all([
+                const [maxes, config, logs] = await Promise.all([
                     getOneRepMaxes(user.uid),
+                    getFitnessDailyConfig(user.uid),
                     getFitnessDailyLogs(user.uid, 14),
                 ]);
                 if (cancelled) return;
 
+                const normalizedConfig = normalizeFitnessDailyConfig(user.uid, config);
                 setOneRepMaxes(normalizeOneRepMaxes(user.uid, maxes));
+                setDailyConfig(normalizedConfig);
                 setDailyLogs(logs.reduce<Record<string, FitnessDailyLog>>((acc, log) => {
-                    acc[log.date] = log;
+                    acc[log.date] = normalizeFitnessDailyLog(user.uid, log.date, normalizedConfig, log);
                     return acc;
                 }, {}));
             } catch (error) {
                 console.warn('Failed to load Iron Protocol data:', error);
                 if (!cancelled) {
                     setOneRepMaxes(normalizeOneRepMaxes(user.uid, null));
+                    setDailyConfig(normalizeFitnessDailyConfig(user.uid, null));
                 }
             }
         };
@@ -153,27 +174,45 @@ export default function IronProtocolPage() {
     }, [user]);
 
     const todayLog = useMemo<FitnessDailyLog>(() => {
-        const existing = dailyLogs[todayKey];
-        if (existing) return existing;
-        return {
-            userId: user?.uid || 'LOCAL',
-            date: todayKey,
-            legRaisesDone: false,
-            armCurlsDone: false,
-            barHangDone: false,
-            completedAt: 0,
-        };
-    }, [dailyLogs, todayKey, user]);
+        const uid = user?.uid || 'LOCAL';
+        const config = dailyConfig ?? normalizeFitnessDailyConfig(uid, null);
+        return normalizeFitnessDailyLog(uid, todayKey, config, dailyLogs[todayKey]);
+    }, [dailyConfig, dailyLogs, todayKey, user]);
 
     const dailyStreak = useMemo(() => {
+        if (!dailyConfig) return 0;
         let streak = 0;
         for (let i = 0; i < 7; i++) {
             const dateKey = dayjs().subtract(i, 'day').format('YYYY-MM-DD');
-            if (isDailyComplete(dailyLogs[dateKey])) streak++;
+            if (isDailyComplete(dailyLogs[dateKey], dailyConfig)) streak++;
             else break;
         }
         return streak;
-    }, [dailyLogs]);
+    }, [dailyConfig, dailyLogs]);
+
+    const activeDailyTracks = useMemo(() => {
+        if (!dailyConfig) return [];
+        return sortTracks(dailyConfig.activeTracks.filter((track) => track.status === 'active'));
+    }, [dailyConfig]);
+
+    const seasonSummary = useMemo(() => {
+        if (!dailyConfig) return null;
+        return getSeasonSummary(dailyConfig);
+    }, [dailyConfig]);
+
+    const recommendedDailyTracks = useMemo(() => {
+        const activeNames = new Set(activeDailyTracks.map((track) => normalizeExerciseName(track.exerciseName)));
+        return DAILY_TRACK_LIBRARY.filter((track) => !activeNames.has(normalizeExerciseName(track.exerciseName)));
+    }, [activeDailyTracks]);
+
+    const dailySearchResults = useMemo(() => {
+        if (dailySearch.trim().length < 2) return [];
+        const activeNames = new Set(activeDailyTracks.map((track) => normalizeExerciseName(track.exerciseName)));
+        return searchExercises(dailySearch)
+            .map((exercise) => exercise.name)
+            .filter((name) => !activeNames.has(normalizeExerciseName(name)))
+            .slice(0, 8);
+    }, [activeDailyTracks, dailySearch]);
 
     const sixWeekRows = useMemo(() => buildSixWeekRows(workouts), [workouts]);
 
@@ -225,6 +264,49 @@ export default function IronProtocolPage() {
         return getOneRepMaxPromptStatus(oneRepMaxes, workouts, profile);
     }, [oneRepMaxes, profile, workouts]);
 
+    const saveDailyConfigState = async (nextConfig: FitnessDailyConfig) => {
+        if (!user) return;
+        setSavingDailyConfig(true);
+        setDailyConfig(nextConfig);
+        try {
+            await saveFitnessDailyConfig(user.uid, nextConfig);
+        } catch (error) {
+            await enqueueAction({
+                type: 'fitnessDailyConfig',
+                action: 'update',
+                data: { uid: user.uid, config: nextConfig },
+            });
+            toast('Daily track settings saved offline', { icon: '📴' });
+            console.warn('Failed to save daily config:', error);
+        } finally {
+            setSavingDailyConfig(false);
+        }
+    };
+
+    const saveDailyLogState = async (nextLog: FitnessDailyLog) => {
+        if (!user || !dailyConfig) return;
+        const payload: FitnessDailyLog = {
+            ...nextLog,
+            ...buildLegacyDailyFlags(nextLog.entries, dailyConfig.activeTracks),
+            completedAt: nextLog.completedAt || Date.now(),
+        };
+        setUpdatingDaily(true);
+        setDailyLogs((prev) => ({ ...prev, [todayKey]: payload }));
+        try {
+            await saveFitnessDailyLog(user.uid, todayKey, payload);
+        } catch (error) {
+            await enqueueAction({
+                type: 'fitnessDaily',
+                action: 'update',
+                data: { uid: user.uid, date: todayKey, log: payload },
+            });
+            toast('Daily log saved offline', { icon: '📴' });
+            console.warn('Failed to save daily log:', error);
+        } finally {
+            setUpdatingDaily(false);
+        }
+    };
+
     const updateMax = (key: keyof Omit<OneRepMaxes, 'userId' | 'updatedAt'>, value: number) => {
         setOneRepMaxes((prev) => {
             if (!prev) return prev;
@@ -254,34 +336,106 @@ export default function IronProtocolPage() {
         }
     };
 
-    const handleToggleDaily = async (key: DailyTaskKey) => {
+    const handleToggleDailyTrack = async (track: UserDailyTrack) => {
         if (!user) return;
-        if (updatingDaily) return;
+        const currentEntry = getTrackEntry(todayLog, track.id);
+        const nextLog = updateTrackEntry(todayLog, track.id, {
+            completed: !currentEntry.completed,
+            completedAt: !currentEntry.completed ? Date.now() : undefined,
+            actualReps: currentEntry.actualReps ?? track.target.reps,
+            actualSeconds: currentEntry.actualSeconds ?? track.target.seconds,
+            actualSets: currentEntry.actualSets ?? track.target.sets,
+            actualLoadKg: currentEntry.actualLoadKg ?? track.addedWeightKg ?? undefined,
+        });
+        await saveDailyLogState(nextLog);
+    };
 
-        const updatedLog: FitnessDailyLog = {
-            ...todayLog,
-            userId: user.uid,
-            date: todayKey,
-            [key]: !todayLog[key],
-            completedAt: Date.now(),
-        };
+    const handleTrackEntryChange = async (
+        track: UserDailyTrack,
+        patch: Partial<DailyTrackLogEntry>
+    ) => {
+        if (!user) return;
+        const nextLog = updateTrackEntry(todayLog, track.id, patch);
+        await saveDailyLogState(nextLog);
+    };
 
-        setUpdatingDaily(true);
-        setDailyLogs((prev) => ({ ...prev, [todayKey]: updatedLog }));
-
-        try {
-            await saveFitnessDailyLog(user.uid, todayKey, updatedLog);
-        } catch (error) {
-            await enqueueAction({
-                type: 'fitnessDaily',
-                action: 'update',
-                data: { uid: user.uid, date: todayKey, log: updatedLog },
-            });
-            toast('Daily log saved offline', { icon: '📴' });
-            console.warn('Failed to save daily log:', error);
-        } finally {
-            setUpdatingDaily(false);
+    const handleAddDailyTrack = async (exerciseName: string) => {
+        if (!user || !dailyConfig) return;
+        const nextTrack = createUserDailyTrack(exerciseName, nextTrackSortOrder(dailyConfig.activeTracks));
+        const nextTracks = dedupeTracksByExerciseName([...dailyConfig.activeTracks, nextTrack]);
+        if (nextTracks.length === dailyConfig.activeTracks.length) {
+            toast('Track already active');
+            return;
         }
+        await saveDailyConfigState({
+            ...dailyConfig,
+            activeTracks: sortTracks(nextTracks),
+            updatedAt: Date.now(),
+        });
+        setDailySearch('');
+        toast.success(`${nextTrack.exerciseName} added to dailies`);
+    };
+
+    const handleRemoveDailyTrack = async (trackId: string) => {
+        if (!dailyConfig) return;
+        await saveDailyConfigState({
+            ...dailyConfig,
+            activeTracks: dailyConfig.activeTracks.filter((track) => track.id !== trackId),
+            updatedAt: Date.now(),
+        });
+    };
+
+    const handleTrackTargetChange = async (trackId: string, patch: Partial<UserDailyTrack['target']>) => {
+        if (!dailyConfig) return;
+        await saveDailyConfigState({
+            ...dailyConfig,
+            activeTracks: dailyConfig.activeTracks.map((track) => (
+                track.id === trackId
+                    ? { ...track, target: { ...track.target, ...patch } }
+                    : track
+            )),
+            updatedAt: Date.now(),
+        });
+    };
+
+    const handleTrackStageChange = async (trackId: string, stage: GuidedTrackStage) => {
+        if (!dailyConfig) return;
+        await saveDailyConfigState({
+            ...dailyConfig,
+            activeTracks: dailyConfig.activeTracks.map((track) => (
+                track.id === trackId ? setTrackStage(track, stage) : track
+            )),
+            updatedAt: Date.now(),
+        });
+    };
+
+    const handleApplyGuidance = async (trackId: string) => {
+        if (!dailyConfig) return;
+        await saveDailyConfigState({
+            ...dailyConfig,
+            activeTracks: dailyConfig.activeTracks.map((track) => (
+                track.id === trackId ? applyGuidedRecommendation(track) : track
+            )),
+            updatedAt: Date.now(),
+        });
+    };
+
+    const handleSeasonLengthChange = async (seasonLengthDays: 30 | 60 | 90) => {
+        if (!dailyConfig) return;
+        await saveDailyConfigState({
+            ...dailyConfig,
+            seasonLengthDays,
+            updatedAt: Date.now(),
+        });
+    };
+
+    const handleRestartSeason = async () => {
+        if (!dailyConfig) return;
+        await saveDailyConfigState({
+            ...dailyConfig,
+            seasonStartedAt: Date.now(),
+            updatedAt: Date.now(),
+        });
     };
 
     const resolveScaledTemplate = (schedule: IronScheduleDay) => {
@@ -320,7 +474,7 @@ export default function IronProtocolPage() {
         navigate('/workout');
     };
 
-    if (!oneRepMaxes) {
+    if (!oneRepMaxes || !dailyConfig) {
         return (
             <div className="max-w-lg mx-auto px-4 py-8">
                 <div className="glass rounded-2xl p-6 text-center">
@@ -534,33 +688,163 @@ export default function IronProtocolPage() {
             </div>
 
             <div className="glass rounded-2xl p-4">
-                <div className="flex items-center justify-between">
-                    <h3 className="text-sm font-semibold">Fitness Dailies</h3>
-                    <span className="text-xs text-text-muted">7-day streak: {dailyStreak}</span>
+                <div className="flex items-start justify-between gap-3">
+                    <div>
+                        <h3 className="text-sm font-semibold">Fitness Dailies</h3>
+                        <p className="text-xs text-text-muted mt-1">
+                            {activeDailyTracks.length} active track{activeDailyTracks.length === 1 ? '' : 's'}
+                            {seasonSummary ? ` • ${seasonSummary.remainingDays} days left in this block` : ''}
+                        </p>
+                    </div>
+                    <div className="flex items-center gap-2">
+                        <span className="text-xs text-text-muted">7-day streak: {dailyStreak}</span>
+                        <button
+                            onClick={() => setShowDailyManager(true)}
+                            className="rounded-lg border border-border px-2.5 py-1.5 text-[11px] font-semibold text-text-secondary"
+                        >
+                            Manage
+                        </button>
+                    </div>
                 </div>
 
-                <div className="mt-3 space-y-2">
-                    {dailyTasks.map((task) => {
-                        const done = !!todayLog[task.key];
+                <div className="mt-3 space-y-3">
+                    {activeDailyTracks.map((track) => {
+                        const entry = getTrackEntry(todayLog, track.id);
+                        const recommendation = getGuidedRecommendation(track, dailyLogs);
+                        const completionCount = getTrackCompletionCount(dailyLogs, track.id);
                         return (
-                            <button
-                                key={task.key}
-                                onClick={() => handleToggleDaily(task.key)}
-                                className={`w-full p-3 rounded-xl border text-left flex items-center justify-between transition-colors ${done ? 'border-green/40 bg-green/10' : 'border-border bg-bg-card'}`}
+                            <div
+                                key={track.id}
+                                className={`rounded-xl border p-3 transition-colors ${entry.completed ? 'border-green/40 bg-green/10' : 'border-border bg-bg-card'}`}
                             >
-                                <span className="text-sm">{task.label}</span>
-                                <span className={`w-6 h-6 rounded-md flex items-center justify-center ${done ? 'bg-green text-white' : 'bg-bg-input text-text-muted'}`}>
-                                    {done ? <Check size={14} /> : null}
-                                </span>
-                            </button>
+                                <div className="flex items-start justify-between gap-2">
+                                    <div>
+                                        <div className="flex items-center gap-2 flex-wrap">
+                                            <p className="text-sm font-semibold">{track.exerciseName}</p>
+                                            {track.specializationKind && track.stage && (
+                                                <span className="rounded-full bg-cyan/10 px-2 py-0.5 text-[10px] font-semibold text-cyan">
+                                                    {getGuidedStageLabel(track.stage)}
+                                                </span>
+                                            )}
+                                        </div>
+                                        <p className="text-xs text-text-muted mt-1">
+                                            Target {formatDailyTarget(track)}
+                                            {track.stage === 'weighted' && track.addedWeightKg ? ` @ ${track.addedWeightKg}kg` : ''}
+                                            {` • ${completionCount}/7 days complete`}
+                                        </p>
+                                    </div>
+                                    <button
+                                        onClick={() => handleToggleDailyTrack(track)}
+                                        disabled={updatingDaily}
+                                        className={`shrink-0 rounded-lg px-3 py-2 text-xs font-semibold ${entry.completed ? 'bg-green text-white' : 'bg-bg-input text-text-secondary'}`}
+                                    >
+                                        {entry.completed ? 'Done' : 'Mark done'}
+                                    </button>
+                                </div>
+
+                                <div className="mt-3 grid gap-2 sm:grid-cols-4">
+                                    {track.metric === 'seconds' && (
+                                        <label className="text-[11px] text-text-muted sm:col-span-2">
+                                            Seconds
+                                            <input
+                                                type="number"
+                                                min={0}
+                                                value={entry.actualSeconds ?? track.target.seconds ?? ''}
+                                                onChange={(event) => handleTrackEntryChange(track, {
+                                                    actualSeconds: Math.max(0, Number(event.target.value) || 0),
+                                                })}
+                                                className="mt-1 w-full rounded-xl border border-border bg-bg-input px-3 py-2 text-sm text-text-primary"
+                                            />
+                                        </label>
+                                    )}
+
+                                    {track.metric === 'reps' && (
+                                        <label className="text-[11px] text-text-muted sm:col-span-2">
+                                            Reps
+                                            <input
+                                                type="number"
+                                                min={0}
+                                                value={entry.actualReps ?? track.target.reps ?? ''}
+                                                onChange={(event) => handleTrackEntryChange(track, {
+                                                    actualReps: Math.max(0, Number(event.target.value) || 0),
+                                                })}
+                                                className="mt-1 w-full rounded-xl border border-border bg-bg-input px-3 py-2 text-sm text-text-primary"
+                                            />
+                                        </label>
+                                    )}
+
+                                    {track.metric === 'sets_reps' && (
+                                        <>
+                                            <label className="text-[11px] text-text-muted">
+                                                Sets
+                                                <input
+                                                    type="number"
+                                                    min={0}
+                                                    value={entry.actualSets ?? track.target.sets ?? ''}
+                                                    onChange={(event) => handleTrackEntryChange(track, {
+                                                        actualSets: Math.max(0, Number(event.target.value) || 0),
+                                                    })}
+                                                    className="mt-1 w-full rounded-xl border border-border bg-bg-input px-3 py-2 text-sm text-text-primary"
+                                                />
+                                            </label>
+                                            <label className="text-[11px] text-text-muted">
+                                                Reps
+                                                <input
+                                                    type="number"
+                                                    min={0}
+                                                    value={entry.actualReps ?? track.target.reps ?? ''}
+                                                    onChange={(event) => handleTrackEntryChange(track, {
+                                                        actualReps: Math.max(0, Number(event.target.value) || 0),
+                                                    })}
+                                                    className="mt-1 w-full rounded-xl border border-border bg-bg-input px-3 py-2 text-sm text-text-primary"
+                                                />
+                                            </label>
+                                            {track.stage === 'weighted' && (
+                                                <label className="text-[11px] text-text-muted">
+                                                    Load kg
+                                                    <input
+                                                        type="number"
+                                                        min={0}
+                                                        step="0.5"
+                                                        value={entry.actualLoadKg ?? track.addedWeightKg ?? ''}
+                                                        onChange={(event) => handleTrackEntryChange(track, {
+                                                            actualLoadKg: Math.max(0, Number(event.target.value) || 0),
+                                                        })}
+                                                        className="mt-1 w-full rounded-xl border border-border bg-bg-input px-3 py-2 text-sm text-text-primary"
+                                                    />
+                                                </label>
+                                            )}
+                                        </>
+                                    )}
+                                </div>
+
+                                {recommendation && (
+                                    <div className="mt-3 rounded-xl border border-cyan/20 bg-cyan/5 p-3">
+                                        <p className="text-xs font-semibold text-cyan">{recommendation.title}</p>
+                                        <p className="mt-1 text-xs text-text-secondary">{recommendation.detail}</p>
+                                        <button
+                                            onClick={() => handleApplyGuidance(track.id)}
+                                            className="mt-2 rounded-lg bg-cyan/15 px-3 py-1.5 text-[11px] font-semibold text-cyan"
+                                        >
+                                            {recommendation.actionLabel}
+                                        </button>
+                                    </div>
+                                )}
+                            </div>
                         );
                     })}
+
+                    {activeDailyTracks.length === 0 && (
+                        <div className="rounded-xl border border-border bg-bg-card p-3 text-sm text-text-secondary">
+                            No active daily tracks yet. Add a few from the library to build your block.
+                        </div>
+                    )}
                 </div>
 
                 <div className="mt-3 grid grid-cols-7 gap-1">
                     {Array.from({ length: 7 }, (_, idx) => {
                         const key = dayjs().subtract(6 - idx, 'day').format('YYYY-MM-DD');
-                        const done = isDailyComplete(dailyLogs[key]);
+                        const done = isDailyComplete(dailyLogs[key], dailyConfig);
                         return (
                             <div
                                 key={key}
@@ -610,6 +894,265 @@ export default function IronProtocolPage() {
                 <Calendar size={16} />
                 Open Calendar History
             </button>
+
+            {showDailyManager && (
+                <div
+                    className="fixed inset-0 z-[100] bg-black/60 flex items-end"
+                    onClick={() => setShowDailyManager(false)}
+                >
+                    <div
+                        className="w-full max-w-lg mx-auto bg-bg-surface rounded-t-3xl px-4 pt-3 pb-4 max-h-[88vh] flex flex-col animate-slide-up"
+                        onClick={(event) => event.stopPropagation()}
+                    >
+                        <div className="w-12 h-1.5 rounded-full bg-border mx-auto mb-3" />
+
+                        <div className="sticky top-0 z-10 bg-bg-surface pb-3">
+                            <div className="flex items-start justify-between gap-3 mb-4">
+                                <div>
+                                    <h3 className="text-lg font-bold">Manage Fitness Dailies</h3>
+                                    <p className="text-xs text-text-muted mt-1">
+                                        Build your current block from the exercise library and keep specialization separate from the main Iron templates.
+                                    </p>
+                                </div>
+                                <button onClick={() => setShowDailyManager(false)} className="p-2 text-text-muted">
+                                    <X size={20} />
+                                </button>
+                            </div>
+
+                            <div className="rounded-2xl border border-border bg-bg-card p-3 mb-3">
+                                <div className="flex items-center justify-between gap-3">
+                                    <div>
+                                        <p className="text-xs font-semibold uppercase tracking-wide text-text-muted">Season length</p>
+                                        <p className="text-xs text-text-secondary mt-1">
+                                            {seasonSummary ? `${seasonSummary.remainingDays} days left in this block` : 'Start a consistency block'}
+                                        </p>
+                                    </div>
+                                    <button
+                                        onClick={handleRestartSeason}
+                                        disabled={savingDailyConfig}
+                                        className="rounded-lg border border-border px-3 py-2 text-[11px] font-semibold text-text-secondary disabled:opacity-40"
+                                    >
+                                        Restart block
+                                    </button>
+                                </div>
+                                <div className="mt-3 flex gap-2">
+                                    {[30, 60, 90].map((days) => (
+                                        <button
+                                            key={days}
+                                            onClick={() => handleSeasonLengthChange(days as 30 | 60 | 90)}
+                                            disabled={savingDailyConfig}
+                                            className={`rounded-lg px-3 py-2 text-xs font-semibold ${dailyConfig.seasonLengthDays === days ? 'bg-accent text-white' : 'bg-bg-input text-text-secondary'}`}
+                                        >
+                                            {days} days
+                                        </button>
+                                    ))}
+                                </div>
+                            </div>
+
+                            <div className="relative mb-3">
+                                <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-text-muted" />
+                                <input
+                                    type="text"
+                                    value={dailySearch}
+                                    onChange={(event) => setDailySearch(event.target.value)}
+                                    placeholder="Search the exercise library..."
+                                    className="w-full bg-bg-input border border-border rounded-xl py-3 pl-10 pr-4 text-sm focus:outline-none focus:border-accent/50"
+                                />
+                            </div>
+                        </div>
+
+                        <div className="overflow-y-auto flex-1 -mx-1 px-1 space-y-4">
+                            <div>
+                                <div className="flex items-center justify-between px-2 mb-2">
+                                    <p className="text-[11px] font-semibold uppercase tracking-wide text-text-muted">Active tracks</p>
+                                    {savingDailyConfig && <span className="text-[11px] text-text-muted">Saving…</span>}
+                                </div>
+                                <div className="space-y-2">
+                                    {activeDailyTracks.map((track) => (
+                                        <div key={track.id} className="rounded-xl border border-border bg-bg-card p-3">
+                                            <div className="flex items-start justify-between gap-3">
+                                                <div>
+                                                    <div className="flex items-center gap-2 flex-wrap">
+                                                        <p className="text-sm font-semibold">{track.exerciseName}</p>
+                                                        {track.specializationKind && track.stage && (
+                                                            <span className="rounded-full bg-cyan/10 px-2 py-0.5 text-[10px] font-semibold text-cyan">
+                                                                {getGuidedStageLabel(track.stage)}
+                                                            </span>
+                                                        )}
+                                                    </div>
+                                                    <p className="text-xs text-text-muted mt-1">Current target: {formatDailyTarget(track)}</p>
+                                                </div>
+                                                <button
+                                                    onClick={() => handleRemoveDailyTrack(track.id)}
+                                                    className="rounded-lg bg-red/10 px-2.5 py-1.5 text-[11px] font-semibold text-red"
+                                                >
+                                                    Remove
+                                                </button>
+                                            </div>
+
+                                            {track.specializationKind && (
+                                                <div className="mt-3 flex flex-wrap gap-2">
+                                                    {guidedStageOptions.map((stage) => (
+                                                        <button
+                                                            key={`${track.id}-${stage}`}
+                                                            onClick={() => handleTrackStageChange(track.id, stage)}
+                                                            className={`rounded-lg px-3 py-1.5 text-[11px] font-semibold ${track.stage === stage ? 'bg-cyan text-bg-surface' : 'bg-bg-input text-text-secondary'}`}
+                                                        >
+                                                            {getGuidedStageLabel(stage)}
+                                                        </button>
+                                                    ))}
+                                                </div>
+                                            )}
+
+                                            <div className="mt-3 grid gap-2 sm:grid-cols-4">
+                                                {track.metric === 'seconds' && (
+                                                    <label className="text-[11px] text-text-muted sm:col-span-2">
+                                                        Target seconds
+                                                        <input
+                                                            type="number"
+                                                            min={0}
+                                                            value={track.target.seconds ?? ''}
+                                                            onChange={(event) => handleTrackTargetChange(track.id, {
+                                                                seconds: Math.max(0, Number(event.target.value) || 0),
+                                                            })}
+                                                            className="mt-1 w-full rounded-xl border border-border bg-bg-input px-3 py-2 text-sm text-text-primary"
+                                                        />
+                                                    </label>
+                                                )}
+                                                {track.metric === 'reps' && (
+                                                    <label className="text-[11px] text-text-muted sm:col-span-2">
+                                                        Target reps
+                                                        <input
+                                                            type="number"
+                                                            min={0}
+                                                            value={track.target.reps ?? ''}
+                                                            onChange={(event) => handleTrackTargetChange(track.id, {
+                                                                reps: Math.max(0, Number(event.target.value) || 0),
+                                                            })}
+                                                            className="mt-1 w-full rounded-xl border border-border bg-bg-input px-3 py-2 text-sm text-text-primary"
+                                                        />
+                                                    </label>
+                                                )}
+                                                {track.metric === 'sets_reps' && (
+                                                    <>
+                                                        <label className="text-[11px] text-text-muted">
+                                                            Sets
+                                                            <input
+                                                                type="number"
+                                                                min={0}
+                                                                value={track.target.sets ?? ''}
+                                                                onChange={(event) => handleTrackTargetChange(track.id, {
+                                                                    sets: Math.max(0, Number(event.target.value) || 0),
+                                                                })}
+                                                                className="mt-1 w-full rounded-xl border border-border bg-bg-input px-3 py-2 text-sm text-text-primary"
+                                                            />
+                                                        </label>
+                                                        <label className="text-[11px] text-text-muted">
+                                                            Reps
+                                                            <input
+                                                                type="number"
+                                                                min={0}
+                                                                value={track.target.reps ?? ''}
+                                                                onChange={(event) => handleTrackTargetChange(track.id, {
+                                                                    reps: Math.max(0, Number(event.target.value) || 0),
+                                                                })}
+                                                                className="mt-1 w-full rounded-xl border border-border bg-bg-input px-3 py-2 text-sm text-text-primary"
+                                                            />
+                                                        </label>
+                                                        {track.stage === 'weighted' && (
+                                                            <label className="text-[11px] text-text-muted">
+                                                                Start load kg
+                                                                <input
+                                                                    type="number"
+                                                                    min={0}
+                                                                    step="0.5"
+                                                                    value={track.addedWeightKg ?? ''}
+                                                                    onChange={(event) => saveDailyConfigState({
+                                                                        ...dailyConfig,
+                                                                        activeTracks: dailyConfig.activeTracks.map((candidate) => (
+                                                                            candidate.id === track.id
+                                                                                ? { ...candidate, addedWeightKg: Math.max(0, Number(event.target.value) || 0) }
+                                                                                : candidate
+                                                                        )),
+                                                                        updatedAt: Date.now(),
+                                                                    })}
+                                                                    className="mt-1 w-full rounded-xl border border-border bg-bg-input px-3 py-2 text-sm text-text-primary"
+                                                                />
+                                                            </label>
+                                                        )}
+                                                    </>
+                                                )}
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
+
+                            <div>
+                                <div className="flex items-center justify-between px-2 mb-2">
+                                    <p className="text-[11px] font-semibold uppercase tracking-wide text-text-muted">Suggested library</p>
+                                    <span className="text-[11px] text-text-muted">Quick start</span>
+                                </div>
+                                <div className="space-y-2">
+                                    {recommendedDailyTracks.map((track) => (
+                                        <button
+                                            key={track.id}
+                                            onClick={() => handleAddDailyTrack(track.exerciseName)}
+                                            className="w-full rounded-xl border border-border bg-bg-card p-3 text-left"
+                                        >
+                                            <div className="flex items-center justify-between gap-3">
+                                                <div>
+                                                    <p className="text-sm font-semibold">{track.exerciseName}</p>
+                                                    <p className="text-xs text-text-muted mt-1">Default target: {track.defaultTarget.seconds ? `${track.defaultTarget.seconds / 60} min` : track.defaultTarget.sets ? `${track.defaultTarget.sets} x ${track.defaultTarget.reps}` : `${track.defaultTarget.reps} reps`}</p>
+                                                </div>
+                                                <span className="rounded-lg bg-accent/15 px-2.5 py-1.5 text-[11px] font-semibold text-accent flex items-center gap-1">
+                                                    <Plus size={12} />
+                                                    Add
+                                                </span>
+                                            </div>
+                                        </button>
+                                    ))}
+                                </div>
+                            </div>
+
+                            {dailySearch.trim().length >= 2 && (
+                                <div>
+                                    <div className="flex items-center justify-between px-2 mb-2">
+                                        <p className="text-[11px] font-semibold uppercase tracking-wide text-text-muted">Search results</p>
+                                        <span className="text-[11px] text-text-muted">Exercise library</span>
+                                    </div>
+                                    {dailySearchResults.length > 0 ? (
+                                        <div className="space-y-2">
+                                            {dailySearchResults.map((exerciseName) => (
+                                                <button
+                                                    key={exerciseName}
+                                                    onClick={() => handleAddDailyTrack(exerciseName)}
+                                                    className="w-full rounded-xl border border-border bg-bg-card p-3 text-left"
+                                                >
+                                                    <div className="flex items-center justify-between gap-3">
+                                                        <div>
+                                                            <p className="text-sm font-semibold">{exerciseName}</p>
+                                                            <p className="text-xs text-text-muted mt-1">Create a daily track from this exercise</p>
+                                                        </div>
+                                                        <span className="rounded-lg bg-accent/15 px-2.5 py-1.5 text-[11px] font-semibold text-accent flex items-center gap-1">
+                                                            <Plus size={12} />
+                                                            Add
+                                                        </span>
+                                                    </div>
+                                                </button>
+                                            ))}
+                                        </div>
+                                    ) : (
+                                        <div className="rounded-xl border border-border bg-bg-card p-3 text-sm text-text-secondary">
+                                            No matches yet. Try another exercise name.
+                                        </div>
+                                    )}
+                                </div>
+                            )}
+                        </div>
+                    </div>
+                </div>
+            )}
         </div>
     );
 }

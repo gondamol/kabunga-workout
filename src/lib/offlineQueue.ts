@@ -1,6 +1,7 @@
 import type { QueuedAction } from './types';
 import {
     saveChallenge,
+    saveFitnessDailyConfig,
     saveFitnessDailyLog,
     saveMeal,
     saveOneRepMaxes,
@@ -71,6 +72,7 @@ type QueueActionHandlers = {
     saveMeal: typeof saveMeal;
     saveChallenge: typeof saveChallenge;
     saveOneRepMaxes: typeof saveOneRepMaxes;
+    saveFitnessDailyConfig: typeof saveFitnessDailyConfig;
     saveFitnessDailyLog: typeof saveFitnessDailyLog;
     saveHealthCheck: (check: HealthCheck) => Promise<void>;
 };
@@ -80,6 +82,7 @@ const defaultQueueHandlers: QueueActionHandlers = {
     saveMeal,
     saveChallenge,
     saveOneRepMaxes,
+    saveFitnessDailyConfig,
     saveFitnessDailyLog,
     saveHealthCheck,
 };

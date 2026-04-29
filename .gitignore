@@ -33,6 +33,14 @@ IMPLEMENTATION_PLAN.md
 
 # ─── Agent/AI config ───
 .agent/
+.codex
+.superpowers/
+
+# ─── Internal docs — not for repo ───
+AGENTS.md
+IMPLEMENTATION_STATUS.md
+FEATURE_1_1_NOTES.md
+notes/
 
 # ─── Firebase local cache ───
 .firebase/

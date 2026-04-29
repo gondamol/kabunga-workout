@@ -17,6 +17,7 @@ import type {
     CommunityReport,
     CommunityReportStatus,
     ExerciseHistory,
+    FitnessDailyConfig,
     FitnessDailyLog,
     Meal,
     OneRepMaxes,
@@ -830,6 +831,24 @@ export const getOneRepMaxes = async (uid: string): Promise<OneRepMaxes | null> =
 };
 
 // ─── Fitness Dailies ───
+export const saveFitnessDailyConfig = async (
+    uid: string,
+    config: FitnessDailyConfig
+): Promise<void> => {
+    const payload: FitnessDailyConfig = {
+        ...config,
+        userId: uid,
+        updatedAt: Date.now(),
+    };
+    await setDoc(doc(db, 'fitnessDailies', uid, 'config', 'current'), payload, { merge: true });
+};
+
+export const getFitnessDailyConfig = async (uid: string): Promise<FitnessDailyConfig | null> => {
+    const snap = await getDoc(doc(db, 'fitnessDailies', uid, 'config', 'current'));
+    if (!snap.exists()) return null;
+    return snap.data() as FitnessDailyConfig;
+};
+
 export const saveFitnessDailyLog = async (
     uid: string,
     date: string,
