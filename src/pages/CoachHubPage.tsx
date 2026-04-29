@@ -44,6 +44,7 @@ import type {
     WorkoutSession,
 } from '../lib/types';
 import { copyToClipboard, formatDurationHuman, formatRelativeTime } from '../lib/utils';
+import { CoachCard, SegmentedControl, StatChip } from '../components/ui';
 
 interface PlanExerciseDraft {
     name: string;
@@ -630,39 +631,41 @@ export default function CoachHubPage() {
 
     return (
         <div className="max-w-lg mx-auto px-4 pt-6 pb-24 space-y-5">
-            <div className="glass rounded-3xl p-5">
+            <div className="premium-card-high p-5">
                 <div className="flex items-center justify-between gap-3">
                     <div>
-                        <p className="text-xs uppercase tracking-wide text-text-muted">Coach Hub</p>
-                        <h1 className="text-2xl font-black mt-1">Remote Coaching</h1>
-                        <p className="text-xs text-text-secondary mt-1">
+                        <p className="text-xs font-bold uppercase tracking-[0.14em] text-tertiary">Coach Hub</p>
+                        <h1 className="font-display text-3xl font-extrabold mt-1 text-text-primary">Remote coaching</h1>
+                        <p className="text-sm leading-6 text-text-secondary mt-2">
                             {role === 'coach'
-                                ? 'Assign plans and monitor athlete sessions.'
-                                : 'Connect with a coach and receive daily plans.'}
+                                ? 'Assign plans and monitor athlete progress without exposing private body metrics or raw pain notes.'
+                                : 'Connect with a coach, receive daily plans, and keep sensitive readiness details private.'}
                         </p>
                     </div>
-                    <div className="w-11 h-11 rounded-2xl bg-accent/20 flex items-center justify-center text-accent">
+                    <div className="w-12 h-12 rounded-2xl bg-tertiary-container flex items-center justify-center text-tertiary">
                         {role === 'coach' ? <Crown size={20} /> : <Users size={20} />}
                     </div>
                 </div>
 
-                <div className="mt-4 grid grid-cols-2 gap-2">
-                    <button
-                        onClick={() => void applyRole('athlete')}
-                        disabled={switchingRole}
-                        className={`py-2 rounded-xl text-sm font-semibold border ${role === 'athlete' ? 'bg-accent text-white border-accent' : 'bg-bg-card border-border text-text-secondary'}`}
-                    >
-                        Athlete
-                    </button>
-                    <button
-                        onClick={() => void applyRole('coach')}
-                        disabled={switchingRole}
-                        className={`py-2 rounded-xl text-sm font-semibold border ${role === 'coach' ? 'bg-accent text-white border-accent' : 'bg-bg-card border-border text-text-secondary'}`}
-                    >
-                        Coach
-                    </button>
-                </div>
+                <SegmentedControl
+                    className="mt-4"
+                    ariaLabel="Coach hub role"
+                    value={role}
+                    onChange={(value) => { void applyRole(value); }}
+                    options={[
+                        { value: 'athlete', label: 'Athlete', icon: <Users size={16} /> },
+                        { value: 'coach', label: 'Coach', icon: <Crown size={16} /> },
+                    ]}
+                />
+                {switchingRole && <p className="mt-2 text-xs font-semibold text-text-muted">Updating role...</p>}
             </div>
+
+            <CoachCard
+                title="Coach-safe privacy"
+                description="Kabunga shares plan progress, workout completion, and readiness summaries. Private body metrics and raw pain notes stay out of coach views."
+                badge={role === 'coach' ? 'Coach view' : 'Athlete control'}
+                privacyNote="Summaries help coaching decisions without turning health notes into surveillance."
+            />
 
             {role === 'athlete' ? (
                 <>

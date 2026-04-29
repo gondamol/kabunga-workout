@@ -9,9 +9,10 @@ import toast from 'react-hot-toast';
 import dayjs from 'dayjs';
 import { PieChart, Pie, Cell, ResponsiveContainer } from 'recharts';
 import { Apple, Plus, X, Trash2, ChevronLeft, ChevronRight, Search } from 'lucide-react';
+import { ActionButton, EmptyState, MetricCard, PageHeader, RecoveryGuidanceCard } from '../components/ui';
 
 export default function NutritionPage() {
-    const { user } = useAuthStore();
+    const { user, profile } = useAuthStore();
     const [date, setDate] = useState(getTodayKey());
     const [meals, setMeals] = useState<Meal[]>([]);
     const [loading, setLoading] = useState(true);
@@ -138,10 +139,24 @@ export default function NutritionPage() {
 
     return (
         <div className="shell-page pt-6 pb-4 space-y-6">
-            <div className="animate-fade-in">
-                <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-accent">Training support</p>
-                <h1 className="mt-1 font-display text-2xl font-bold tracking-tight">Nutrition</h1>
-            </div>
+            <PageHeader
+                eyebrow="Recovery fuel"
+                title="Nutrition"
+                subtitle="Support energy, hydration, and recovery without diet-culture noise."
+                action={<Apple size={24} className="text-primary" />}
+                className="animate-fade-in"
+            />
+
+            <RecoveryGuidanceCard
+                description={
+                    profile?.onboarding?.primaryGoal === 'fat_loss'
+                        ? 'Fuel enough to train consistently. Kabunga focuses on energy and recovery, not punishment.'
+                        : 'A simple meal, water, and sleep routine can improve how ready you feel tomorrow.'
+                }
+                options={['Hydration', 'Protein', 'Simple meal', 'Sleep routine']}
+                actionLabel="Log meal"
+                onAction={() => { setShowAdd(true); resetForm(); }}
+            />
 
             {/* Date picker */}
             <div className="flex items-center justify-between glass rounded-2xl px-4 py-3 animate-fade-in">
@@ -167,7 +182,7 @@ export default function NutritionPage() {
             </div>
 
             {/* Summary */}
-            <div className="glass rounded-2xl p-4 animate-fade-in stagger-1">
+            <div className="premium-card p-4 animate-fade-in stagger-1">
                 <div className="flex items-center gap-4">
                     {/* Pie chart */}
                     <div ref={macroChartContainerRef} className="w-24 h-24 shrink-0 min-w-0">
@@ -210,6 +225,12 @@ export default function NutritionPage() {
                 </div>
             </div>
 
+            <section className="grid grid-cols-3 gap-3">
+                <MetricCard label="Protein" value={Math.round(totals.protein)} helper="grams" className="p-3" tone="tertiary" />
+                <MetricCard label="Carbs" value={Math.round(totals.carbs)} helper="grams" className="p-3" tone="accent" />
+                <MetricCard label="Fat" value={Math.round(totals.fat)} helper="grams" className="p-3" tone="danger" />
+            </section>
+
             {/* Meals by type */}
             {(['breakfast', 'lunch', 'dinner', 'snack'] as const).map((type) => {
                 const typeMeals = mealsByType[type];
@@ -248,9 +269,12 @@ export default function NutritionPage() {
 
             {/* Empty state */}
             {!loading && meals.length === 0 && (
-                <div className="text-center py-8">
-                    <p className="text-text-secondary text-sm">No meals logged {isToday ? 'today' : 'for this day'}</p>
-                </div>
+                <EmptyState
+                    title={`No meals logged ${isToday ? 'today' : 'for this day'}`}
+                    description="Start with one useful entry. Recovery data gets better when the habit is simple."
+                    actionLabel="Log meal"
+                    onAction={() => { setShowAdd(true); resetForm(); }}
+                />
             )}
 
             {/* Add meal modal */}

@@ -20,6 +20,7 @@ import type { OneRepMaxes, WorkoutSession } from '../lib/types';
 import { normalizeOneRepMaxes } from '../lib/ironProtocol';
 import { getOneRepMaxPromptStatus } from '../lib/oneRepMaxes';
 import OneRepMaxCard from '../components/OneRepMaxCard';
+import { PageHeader, StatChip } from '../components/ui';
 
 const ONE_REP_MAX_FOCUS_PARAM = 'one-rep-maxes';
 
@@ -150,12 +151,14 @@ export default function ProfilePage() {
 
     return (
         <div className="shell-page pt-6 pb-4 space-y-6">
-            <div className="animate-fade-in">
-                <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-accent">Account</p>
-                <h1 className="mt-1 font-display text-2xl font-bold tracking-tight">Profile</h1>
-            </div>
+            <PageHeader
+                eyebrow="Account"
+                title="Profile"
+                subtitle="Your training preferences, coach connection, privacy, and performance settings."
+                className="animate-fade-in"
+            />
 
-            <div className="glass rounded-2xl p-6 flex items-center gap-4 animate-fade-in stagger-1">
+            <div className="premium-card-high p-6 flex items-center gap-4 animate-fade-in stagger-1">
                 <div className="w-16 h-16 rounded-2xl bg-accent/10 text-accent flex items-center justify-center text-2xl font-black shrink-0 overflow-hidden">
                     {profile?.photoURL ? (
                         <img src={profile.photoURL} alt="" className="w-full h-full rounded-2xl object-cover" />
@@ -169,6 +172,12 @@ export default function ProfilePage() {
                     <p className="text-xs text-text-muted mt-1">
                         Joined {profile?.createdAt ? formatDate(profile.createdAt) : 'recently'}
                     </p>
+                    <div className="mt-3 flex flex-wrap gap-2">
+                        <StatChip label="Role" value={profile?.role === 'coach' ? 'Coach' : 'Athlete'} tone="tertiary" />
+                        {profile?.onboarding?.trainingDaysPerWeek && (
+                            <StatChip label="Weekly goal" value={`${profile.onboarding.trainingDaysPerWeek} days`} tone="secondary" />
+                        )}
+                    </div>
                 </div>
             </div>
 
@@ -282,7 +291,7 @@ function SettingRow({
     return (
         <Wrapper
             onClick={onClick}
-            className={`w-full glass rounded-xl p-4 flex items-center gap-3 ${onClick ? 'cursor-pointer active:scale-[0.99] transition-transform' : ''}`}
+            className={`w-full premium-card p-4 flex items-center gap-3 ${onClick ? 'cursor-pointer active:scale-[0.99] transition-transform' : ''}`}
         >
             <span className="text-text-muted">{icon}</span>
             <div className="flex-1 text-left min-w-0">

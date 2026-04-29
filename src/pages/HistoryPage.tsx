@@ -9,6 +9,7 @@ import { formatDurationHuman } from '../lib/utils';
 import { getWorkoutHeadline, shareWorkoutPeriodImage } from '../lib/workoutSummary';
 import { formatEffortValue, formatSetPerformance } from '../lib/exerciseRules';
 import toast from 'react-hot-toast';
+import { ActionButton, MetricCard, PageHeader } from '../components/ui';
 
 const weekHeaders = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 
@@ -240,53 +241,39 @@ export default function HistoryPage() {
 
     return (
         <div className="max-w-lg mx-auto px-4 pt-6 pb-24 space-y-5">
-            <div className="glass rounded-3xl p-5">
-                <div className="flex items-center justify-between">
-                    <div>
-                        <p className="text-xs uppercase tracking-wide text-text-muted">Calendar History</p>
-                        <h1 className="text-2xl font-black mt-1">Training Calendar</h1>
-                        {loadingHistory && (
-                            <p className="text-xs text-text-muted mt-1">Loading sessions...</p>
-                        )}
-                    </div>
-                    <Calendar size={22} className="text-accent" />
-                </div>
+            <PageHeader
+                eyebrow="Progress"
+                title="Training history"
+                subtitle={loadingHistory ? 'Loading sessions...' : 'Your consistency, volume, and recent sessions in one calendar.'}
+                action={<Calendar size={24} className="text-primary" />}
+            />
 
-                <div className="mt-4 grid grid-cols-2 gap-3">
-                    <div className="rounded-2xl bg-bg-card p-3">
-                        <p className="text-xs text-text-muted">Current Streak</p>
-                        <p className="text-xl font-black mt-1 flex items-center gap-1">
-                            <Flame size={18} className="text-amber" />
-                            {currentTrainingStreak} days
-                        </p>
-                    </div>
-                    <div className="rounded-2xl bg-bg-card p-3">
-                        <p className="text-xs text-text-muted">Weekly Compliance</p>
-                        <p className="text-xl font-black mt-1">
-                            {weeklyCompliance.completed}/{weeklyCompliance.total}
-                        </p>
-                        <div className="w-full h-1.5 rounded-full bg-bg-input mt-2 overflow-hidden">
-                            <div className="h-full gradient-primary" style={{ width: `${weeklyCompliance.pct}%` }} />
-                        </div>
-                    </div>
-                </div>
+            <section className="grid grid-cols-2 gap-3">
+                <MetricCard label="Current streak" value={currentTrainingStreak} helper="training days" icon={<Flame size={20} />} tone="accent" />
+                <MetricCard
+                    label="Weekly target"
+                    value={`${weeklyCompliance.completed}/${weeklyCompliance.total}`}
+                    helper={`${weeklyCompliance.pct}% complete`}
+                    icon={<Calendar size={20} />}
+                    tone="secondary"
+                />
+            </section>
 
-                <div className="mt-4 grid grid-cols-2 gap-2">
-                    <button
-                        onClick={() => { void handleSharePeriod('week'); }}
-                        disabled={sharingPeriod !== null}
-                        className="py-3 rounded-2xl border border-border text-sm text-text-secondary font-semibold disabled:opacity-50"
-                    >
-                        {sharingPeriod === 'week' ? 'Preparing...' : 'Share This Week'}
-                    </button>
-                    <button
-                        onClick={() => { void handleSharePeriod('month'); }}
-                        disabled={sharingPeriod !== null}
-                        className="py-3 rounded-2xl border border-border text-sm text-text-secondary font-semibold disabled:opacity-50"
-                    >
-                        {sharingPeriod === 'month' ? `Sharing ${month.format('MMM')}` : `Share ${month.format('MMM')}`}
-                    </button>
-                </div>
+            <div className="grid grid-cols-2 gap-2">
+                <ActionButton
+                    onClick={() => { void handleSharePeriod('week'); }}
+                    disabled={sharingPeriod !== null}
+                    variant="secondary"
+                >
+                    {sharingPeriod === 'week' ? 'Preparing...' : 'Share week'}
+                </ActionButton>
+                <ActionButton
+                    onClick={() => { void handleSharePeriod('month'); }}
+                    disabled={sharingPeriod !== null}
+                    variant="secondary"
+                >
+                    {sharingPeriod === 'month' ? `Sharing ${month.format('MMM')}` : `Share ${month.format('MMM')}`}
+                </ActionButton>
             </div>
 
             <div className="glass rounded-3xl p-4">

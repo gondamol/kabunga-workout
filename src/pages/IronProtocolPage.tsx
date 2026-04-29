@@ -28,6 +28,7 @@ import {
 import { formatSetPerformance, hasExternalLoad } from '../lib/exerciseRules';
 import { getOneRepMaxPromptStatus } from '../lib/oneRepMaxes';
 import OneRepMaxCard from '../components/OneRepMaxCard';
+import { InsightCard } from '../components/ui';
 import { searchExercises } from '../lib/exerciseLibraryService';
 import {
     DAILY_TRACK_LIBRARY,
@@ -486,13 +487,19 @@ export default function IronProtocolPage() {
 
     return (
         <div className="max-w-lg mx-auto px-4 pt-6 pb-24 space-y-5">
-            <div className="glass rounded-3xl p-5" style={{ background: '#0D1B2A', borderColor: '#2D5F8A' }}>
-                <p className="text-xs tracking-wider uppercase" style={{ color: '#D6E4F0' }}>Kabunga</p>
-                <h1 className="text-2xl font-black mt-1 text-white">Iron Protocol</h1>
-                <p className="text-sm mt-1" style={{ color: '#D6E4F0' }}>
-                    Weekly PPL structure with auto-loaded daily sessions
+            <div className="rounded-[2rem] border border-amber/25 bg-surface-inverse p-5 text-text-inverse shadow-lifted">
+                <p className="text-xs font-bold tracking-[0.16em] uppercase text-secondary">Kabunga performance</p>
+                <h1 className="font-display text-3xl font-extrabold mt-1 text-text-inverse">Iron Protocol</h1>
+                <p className="text-sm leading-6 mt-2 text-text-inverse/75">
+                    Weekly PPL structure, scaled from your 1RM data, with daily bodyweight progression.
                 </p>
             </div>
+
+            <InsightCard
+                tone="progress"
+                title="Strength, not clutter"
+                description="Targets stay visible, bodyweight work still counts, and you can start the day’s session without rebuilding a plan."
+            />
 
             <div className="glass rounded-2xl p-3">
                 <div className="flex items-center gap-2 mb-2 text-text-secondary text-xs uppercase tracking-wide">

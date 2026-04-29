@@ -65,6 +65,7 @@ import {
     buildCommunityInviteShareMessage,
     buildCommunityLandingEmptyState,
 } from '../lib/communityPresentation';
+import { ActionButton, InsightCard, StatChip } from '../components/ui';
 
 const createId = (): string => `${Math.random().toString(36).slice(2, 10)}${Date.now().toString(36)}`;
 
@@ -717,20 +718,30 @@ export default function CommunityPage() {
 
     return (
         <div className="max-w-lg mx-auto px-4 pt-6 pb-24 space-y-5">
-            <div className="glass rounded-3xl p-5">
+            <div className="premium-card-high p-5">
                 <div className="flex items-center justify-between gap-3">
                     <div>
-                        <p className="text-xs uppercase tracking-wide text-text-muted">Kabunga Circle</p>
-                        <h1 className="text-2xl font-black mt-1">Circles & Chat</h1>
-                        <p className="text-xs text-text-secondary mt-1">
-                            Bring your gym friends, coach group, or lifting crew into one accountability space.
+                        <p className="text-xs font-bold uppercase tracking-[0.14em] text-primary">Kabunga Circle</p>
+                        <h1 className="font-display text-3xl font-extrabold mt-1 text-text-primary">Circles & challenges</h1>
+                        <p className="text-sm leading-6 text-text-secondary mt-2">
+                            Bring your gym friends, coach group, or lifting crew into one lightweight accountability space.
                         </p>
+                        <div className="mt-3 flex flex-wrap gap-2">
+                            <StatChip tone="secondary" label="Groups" value={myGroups.length} />
+                            <StatChip tone="tertiary" label="Open reports" value={openReportCount} />
+                        </div>
                     </div>
-                    <div className="w-11 h-11 rounded-2xl bg-accent/20 flex items-center justify-center text-accent">
+                    <div className="w-12 h-12 rounded-2xl bg-primary-container flex items-center justify-center text-primary">
                         <MessagesSquare size={20} />
                     </div>
                 </div>
             </div>
+
+            <InsightCard
+                tone="primary"
+                title="Accountability without enterprise software"
+                description="Use invite codes, coach groups, challenges, leaderboards, and moderation without turning the app into a heavy admin tool."
+            />
 
             <div className="glass rounded-2xl p-4 space-y-2">
                 <p className="text-sm font-semibold">Join a circle with code</p>
@@ -746,13 +757,14 @@ export default function CommunityPage() {
                         placeholder="e.g. KBG9A7X2"
                         className="flex-1 bg-bg-input border border-border rounded-xl py-2.5 px-3 text-sm"
                     />
-                    <button
+                    <ActionButton
                         onClick={() => void handleJoinByInviteCode()}
                         disabled={joiningByInviteCode}
-                        className="px-4 py-2.5 rounded-xl gradient-primary text-white text-sm font-semibold disabled:opacity-50"
+                        size="sm"
+                        isLoading={joiningByInviteCode}
                     >
-                        {joiningByInviteCode ? 'Joining...' : 'Join'}
-                    </button>
+                        Join
+                    </ActionButton>
                 </div>
             </div>
 

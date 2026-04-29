@@ -1,4 +1,5 @@
 import { BookOpen, ExternalLink, FlaskConical, Target } from 'lucide-react';
+import { InsightCard, PageHeader } from '../components/ui';
 
 const principles = [
     {
@@ -50,20 +51,18 @@ const references = [
 export default function SciencePage() {
     return (
         <div className="max-w-lg mx-auto px-4 pt-6 pb-24 space-y-5">
-            <div className="glass rounded-3xl p-5">
-                <div className="flex items-center justify-between gap-3">
-                    <div>
-                        <p className="text-xs uppercase tracking-wide text-text-muted">Kabunga Method</p>
-                        <h1 className="text-2xl font-black mt-1">Evidence-Based Coaching</h1>
-                        <p className="text-xs text-text-secondary mt-1">
-                            The app is designed to coach from proven training principles, not random workouts.
-                        </p>
-                    </div>
-                    <div className="w-11 h-11 rounded-2xl bg-accent/20 flex items-center justify-center text-accent">
-                        <FlaskConical size={20} />
-                    </div>
-                </div>
-            </div>
+            <PageHeader
+                eyebrow="Kabunga Method"
+                title="Evidence-based coaching"
+                subtitle="Training science explained simply, then connected back to your next workout decision."
+                action={<FlaskConical size={24} className="text-primary" />}
+            />
+
+            <InsightCard
+                tone="recovery"
+                title="Science should reduce decisions"
+                description="Kabunga turns principles like progressive overload, rest, weekly volume, and protein support into practical guidance instead of dense lectures."
+            />
 
             <div className="glass rounded-2xl p-4 space-y-3">
                 <h3 className="text-sm font-semibold flex items-center gap-2">
