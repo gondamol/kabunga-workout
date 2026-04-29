@@ -3,7 +3,9 @@ import {
     buildDashboardGoalHero,
     buildDashboardPrimaryCard,
     buildDashboardProgressEmptyState,
+    buildRecoveryAlternatives,
     buildReadinessStrip,
+    buildTodayRecommendation,
 } from '../src/lib/dashboardPresentation.ts';
 import type { Exercise, HealthCheck, ReadinessScore, UserProfile, WorkoutSession } from '../src/lib/types.ts';
 
@@ -171,6 +173,74 @@ export function validateDashboardPresentation(): ValidationResult {
     } else {
         failed++;
         errors.push(`✗ Circle shortcut card was wrong: ${JSON.stringify(circleShortcut)}`);
+    }
+
+    const recoveryRecommendation = buildTodayRecommendation({
+        activeSession: null,
+        latestWorkout: buildWorkout({ exercises: [buildExercise({ name: 'Goblet Squat' })] }),
+        readiness: buildReadiness({ score: 3, status: 'poor', warnings: ['Sleep was low'] }),
+        hasCoachPlan: false,
+        isOnline: true,
+    });
+
+    if (
+        recoveryRecommendation.title === 'Keep it simple today' &&
+        recoveryRecommendation.ctaLabel === 'Choose recovery plan' &&
+        recoveryRecommendation.tone === 'recovery'
+    ) {
+        passed++;
+    } else {
+        failed++;
+        errors.push(`✗ Low readiness recommendation was wrong: ${JSON.stringify(recoveryRecommendation)}`);
+    }
+
+    const repeatRecommendation = buildTodayRecommendation({
+        activeSession: null,
+        latestWorkout: buildWorkout({ exercises: [buildExercise({ name: 'Upper Body Push' })] }),
+        readiness: buildReadiness({ score: 8, status: 'good' }),
+        hasCoachPlan: false,
+        isOnline: false,
+    });
+
+    if (
+        repeatRecommendation.title === 'Your last session is ready to repeat' &&
+        repeatRecommendation.ctaLabel === 'Repeat last workout' &&
+        repeatRecommendation.detail.includes('Offline gym mode')
+    ) {
+        passed++;
+    } else {
+        failed++;
+        errors.push(`✗ Repeat recommendation was wrong: ${JSON.stringify(repeatRecommendation)}`);
+    }
+
+    const coachRecommendation = buildTodayRecommendation({
+        activeSession: null,
+        latestWorkout: null,
+        readiness: buildReadiness({ score: 7, status: 'good' }),
+        hasCoachPlan: true,
+        isOnline: true,
+    });
+
+    if (coachRecommendation.title === 'Your coach plan is ready' && coachRecommendation.tone === 'coach') {
+        passed++;
+    } else {
+        failed++;
+        errors.push(`✗ Coach recommendation was wrong: ${JSON.stringify(coachRecommendation)}`);
+    }
+
+    const recoveryAlternatives = buildRecoveryAlternatives({
+        readiness: buildReadiness({ score: 4, status: 'moderate' }),
+    });
+
+    if (
+        recoveryAlternatives.title === 'Recovery still counts' &&
+        recoveryAlternatives.options.includes('10-minute mobility') &&
+        recoveryAlternatives.options.includes('Breathing reset')
+    ) {
+        passed++;
+    } else {
+        failed++;
+        errors.push(`✗ Recovery alternatives were wrong: ${JSON.stringify(recoveryAlternatives)}`);
     }
 
     return { passed, failed, errors };

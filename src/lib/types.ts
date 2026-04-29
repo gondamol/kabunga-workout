@@ -1,8 +1,12 @@
 // ─── User ───
-export type PrimaryGoal = 'strength' | 'muscle' | 'fat_loss' | 'general_fitness';
-export type TrainingEnvironment = 'full_gym' | 'minimal_equipment' | 'home_bodyweight';
+export type PrimaryGoal = 'strength' | 'muscle' | 'fat_loss' | 'general_fitness' | 'mobility' | 'consistency' | 'mental_wellness';
+export type TrainingEnvironment = 'full_gym' | 'minimal_equipment' | 'home_bodyweight' | 'outdoor' | 'mixed';
 export type SupportMode = 'solo' | 'with_coach' | 'with_friends';
 export type ExperienceLevel = 'beginner' | 'intermediate' | 'advanced';
+export type EquipmentAccess = 'none' | 'dumbbells' | 'bands' | 'barbell_gym' | 'mixed';
+export type CoachMode = 'training_alone' | 'training_with_coach' | 'i_am_coach';
+export type PreferredTrainingStyle = 'simple' | 'structured' | 'intense' | 'gentle' | 'progressive';
+export type TimeAvailableMinutes = 5 | 10 | 20 | 30 | 45;
 
 export interface UserOnboarding {
     primaryGoal: PrimaryGoal | null;
@@ -10,6 +14,11 @@ export interface UserOnboarding {
     supportMode: SupportMode | null;
     experienceLevel: ExperienceLevel | null;
     trainingDaysPerWeek: number | null;
+    equipmentAccess?: EquipmentAccess | null;
+    timeAvailableMinutes?: TimeAvailableMinutes | null;
+    coachMode?: CoachMode | null;
+    limitationNote?: string | null;
+    preferredTrainingStyle?: PreferredTrainingStyle | null;
     completedAt?: number | null;
 }
 

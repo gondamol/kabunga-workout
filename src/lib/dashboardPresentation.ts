@@ -35,6 +35,21 @@ export interface ReadinessStrip {
     tone: ReadinessStatus | 'empty';
 }
 
+export interface TodayRecommendation {
+    title: string;
+    detail: string;
+    ctaLabel: string;
+    route: '/workout' | '/active-workout' | '/coach' | '/nutrition';
+    tone: 'active' | 'coach' | 'recovery' | 'repeat' | 'start';
+}
+
+export interface RecoveryAlternatives {
+    title: string;
+    detail: string;
+    options: string[];
+    ctaLabel: string;
+}
+
 const buildGoalEyebrow = (profile: UserProfile | null): string => {
     const goal = profile?.onboarding?.primaryGoal;
 
@@ -206,5 +221,93 @@ export const buildReadinessStrip = ({
         detail: readiness.warnings[0] || 'Ready for today\'s plan',
         ctaLabel: 'Edit',
         tone: readiness.status,
+    };
+};
+
+export const buildTodayRecommendation = ({
+    activeSession,
+    latestWorkout,
+    readiness,
+    hasCoachPlan,
+    isOnline,
+}: {
+    activeSession: WorkoutSession | null;
+    latestWorkout: WorkoutSession | null;
+    readiness: ReadinessScore | null;
+    hasCoachPlan: boolean;
+    isOnline: boolean;
+}): TodayRecommendation => {
+    if (activeSession) {
+        return {
+            title: "Resume today's workout",
+            detail: `${activeSession.exercises.length} exercises are still waiting for you.`,
+            ctaLabel: 'Resume workout',
+            route: '/active-workout',
+            tone: 'active',
+        };
+    }
+
+    const lowReadiness = readiness && (readiness.status === 'poor' || readiness.score <= 4);
+    if (lowReadiness) {
+        return {
+            title: 'Keep it simple today',
+            detail: readiness.warnings[0] || 'Low energy? Recovery still counts. Choose a lighter plan and come back stronger.',
+            ctaLabel: 'Choose recovery plan',
+            route: '/nutrition',
+            tone: 'recovery',
+        };
+    }
+
+    if (hasCoachPlan) {
+        return {
+            title: 'Your coach plan is ready',
+            detail: 'Start the assigned session and your coach will only see safe progress and readiness summaries.',
+            ctaLabel: 'Start coach plan',
+            route: '/coach',
+            tone: 'coach',
+        };
+    }
+
+    if (latestWorkout) {
+        const firstExercise = latestWorkout.exercises[0]?.name || 'your last session';
+        return {
+            title: 'Your last session is ready to repeat',
+            detail: `${isOnline ? 'Small progress is still progress.' : 'Offline gym mode is ready.'} Start from ${firstExercise}.`,
+            ctaLabel: 'Repeat last workout',
+            route: '/workout',
+            tone: 'repeat',
+        };
+    }
+
+    return {
+        title: 'Build a simple session',
+        detail: 'Pick a few movements, keep the plan realistic, and log your first consistency win.',
+        ctaLabel: 'Start workout',
+        route: '/workout',
+        tone: 'start',
+    };
+};
+
+export const buildRecoveryAlternatives = ({
+    readiness,
+}: {
+    readiness: ReadinessScore | null;
+}): RecoveryAlternatives => {
+    const lowReadiness = readiness && (readiness.status === 'poor' || readiness.score <= 4);
+
+    if (lowReadiness) {
+        return {
+            title: 'Recovery still counts',
+            detail: 'Choose a lighter option today. The goal is to keep the habit alive without forcing intensity.',
+            options: ['10-minute mobility', 'Light walk', 'Stretching', 'Breathing reset', 'Rest day'],
+            ctaLabel: 'Adjust today',
+        };
+    }
+
+    return {
+        title: 'Train, then recover',
+        detail: 'Add a simple recovery habit after training so progress has room to show up.',
+        options: ['Hydrate', 'Protein meal', 'Easy cooldown', 'Sleep routine'],
+        ctaLabel: 'Plan recovery',
     };
 };
