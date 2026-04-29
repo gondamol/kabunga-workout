@@ -1,6 +1,7 @@
 import { useWorkoutStore } from '../stores/workoutStore';
 import { formatTimer } from '../lib/timerService';
-import { Timer, X, Plus, Minus } from 'lucide-react';
+import { Plus, Minus } from 'lucide-react';
+import { ActionButton, ProgressRing } from './ui';
 
 /**
  * Floating rest timer overlay — appears after completing a set
@@ -11,80 +12,62 @@ export default function RestTimer() {
 
     if (!isResting) return null;
 
-    const progress = restTarget > 0 ? ((restTarget - restSeconds) / restTarget) * 100 : 0;
-    const circumference = 2 * Math.PI * 54; // radius 54
-    const strokeOffset = circumference - (progress / 100) * circumference;
+    const progress = restTarget > 0 ? restTarget - restSeconds : 0;
     const isWarning = restSeconds <= 5 && restSeconds > 0;
 
     return (
-        <div className="fixed inset-0 z-[90] bg-black/70 backdrop-blur-sm flex items-center justify-center animate-fade-in">
-            <div className="text-center space-y-6">
-                {/* Phase label */}
-                <p className="text-text-secondary text-sm font-medium uppercase tracking-wider">
-                    Rest Timer
-                </p>
+        <div className="fixed inset-0 z-[90] flex items-center justify-center bg-black/72 px-5 backdrop-blur-sm animate-fade-in">
+            <div className="w-full max-w-sm rounded-[2rem] border border-white/10 bg-bg-card p-6 text-center shadow-lifted">
+                <p className="text-xs font-bold uppercase tracking-[0.16em] text-text-muted">Rest timer</p>
+                <h2 className="mt-2 text-2xl font-extrabold text-text-primary">Breathe. Next set soon.</h2>
 
-                {/* Circular progress */}
-                <div className="relative w-44 h-44 mx-auto">
-                    <svg className="absolute inset-0 -rotate-90" viewBox="0 0 120 120">
-                        {/* Background ring */}
-                        <circle
-                            cx="60" cy="60" r="54"
-                            fill="none"
-                            stroke="rgba(139,92,246,0.1)"
-                            strokeWidth="6"
-                        />
-                        {/* Progress ring */}
-                        <circle
-                            cx="60" cy="60" r="54"
-                            fill="none"
-                            stroke={isWarning ? '#ef4444' : '#8b5cf6'}
-                            strokeWidth="6"
-                            strokeLinecap="round"
-                            strokeDasharray={circumference}
-                            strokeDashoffset={strokeOffset}
-                            className="transition-all duration-1000 ease-linear"
-                        />
-                    </svg>
-                    <div className="absolute inset-0 flex items-center justify-center">
-                        <span className={`text-4xl font-black font-mono ${isWarning ? 'text-red animate-pulse' : 'gradient-text'}`}>
+                <div className="mt-6 flex justify-center">
+                    <ProgressRing
+                        value={progress}
+                        max={restTarget || 1}
+                        size={184}
+                        strokeWidth={7}
+                        tone={isWarning ? 'danger' : 'secondary'}
+                        label="Rest progress"
+                        showValue={false}
+                    >
+                        <span className={`font-display text-5xl font-extrabold tabular-nums ${isWarning ? 'text-danger animate-pulse' : 'text-text-primary'}`}>
                             {formatTimer(restSeconds)}
                         </span>
-                    </div>
+                    </ProgressRing>
                 </div>
 
-                {/* Controls */}
-                <div className="flex items-center justify-center gap-4">
-                    <button
+                <div className="mt-7 flex items-center justify-center gap-4">
+                    <ActionButton
                         onClick={() => startRest(Math.max(15, restSeconds - 15))}
-                        className="w-12 h-12 rounded-xl glass flex items-center justify-center text-text-secondary active:scale-95 transition-transform"
+                        size="icon"
+                        variant="secondary"
                         aria-label="Minus 15 seconds"
-                    >
-                        <Minus size={18} />
-                    </button>
-                    <button
+                        icon={<Minus size={18} />}
+                    />
+                    <ActionButton
                         onClick={stopRest}
-                        className="w-16 h-16 rounded-2xl bg-accent text-white flex items-center justify-center active:scale-95 transition-transform shadow-lg shadow-accent/30"
+                        size="lg"
+                        className="h-16 rounded-3xl px-8"
                         aria-label="Skip rest"
                     >
-                        <span className="text-sm font-bold">Skip</span>
-                    </button>
-                    <button
+                        Skip
+                    </ActionButton>
+                    <ActionButton
                         onClick={() => startRest(restSeconds + 15)}
-                        className="w-12 h-12 rounded-xl glass flex items-center justify-center text-text-secondary active:scale-95 transition-transform"
+                        size="icon"
+                        variant="secondary"
                         aria-label="Plus 15 seconds"
-                    >
-                        <Plus size={18} />
-                    </button>
+                        icon={<Plus size={18} />}
+                    />
                 </div>
 
-                {/* Quick presets */}
-                <div className="flex items-center justify-center gap-2">
+                <div className="mt-5 flex items-center justify-center gap-2">
                     {[60, 90, 120, 180].map(s => (
                         <button
                             key={s}
                             onClick={() => startRest(s)}
-                            className="px-3 py-1.5 rounded-lg text-xs font-medium bg-bg-card text-text-secondary hover:text-accent transition-colors"
+                            className="touch-target pressable rounded-full bg-surface-container px-3 py-1.5 text-xs font-bold text-text-secondary hover:text-primary"
                         >
                             {s >= 60 ? `${s / 60}m` : `${s}s`}
                         </button>

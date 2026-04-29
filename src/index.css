@@ -3,28 +3,61 @@
 
 /* ─── Design Tokens ─── */
 @theme {
-  --color-bg-primary: #f4f7f2;
+  --color-bg-primary: #f6f8f3;
   --color-bg-card: #ffffff;
-  --color-bg-card-hover: #f7faf6;
-  --color-bg-input: #eef3e8;
-  --color-bg-surface: #eaf0e6;
-  --color-accent: #1e5832;
+  --color-bg-card-hover: #f8fbf5;
+  --color-bg-input: #edf3e8;
+  --color-bg-surface: #e9f0e3;
+  --color-surface: #fbfcf8;
+  --color-surface-container-low: #f3f7ee;
+  --color-surface-container: #edf4e8;
+  --color-surface-container-high: #e3ecd9;
+  --color-surface-inverse: #132018;
+  --color-primary: #17452a;
+  --color-primary-container: #dcefd8;
+  --color-secondary: #9bd93c;
+  --color-secondary-container: #e8f8c8;
+  --color-tertiary: #3468b7;
+  --color-tertiary-container: #dce8ff;
+  --color-accent: #17452a;
   --color-accent-light: #2f7d32;
-  --color-iron: #d97706;
-  --color-cyan: #2563eb;
-  --color-cyan-light: #3b82f6;
+  --color-iron: #d8871f;
+  --color-cyan: #3468b7;
+  --color-cyan-light: #5d8fe0;
   --color-green: #2f7d32;
-  --color-green-light: #4ade80;
-  --color-amber: #d97706;
-  --color-red: #dc2626;
-  --color-red-light: #ef4444;
-  --color-text-primary: #172119;
-  --color-text-secondary: #5f6e61;
-  --color-text-muted: #7a867b;
-  --color-border: #dfe8d8;
-  --color-border-light: #cad8ca;
+  --color-green-light: #9bd93c;
+  --color-amber: #d8871f;
+  --color-red: #c93434;
+  --color-red-light: #ef5b5b;
+  --color-success: #2f7d32;
+  --color-warning: #d8871f;
+  --color-danger: #c93434;
+  --color-info: #3468b7;
+  --color-text-primary: #142117;
+  --color-text-secondary: #4d5d50;
+  --color-text-muted: #748177;
+  --color-text-inverse: #f6fbef;
+  --color-border: #dce8d5;
+  --color-border-light: #c6d5c0;
+  --color-outline: #c6d5c0;
+  --color-outline-strong: #8fa083;
+  --shadow-soft: 0 16px 44px rgba(20, 33, 23, 0.08);
+  --shadow-card: 0 10px 28px rgba(20, 33, 23, 0.07);
+  --shadow-lifted: 0 24px 70px rgba(20, 33, 23, 0.12);
+  --radius-control: 0.875rem;
+  --radius-card: 1.5rem;
+  --radius-sheet: 2rem;
   --font-sans: 'Manrope', system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
   --font-display: 'Outfit', 'Manrope', system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
+}
+
+:root {
+  --duration-fast: 140ms;
+  --duration-normal: 220ms;
+  --duration-slow: 360ms;
+  --ease-standard: cubic-bezier(0.2, 0, 0, 1);
+  --safe-bottom-space: max(env(safe-area-inset-bottom), 16px);
+  --safe-top-space: max(env(safe-area-inset-top), 0px);
 }
 
 /* ─── Base Styles ─── */
@@ -46,10 +79,8 @@ html {
 body {
   margin: 0;
   min-height: 100dvh;
-  background:
-    radial-gradient(circle at top left, rgba(47, 125, 50, 0.1), transparent 26%),
-    radial-gradient(circle at bottom right, rgba(37, 99, 235, 0.08), transparent 24%),
-    linear-gradient(180deg, #f8fbf6 0%, #f1f6ee 100%);
+  background: linear-gradient(180deg, #fbfcf8 0%, #f1f6eb 42%, #e8f0e1 100%);
+  text-rendering: optimizeLegibility;
 }
 
 #root {
@@ -63,6 +94,29 @@ select,
 textarea,
 button {
   font-family: inherit;
+}
+
+button,
+a,
+input,
+select,
+textarea {
+  touch-action: manipulation;
+}
+
+button:focus-visible,
+a:focus-visible,
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible,
+[tabindex]:focus-visible {
+  outline: 3px solid color-mix(in srgb, var(--color-tertiary) 72%, white);
+  outline-offset: 3px;
+}
+
+button:disabled,
+[aria-disabled="true"] {
+  cursor: not-allowed;
 }
 
 /* ─── Animations ─── */
@@ -242,7 +296,43 @@ button {
 
 /* ─── Utilities ─── */
 .safe-bottom {
-  padding-bottom: max(env(safe-area-inset-bottom), 16px);
+  padding-bottom: var(--safe-bottom-space);
+}
+
+.safe-top {
+  padding-top: var(--safe-top-space);
+}
+
+.touch-target {
+  min-width: 44px;
+  min-height: 44px;
+}
+
+.premium-card {
+  border: 1px solid color-mix(in srgb, var(--color-outline) 82%, transparent);
+  border-radius: var(--radius-card);
+  background: color-mix(in srgb, var(--color-bg-card) 92%, var(--color-surface-container));
+  box-shadow: var(--shadow-card);
+}
+
+.premium-card-high {
+  border: 1px solid color-mix(in srgb, var(--color-outline) 88%, transparent);
+  border-radius: var(--radius-sheet);
+  background: color-mix(in srgb, var(--color-bg-card) 88%, var(--color-surface-container-high));
+  box-shadow: var(--shadow-soft);
+}
+
+.pressable {
+  transition:
+    transform var(--duration-fast) var(--ease-standard),
+    box-shadow var(--duration-normal) var(--ease-standard),
+    background-color var(--duration-normal) var(--ease-standard),
+    border-color var(--duration-normal) var(--ease-standard),
+    color var(--duration-normal) var(--ease-standard);
+}
+
+.pressable:active {
+  transform: scale(0.98);
 }
 
 .no-scrollbar::-webkit-scrollbar {
@@ -260,31 +350,40 @@ button {
 }
 
 .active-workout-shell {
-  --color-bg-primary: #0f1720;
-  --color-bg-card: #14202d;
-  --color-bg-card-hover: #172637;
-  --color-bg-input: #1b2a3c;
-  --color-bg-surface: #12202f;
-  --color-accent: #3b82f6;
-  --color-accent-light: #60a5fa;
-  --color-cyan: #93c5fd;
-  --color-cyan-light: #bfdbfe;
-  --color-green: #22c55e;
-  --color-green-light: #4ade80;
-  --color-amber: #f59e0b;
-  --color-red: #ef4444;
-  --color-text-primary: #edf4ff;
-  --color-text-secondary: #b4c3d8;
-  --color-text-muted: #8fa2bb;
-  --color-border: #243447;
-  --color-border-light: #334a63;
+  --color-bg-primary: #07130d;
+  --color-bg-card: #102018;
+  --color-bg-card-hover: #14271d;
+  --color-bg-input: #172b21;
+  --color-bg-surface: #0d1c14;
+  --color-surface: #0b1811;
+  --color-surface-container: #112219;
+  --color-surface-container-high: #193226;
+  --color-primary: #9bd93c;
+  --color-primary-container: #243d1d;
+  --color-secondary: #9bd93c;
+  --color-tertiary: #76a8ff;
+  --color-accent: #9bd93c;
+  --color-accent-light: #bdf36f;
+  --color-cyan: #76a8ff;
+  --color-cyan-light: #9fc3ff;
+  --color-green: #8bd63c;
+  --color-green-light: #bdf36f;
+  --color-amber: #ffb84d;
+  --color-red: #ff6767;
+  --color-danger: #ff6767;
+  --color-text-primary: #f4f9ef;
+  --color-text-secondary: #c4d2bd;
+  --color-text-muted: #8ea08b;
+  --color-text-inverse: #07130d;
+  --color-border: #294031;
+  --color-border-light: #385b43;
+  --color-outline: #385b43;
+  --color-outline-strong: #63856b;
 }
 
 .active-workout-shell,
 .active-workout-shell body {
-  background:
-    radial-gradient(circle at top left, rgba(59, 130, 246, 0.14), transparent 28%),
-    linear-gradient(180deg, #0f1720 0%, #12202f 100%);
+  background: linear-gradient(180deg, #07130d 0%, #0d1c14 54%, #102018 100%);
 }
 
 .active-workout-shell .glass,
@@ -302,4 +401,15 @@ button {
 .recharts-text {
   fill: #5f6e61 !important;
   font-size: 11px !important;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    scroll-behavior: auto !important;
+    transition-duration: 0.01ms !important;
+  }
 }

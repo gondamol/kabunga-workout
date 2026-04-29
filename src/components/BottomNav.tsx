@@ -1,46 +1,47 @@
 import { NavLink } from 'react-router-dom';
 import { Home, Play, Dumbbell, User, MessagesSquare } from 'lucide-react';
+import { cx } from './ui';
 
 const navItems = [
-    { to: '/', icon: Home, label: 'Home' },
-    { to: '/workout', icon: Play, label: 'Workout' },
+    { to: '/', icon: Home, label: 'Today' },
+    { to: '/workout', icon: Play, label: 'Plan' },
     { to: '/community', icon: MessagesSquare, label: 'Circle' },
     { to: '/iron-protocol', icon: Dumbbell, label: 'Iron' },
-    { to: '/profile', icon: User, label: 'Profile' },
+    { to: '/profile', icon: User, label: 'You' },
 ];
 
 export default function BottomNav() {
     return (
         <nav
-            className="fixed bottom-0 left-0 right-0 z-50 border-t border-border/80 bg-white/95 backdrop-blur-xl safe-bottom"
+            className="fixed inset-x-0 bottom-0 z-50 safe-bottom"
             id="bottom-nav"
+            aria-label="Primary navigation"
         >
-            <div className="max-w-lg mx-auto flex items-center justify-around px-3 pt-3 pb-1">
+            <div className="mx-auto max-w-lg px-3 pb-1">
+                <div className="grid grid-cols-5 gap-1 rounded-[1.75rem] border border-outline/80 bg-bg-card/95 p-2 shadow-lifted backdrop-blur-xl">
                 {navItems.map(({ to, icon: Icon, label }) => (
                     <NavLink
                         key={to}
                         to={to}
                         end={to === '/'}
                         className={({ isActive }) =>
-                            `flex min-w-[58px] flex-col items-center gap-1 rounded-2xl px-3 py-2 transition-all duration-200 ${isActive
-                                ? 'bg-accent/8 text-accent'
-                                : 'text-text-muted hover:text-text-secondary'
-                            }`
+                            cx(
+                                'touch-target pressable flex min-w-0 flex-col items-center justify-center gap-1 rounded-2xl px-2 py-2',
+                                isActive ? 'bg-primary text-text-inverse shadow-card' : 'text-text-muted hover:bg-surface-container hover:text-text-primary',
+                            )
                         }
                     >
                         {({ isActive }) => (
                             <>
-                                <div className="relative flex items-center justify-center">
+                                <div className="relative flex items-center justify-center" aria-hidden="true">
                                     <Icon size={22} strokeWidth={isActive ? 2.3 : 1.9} />
-                                    {isActive && (
-                                        <span className="absolute -bottom-2 h-1.5 w-1.5 rounded-full bg-accent" />
-                                    )}
                                 </div>
-                                <span className={`text-[10px] leading-none ${isActive ? 'font-semibold' : 'font-medium'}`}>{label}</span>
+                                <span className="truncate text-[10px] font-bold leading-none">{label}</span>
                             </>
                         )}
                     </NavLink>
                 ))}
+                </div>
             </div>
         </nav>
     );
