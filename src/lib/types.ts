@@ -121,12 +121,65 @@ export interface ExerciseCatalogItem {
 }
 
 // ─── Fitness Dailies Tracking ───
+export type GuidedTrackStage = 'assisted' | 'bodyweight' | 'weighted';
+
+export interface DailyTrackTarget {
+    seconds?: number;
+    reps?: number;
+    sets?: number;
+}
+
+export interface DailyTrackDefinition {
+    id: string;
+    exerciseName: string;
+    category: 'abs' | 'arms' | 'hang' | 'pull' | 'push' | 'legs' | 'mobility';
+    metric: 'seconds' | 'reps' | 'sets_reps';
+    defaultTarget: DailyTrackTarget;
+    specializationKind: 'pullup' | 'dip' | null;
+}
+
+export interface UserDailyTrack {
+    id: string;
+    definitionId: string;
+    exerciseName: string;
+    category: DailyTrackDefinition['category'];
+    metric: DailyTrackDefinition['metric'];
+    target: DailyTrackTarget;
+    specializationKind: 'pullup' | 'dip' | null;
+    stage?: GuidedTrackStage;
+    assistanceLabel: string | null;
+    addedWeightKg: number | null;
+    status: 'active' | 'paused' | 'archived';
+    startedAt: number;
+    sortOrder: number;
+}
+
+export interface FitnessDailyConfig {
+    userId: string;
+    seasonLengthDays: 30 | 60 | 90;
+    seasonStartedAt: number;
+    activeTracks: UserDailyTrack[];
+    updatedAt: number;
+}
+
+export interface DailyTrackLogEntry {
+    trackId: string;
+    completed: boolean;
+    actualReps?: number;
+    actualSeconds?: number;
+    actualSets?: number;
+    actualLoadKg?: number;
+    completedAt?: number;
+}
+
 export interface FitnessDailyLog {
     userId: string;
     date: string; // YYYY-MM-DD
-    legRaisesDone: boolean;
-    armCurlsDone: boolean;
-    barHangDone: boolean;
+    entries?: DailyTrackLogEntry[];
+    // legacy flat flags — kept for backwards compat
+    legRaisesDone?: boolean;
+    armCurlsDone?: boolean;
+    barHangDone?: boolean;
     completedAt: number;
 }
 
@@ -414,7 +467,7 @@ export interface DashboardStats {
 // ─── Offline Queue ───
 export interface QueuedAction {
     id: string;
-    type: 'workout' | 'meal' | 'challenge' | 'oneRepMaxes' | 'fitnessDaily' | 'healthCheck';
+    type: 'workout' | 'meal' | 'challenge' | 'oneRepMaxes' | 'fitnessDailyConfig' | 'fitnessDaily' | 'healthCheck';
     action: 'create' | 'update' | 'delete';
     data: any;
     timestamp: number;
