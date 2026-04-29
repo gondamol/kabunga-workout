@@ -1,30 +1,31 @@
-import React, { useEffect, useState } from 'react';
+import React, { Suspense, lazy, useEffect, useState } from 'react';
 import { Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { useAuthStore } from './stores/authStore';
 import { processQueue } from './lib/offlineQueue';
 
-// Pages
-import LoginPage from './pages/LoginPage';
-import DashboardPage from './pages/DashboardPage';
-import WorkoutPage from './pages/WorkoutPage';
-import ActiveWorkoutPage from './pages/ActiveWorkoutPage';
-import TemplatesPage from './pages/TemplatesPage';
-import ChallengesPage from './pages/ChallengesPage';
-import NutritionPage from './pages/NutritionPage';
-import ProfilePage from './pages/ProfilePage';
-import IronProtocolPage from './pages/IronProtocolPage';
-import HistoryPage from './pages/HistoryPage';
-import SessionDetailPage from './pages/SessionDetailPage';
-import CoachHubPage from './pages/CoachHubPage';
-import CommunityPage from './pages/CommunityPage';
-import SciencePage from './pages/SciencePage';
 import BottomNav from './components/BottomNav';
 import InstallPrompt from './components/InstallPrompt';
 import OfflineBanner from './components/OfflineBanner';
 import UpdateBanner from './components/UpdateBanner';
-import OnboardingPage from './pages/OnboardingPage';
 import { isProfileSetupComplete } from './lib/profileSetup';
 import { resolveOnboardingRedirect } from './lib/onboardingGate';
+import { ErrorState, LoadingScreen } from './components/ui';
+
+const LoginPage = lazy(() => import('./pages/LoginPage'));
+const DashboardPage = lazy(() => import('./pages/DashboardPage'));
+const WorkoutPage = lazy(() => import('./pages/WorkoutPage'));
+const ActiveWorkoutPage = lazy(() => import('./pages/ActiveWorkoutPage'));
+const TemplatesPage = lazy(() => import('./pages/TemplatesPage'));
+const ChallengesPage = lazy(() => import('./pages/ChallengesPage'));
+const NutritionPage = lazy(() => import('./pages/NutritionPage'));
+const ProfilePage = lazy(() => import('./pages/ProfilePage'));
+const IronProtocolPage = lazy(() => import('./pages/IronProtocolPage'));
+const HistoryPage = lazy(() => import('./pages/HistoryPage'));
+const SessionDetailPage = lazy(() => import('./pages/SessionDetailPage'));
+const CoachHubPage = lazy(() => import('./pages/CoachHubPage'));
+const CommunityPage = lazy(() => import('./pages/CommunityPage'));
+const SciencePage = lazy(() => import('./pages/SciencePage'));
+const OnboardingPage = lazy(() => import('./pages/OnboardingPage'));
 
 export function resolveProtectedRouteState({
     initialized,
@@ -64,11 +65,7 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
     });
 
     if (routeState === 'auth-loading' || routeState === 'profile-loading') {
-        return (
-            <div className="flex items-center justify-center min-h-screen bg-bg-primary">
-                <div className="w-10 h-10 border-3 border-accent border-t-transparent rounded-full animate-spin" />
-            </div>
-        );
+        return <LoadingScreen label={routeState === 'auth-loading' ? 'Checking session' : 'Loading your profile'} className="min-h-screen bg-bg-primary" />;
     }
 
     if (routeState === 'redirect-login') return <Navigate to="/login" replace />;
@@ -76,19 +73,13 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
     if (routeState === 'profile-error') {
         return (
             <div className="flex min-h-screen items-center justify-center bg-bg-primary px-6">
-                <div className="max-w-sm rounded-3xl border border-white/10 bg-white/5 p-6 text-center shadow-lg backdrop-blur">
-                    <h1 className="text-lg font-semibold text-text-primary">We couldn&apos;t load your profile</h1>
-                    <p className="mt-2 text-sm text-text-secondary">
-                        Please refresh to try again. Your protected pages will stay paused until your account data is available.
-                    </p>
-                    <button
-                        type="button"
-                        onClick={() => window.location.reload()}
-                        className="mt-4 inline-flex rounded-full bg-accent px-4 py-2 text-sm font-medium text-white"
-                    >
-                        Refresh
-                    </button>
-                </div>
+                <ErrorState
+                    title="We couldn't load your profile"
+                    description="Please refresh to try again. Protected pages stay paused until account data is available."
+                    retryLabel="Refresh"
+                    onRetry={() => window.location.reload()}
+                    isOffline={typeof navigator !== 'undefined' && !navigator.onLine}
+                />
             </div>
         );
     }
@@ -140,7 +131,8 @@ export default function App() {
             <OfflineBanner isOnline={isOnline} />
 
             <main className={`flex-1 ${showBottomNav ? 'pb-20' : ''}`}>
-                <Routes>
+                <Suspense fallback={<LoadingScreen label="Loading page" />}>
+                    <Routes>
                     <Route path="/login" element={
                         initialized && user ? <Navigate to="/" replace /> : <LoginPage />
                     } />
@@ -187,7 +179,8 @@ export default function App() {
                         <ProtectedRoute><OnboardingPage /></ProtectedRoute>
                     } />
                     <Route path="*" element={<Navigate to="/" replace />} />
-                </Routes>
+                    </Routes>
+                </Suspense>
             </main>
 
             {showBottomNav && <BottomNav />}
