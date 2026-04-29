@@ -25,7 +25,7 @@ import type {
     ReadinessStatus,
 } from '../lib/types';
 import { BarChart, Bar, XAxis, YAxis, ResponsiveContainer, Tooltip, Cell } from 'recharts';
-import { Dumbbell, ChevronRight, Zap, Trophy, Plus, BarChart3, TimerReset, Users } from 'lucide-react';
+import { Dumbbell, ChevronRight, Zap, Trophy, Plus, BarChart3, TimerReset, Users, CalendarCheck, Flame, WifiOff } from 'lucide-react';
 import dayjs from 'dayjs';
 import { getOneRepMaxPromptStatus, getOneRepMaxSnoozeUntil } from '../lib/oneRepMaxes';
 import { formatProgressionInsightTarget, getDashboardProgressionInsight } from '../lib/progressionInsights';
@@ -35,9 +35,24 @@ import {
     buildCircleShortcutCard,
     buildDashboardGoalHero,
     buildDashboardProgressEmptyState,
+    buildRecoveryAlternatives,
     buildReadinessStrip,
+    buildTodayRecommendation,
 } from '../lib/dashboardPresentation';
 import HealthCheckForm from '../components/HealthCheckForm';
+import {
+    ActionButton,
+    ActivityRing,
+    EmptyState,
+    InsightCard,
+    MetricCard,
+    ProgressRing,
+    ReadinessCard,
+    RecoveryGuidanceCard,
+    SectionHeader,
+    StatChip,
+    WorkoutCard,
+} from '../components/ui';
 
 const getReadinessTone = (status: ReadinessStatus): {
     badge: string;
@@ -130,6 +145,18 @@ export default function DashboardPage() {
     const chartContainerRef = useRef<HTMLDivElement>(null);
     const [isChartReady, setIsChartReady] = useState(false);
     const latestWorkout = workouts[0] ?? null;
+    const [isOnline, setIsOnline] = useState(() => typeof navigator === 'undefined' || navigator.onLine);
+
+    useEffect(() => {
+        const handleOnline = () => setIsOnline(true);
+        const handleOffline = () => setIsOnline(false);
+        window.addEventListener('online', handleOnline);
+        window.addEventListener('offline', handleOffline);
+        return () => {
+            window.removeEventListener('online', handleOnline);
+            window.removeEventListener('offline', handleOffline);
+        };
+    }, []);
 
     useEffect(() => {
         if (!user) return;
@@ -448,6 +475,23 @@ export default function DashboardPage() {
         () => buildReadinessStrip({ readiness: todayReadiness, healthCheck: todayHealthCheck }),
         [todayHealthCheck, todayReadiness]
     );
+    const weeklyGoal = profile?.onboarding?.trainingDaysPerWeek || 3;
+    const weeklyProgress = Math.min(stats.weeklyWorkouts, weeklyGoal);
+    const weeklyProgressPct = weeklyGoal > 0 ? Math.round((weeklyProgress / weeklyGoal) * 100) : 0;
+    const todayRecommendation = useMemo(
+        () => buildTodayRecommendation({
+            activeSession,
+            latestWorkout,
+            readiness: todayReadiness,
+            hasCoachPlan: profile?.onboarding?.supportMode === 'with_coach' && !latestWorkout,
+            isOnline,
+        }),
+        [activeSession, isOnline, latestWorkout, profile?.onboarding?.supportMode, todayReadiness]
+    );
+    const recoveryAlternatives = useMemo(
+        () => buildRecoveryAlternatives({ readiness: todayReadiness }),
+        [todayReadiness]
+    );
     const readinessStripBadgeClass = readinessStrip.tone === 'empty'
         ? 'bg-bg-input text-text-secondary'
         : readinessTone?.badge ?? 'bg-bg-input text-text-secondary';
@@ -468,6 +512,14 @@ export default function DashboardPage() {
         navigate('/workout');
     };
 
+    const handleTodayRecommendation = () => {
+        if (todayRecommendation.tone === 'repeat' && latestWorkout) {
+            handleRepeatLastWorkout(false);
+            return;
+        }
+        navigate(todayRecommendation.route);
+    };
+
     const firstName = profile?.displayName?.split(' ')[0] || 'Athlete';
     const heroIconClass = activeSession ? 'bg-cyan/12 text-cyan' : latestWorkout ? 'bg-green/12 text-green' : 'bg-accent/12 text-accent';
     const proofTopLiftLabel = workouts.length > 0 ? trendInsights.topExerciseName : 'First lift ahead';
@@ -475,118 +527,122 @@ export default function DashboardPage() {
     const hasWorkoutHistory = workouts.length > 0;
 
     return (
-        <div className="shell-page pt-6 pb-6 space-y-5">
+        <div className="shell-page space-y-5 pb-6 pt-6">
             <header className="animate-fade-in">
-                <p className="text-sm text-text-secondary">{dayjs().format('dddd, MMM D')}</p>
-                <h1 className="mt-1 font-display text-[2rem] font-bold tracking-tight text-text-primary">
-                    Ready, {firstName}?
-                </h1>
-                <p className="mt-2 max-w-sm text-sm text-text-secondary">
-                    Keep today simple: see the plan, check your readiness, and move into the session.
-                </p>
-            </header>
-
-            <section className="premium-hero-card p-5 animate-fade-in">
-                <div className="flex items-start justify-between gap-3">
+                <div className="flex items-start justify-between gap-4">
                     <div>
-                        <p className="eyebrow-chip">{goalHero.eyebrow}</p>
-                        <h2 className="mt-2 font-display text-[1.75rem] font-bold tracking-tight text-text-primary">
-                            {goalHero.title}
-                        </h2>
-                        <p className="mt-2 text-sm text-text-secondary">{goalHero.detail}</p>
-                        <p className="floating-stat-chip mt-4 text-xs font-semibold text-text-primary">
-                            {profile?.onboarding?.trainingDaysPerWeek
-                                ? `${profile.onboarding.trainingDaysPerWeek} training days per week`
-                                : 'Built from your setup'}
+                        <p className="text-sm font-semibold text-text-secondary">{dayjs().format('dddd, MMM D')}</p>
+                        <h1 className="mt-1 font-display text-[2.35rem] font-extrabold leading-tight text-text-primary">
+                            Today, {firstName}
+                        </h1>
+                        <p className="mt-2 max-w-sm text-sm leading-6 text-text-secondary">
+                            {todayRecommendation.title}. You are building consistency one useful session at a time.
                         </p>
                     </div>
-                    <div className={`soft-panel flex h-12 w-12 items-center justify-center ${heroIconClass}`}>
-                        {activeSession ? (
-                            <Zap size={22} className="text-cyan" />
-                        ) : latestWorkout ? (
-                            <Dumbbell size={22} className="text-green" />
-                        ) : (
-                            <Plus size={22} className="text-accent" />
-                        )}
+                    <div className="flex flex-col items-end gap-2">
+                        {!isOnline && <StatChip tone="accent" icon={<WifiOff size={15} />} label="Offline" value="Gym mode" />}
+                        <StatChip tone="secondary" icon={<CalendarCheck size={15} />} label={`${weeklyProgress}/${weeklyGoal}`} value="this week" />
                     </div>
                 </div>
+            </header>
 
-                <div className="mt-4 flex gap-2">
-                    <button
-                        id="start-workout-btn"
-                        onClick={handlePrimaryAction}
-                        className="flex-1 rounded-2xl gradient-primary px-4 py-4 text-base font-semibold text-white shadow-lg shadow-accent/20 transition-transform active:scale-[0.98]"
-                    >
-                        {goalHero.ctaLabel}
-                    </button>
-                    {!activeSession && latestWorkout && (
-                        <button
-                            onClick={() => handleRepeatLastWorkout(false)}
-                            className="rounded-2xl border border-border bg-white px-4 py-4 text-sm font-semibold text-text-primary transition-transform active:scale-[0.98]"
-                        >
-                            Repeat last
-                        </button>
-                    )}
+            <WorkoutCard
+                tone="primary"
+                title={todayRecommendation.title}
+                subtitle={todayRecommendation.detail}
+                actionLabel={todayRecommendation.ctaLabel}
+                onAction={handleTodayRecommendation}
+                progress={
+                    <ProgressRing value={weeklyProgressPct} size={94} strokeWidth={8} tone="secondary" label="Week">
+                        <span className="font-display text-2xl font-extrabold text-text-inverse">{weeklyProgressPct}%</span>
+                    </ProgressRing>
+                }
+                meta={[
+                    { icon: <Zap size={14} />, label: activeSession ? 'Active session' : goalHero.eyebrow },
+                    { icon: <TimerReset size={14} />, label: profile?.onboarding?.timeAvailableMinutes ? `${profile.onboarding.timeAvailableMinutes} min` : 'Fast start' },
+                ]}
+                className="animate-fade-in"
+            />
+
+            {!activeSession && latestWorkout && (
+                <button
+                    type="button"
+                    onClick={() => handleRepeatLastWorkout(false)}
+                    className="pressable w-full rounded-[1.5rem] border border-secondary/30 bg-secondary-container p-4 text-left shadow-card animate-fade-in"
+                >
+                    <div className="flex items-center justify-between gap-4">
+                        <div>
+                            <p className="text-xs font-bold uppercase tracking-[0.14em] text-primary">Fast lane</p>
+                            <h2 className="mt-1 text-lg font-extrabold text-text-primary">Your last session is ready to repeat</h2>
+                            <p className="mt-1 text-sm text-text-secondary">{getWorkoutHeadline(latestWorkout)}</p>
+                        </div>
+                        <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-primary text-text-inverse">
+                            <ChevronRight size={22} />
+                        </span>
+                    </div>
+                </button>
+            )}
+
+            <section className="grid grid-cols-2 gap-3 animate-fade-in stagger-1">
+                <MetricCard label="Streak" value={stats.streak} helper="days moving" icon={<Flame size={20} />} tone="accent" />
+                <MetricCard label="Week" value={`${weeklyProgress}/${weeklyGoal}`} helper="planned sessions" icon={<CalendarCheck size={20} />} tone="secondary" />
+            </section>
+
+            <section className="premium-card-high p-5 animate-fade-in stagger-1">
+                <div className="flex items-center justify-between gap-4">
+                    <div>
+                        <p className="text-xs font-bold uppercase tracking-[0.14em] text-primary">Weekly progress</p>
+                        <h2 className="mt-2 text-2xl font-extrabold text-text-primary">{weeklyProgressPct}% complete</h2>
+                        <p className="mt-2 text-sm leading-6 text-text-secondary">
+                            {weeklyProgress >= weeklyGoal ? 'You hit the weekly target. Keep recovery honest.' : `${Math.max(weeklyGoal - weeklyProgress, 0)} sessions left this week.`}
+                        </p>
+                    </div>
+                    <ActivityRing
+                        size={128}
+                        centerValue={`${weeklyProgress}/${weeklyGoal}`}
+                        centerLabel="week"
+                        rings={[
+                            { value: weeklyProgress, max: weeklyGoal, label: 'Weekly sessions', tone: 'secondary' },
+                            { value: Math.min(stats.streak, 7), max: 7, label: 'Streak', tone: 'accent' },
+                            { value: todayReadiness?.score ?? 0, max: 10, label: 'Readiness', tone: 'tertiary' },
+                        ]}
+                    />
                 </div>
             </section>
 
-            <section className="grid grid-cols-3 gap-3 animate-fade-in stagger-1">
-                <div className="soft-panel px-3 py-4">
-                    <p className="text-[10px] uppercase tracking-wide text-text-muted">Streak</p>
-                    <p className="mt-2 text-lg font-bold text-text-primary">{stats.streak}</p>
-                    <p className="text-xs text-text-secondary">days moving</p>
-                </div>
-                <div className="soft-panel px-3 py-4">
-                    <p className="text-[10px] uppercase tracking-wide text-text-muted">This week</p>
-                    <p className="mt-2 text-lg font-bold text-text-primary">{stats.weeklyWorkouts}</p>
-                    <p className="text-xs text-text-secondary">sessions</p>
-                </div>
-                <div className="soft-panel px-3 py-4">
-                    <p className="text-[10px] uppercase tracking-wide text-text-muted">Top lift</p>
-                    <p className="mt-2 line-clamp-1 text-sm font-bold text-text-primary">{proofTopLiftLabel}</p>
-                    <p className="text-xs text-text-secondary">{proofTopLiftValue}</p>
-                </div>
-            </section>
+            <ReadinessCard
+                score={todayReadiness ? todayReadiness.score * 10 : null}
+                status={readinessStrip.value}
+                guidance={readinessStrip.detail}
+                contributors={[
+                    { label: 'Check-in', value: todayHealthCheck ? 'Done' : 'Needed' },
+                    { label: 'Mode', value: 'No wearable' },
+                ]}
+                action={
+                    <ActionButton variant="secondary" fullWidth onClick={() => setShowHealthForm((current) => !current)}>
+                        {readinessStrip.ctaLabel}
+                    </ActionButton>
+                }
+                className="animate-fade-in"
+            />
 
             <button
                 type="button"
                 onClick={() => navigate('/community')}
-                className="soft-panel w-full p-4 text-left animate-fade-in stagger-1"
+                className="pressable premium-card w-full p-4 text-left animate-fade-in stagger-1"
             >
                 <div className="flex items-start justify-between gap-3">
                     <div>
-                        <p className="eyebrow-chip">Circle</p>
-                        <p className="mt-2 text-base font-bold text-text-primary">{circleShortcut.title}</p>
-                        <p className="mt-1 text-sm text-text-secondary">{circleShortcut.detail}</p>
-                        <span className="mt-3 inline-flex rounded-full border border-border bg-white px-3 py-1 text-xs font-semibold text-text-primary">
+                        <p className="text-xs font-bold uppercase tracking-[0.14em] text-tertiary">Circle</p>
+                        <p className="mt-2 text-base font-extrabold text-text-primary">{circleShortcut.title}</p>
+                        <p className="mt-1 text-sm leading-6 text-text-secondary">{circleShortcut.detail}</p>
+                        <span className="mt-3 inline-flex rounded-full bg-tertiary-container px-3 py-1.5 text-xs font-bold text-tertiary">
                             {circleShortcut.ctaLabel}
                         </span>
                     </div>
-                    <div className="soft-panel flex h-11 w-11 shrink-0 items-center justify-center text-cyan">
+                    <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-tertiary-container text-tertiary">
                         <Users size={20} />
                     </div>
-                </div>
-            </button>
-
-            <button
-                type="button"
-                onClick={() => setShowHealthForm((current) => !current)}
-                className="glass w-full rounded-[24px] p-4 text-left animate-fade-in"
-            >
-                <div className="flex items-center justify-between gap-3">
-                    <div className="flex items-center gap-3">
-                        <span className={`h-3 w-3 rounded-full ${readinessStripDotClass}`} />
-                        <div>
-                            <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-cyan">
-                                {readinessStrip.label}
-                            </p>
-                            <p className="mt-1 text-base font-bold text-text-primary">{readinessStrip.value}</p>
-                            <p className="mt-1 text-sm text-text-secondary">{readinessStrip.detail}</p>
-                        </div>
-                    </div>
-                    <span className={`rounded-full px-3 py-1 text-xs font-semibold ${readinessStripBadgeClass}`}>
-                        {readinessStrip.ctaLabel}
-                    </span>
                 </div>
             </button>
 
@@ -602,20 +658,14 @@ export default function DashboardPage() {
             )}
 
             {todayReadiness && todayRecoveryGuidance && (
-                <div className="glass rounded-[28px] p-5 animate-fade-in">
-                    <div className="flex items-start justify-between gap-3">
-                        <div>
-                            <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-cyan">Recovery support</p>
-                            <h2 className="mt-1 text-lg font-bold text-text-primary">{todayRecoveryGuidance.headline}</h2>
-                            <p className="mt-2 text-sm text-text-secondary">{todayRecoveryGuidance.summary}</p>
-                        </div>
-                        <button
-                            onClick={() => navigate('/nutrition')}
-                            className="rounded-2xl border border-border bg-white px-3 py-2 text-xs font-semibold text-text-primary"
-                        >
-                            Food today
-                        </button>
-                    </div>
+                <div className="space-y-3 animate-fade-in">
+                    <RecoveryGuidanceCard
+                        title={todayRecoveryGuidance.headline}
+                        description={todayRecoveryGuidance.summary}
+                        options={recoveryAlternatives.options.slice(0, 4)}
+                        actionLabel="Open recovery"
+                        onAction={() => navigate('/nutrition')}
+                    />
                     <div className="mt-4 space-y-2">
                         {todayRecoveryGuidance.items.map((item) => {
                             const tone = getGuidanceTone(item.tone);
@@ -672,25 +722,19 @@ export default function DashboardPage() {
             )}
 
             {!loadingWorkouts && !hasWorkoutHistory ? (
-                <div className="glass rounded-[28px] p-5 animate-fade-in stagger-2">
-                    <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-accent">Progress</p>
-                    <h2 className="mt-2 text-xl font-bold text-text-primary">{progressEmptyState.title}</h2>
-                    <p className="mt-2 text-sm text-text-secondary">{progressEmptyState.detail}</p>
-                    <div className="mt-4 flex gap-2">
-                        <button
-                            onClick={handlePrimaryAction}
-                            className="flex-1 rounded-2xl gradient-primary px-4 py-3 text-sm font-semibold text-white"
-                        >
-                            {progressEmptyState.ctaLabel}
-                        </button>
-                        <button
-                            onClick={() => navigate('/community')}
-                            className="rounded-2xl border border-border bg-white px-4 py-3 text-sm font-semibold text-text-primary"
-                        >
+                <EmptyState
+                    className="animate-fade-in stagger-2"
+                    icon={<Dumbbell size={24} />}
+                    title={progressEmptyState.title}
+                    description={progressEmptyState.detail}
+                    actionLabel={progressEmptyState.ctaLabel}
+                    onAction={handlePrimaryAction}
+                    secondaryAction={
+                        <ActionButton variant="secondary" onClick={() => navigate('/community')}>
                             Circle
-                        </button>
-                    </div>
-                </div>
+                        </ActionButton>
+                    }
+                />
             ) : (
                 <>
                     <div className="glass rounded-[28px] p-4 animate-fade-in stagger-2 min-w-0">
