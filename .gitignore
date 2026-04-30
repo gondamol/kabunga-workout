@@ -50,3 +50,8 @@ notes/
 server.env
 functions/
 .vercel
+
+# Local design references (not for repo)
+mockups/
+docs/superpowers/specs/
+*:Zone.Identifier
