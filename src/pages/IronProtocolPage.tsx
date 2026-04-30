@@ -2,7 +2,10 @@ import { useEffect, useMemo, useState } from 'react';
 import dayjs, { type Dayjs } from 'dayjs';
 import { useNavigate } from 'react-router-dom';
 import toast from 'react-hot-toast';
-import { Calendar, Check, ChevronRight, Dumbbell, Eye, Flame, Plus, Search, TrendingUp, X } from 'lucide-react';
+import {
+    Calendar, Check, ChevronRight, Clock, Dumbbell, Eye, Flame, Leaf,
+    Play, Plus, Search, ShieldCheck, TrendingUp, X, Zap,
+} from 'lucide-react';
 import { useAuthStore } from '../stores/authStore';
 import { useWorkoutStore } from '../stores/workoutStore';
 import {
@@ -12,23 +15,18 @@ import {
     getUserWorkouts,
     saveFitnessDailyConfig,
     saveFitnessDailyLog,
-    saveOneRepMaxes,
 } from '../lib/firestoreService';
 import { enqueueAction } from '../lib/offlineQueue';
 import type { DailyTrackLogEntry, FitnessDailyConfig, FitnessDailyLog, GuidedTrackStage, OneRepMaxes, UserDailyTrack, WorkoutSession } from '../lib/types';
 import {
     getIronScheduleForDate,
     getIronTemplateById,
-    getScaledIronTemplates,
     IRON_WEEKLY_SCHEDULE,
     normalizeOneRepMaxes,
     scaleTemplateForOneRepMaxes,
     type IronScheduleDay,
 } from '../lib/ironProtocol';
 import { formatSetPerformance, hasExternalLoad } from '../lib/exerciseRules';
-import { getOneRepMaxPromptStatus } from '../lib/oneRepMaxes';
-import OneRepMaxCard from '../components/OneRepMaxCard';
-import { InsightCard } from '../components/ui';
 import { searchExercises } from '../lib/exerciseLibraryService';
 import {
     DAILY_TRACK_LIBRARY,
@@ -55,7 +53,6 @@ const normalizeExerciseName = (name: string): string =>
     name.toLowerCase().trim().replace(/\s+/g, ' ');
 
 const getWeekStart = (date: Dayjs): Dayjs => {
-    // Monday-based week start.
     return date.startOf('day').subtract((date.day() + 6) % 7, 'day');
 };
 
@@ -93,8 +90,8 @@ const buildSixWeekRows = (sessions: WorkoutSession[]) => {
     return Array.from({ length: 6 }, (_, idx) => {
         const start = thisWeekStart.subtract(5 - idx, 'week');
         const end = start.add(6, 'day').endOf('day');
-        const weekSessions = sessions.filter((session) => session.startedAt >= start.valueOf() && session.startedAt <= end.valueOf());
-        const notes = weekSessions.find((session) => session.notes?.trim())?.notes || '-';
+        const weekSessions = sessions.filter((s) => s.startedAt >= start.valueOf() && s.startedAt <= end.valueOf());
+        const notes = weekSessions.find((s) => s.notes?.trim())?.notes || '-';
 
         return {
             weekLabel: `${start.format('MMM D')}`,
@@ -106,9 +103,16 @@ const buildSixWeekRows = (sessions: WorkoutSession[]) => {
     });
 };
 
+const SESSION_ICON: Record<string, typeof Dumbbell> = {
+    Push: Dumbbell,
+    Pull: TrendingUp,
+    Legs: Flame,
+    Rest: Leaf,
+};
+
 export default function IronProtocolPage() {
     const navigate = useNavigate();
-    const { user, profile } = useAuthStore();
+    const { user } = useAuthStore();
     const { activeSession, initFromTemplatePlan, startFromTemplate } = useWorkoutStore();
 
     const [oneRepMaxes, setOneRepMaxes] = useState<OneRepMaxes | null>(null);
@@ -118,7 +122,6 @@ export default function IronProtocolPage() {
     const [showPatternRef, setShowPatternRef] = useState(false);
     const [showDailyManager, setShowDailyManager] = useState(false);
     const [dailySearch, setDailySearch] = useState('');
-    const [savingMaxes, setSavingMaxes] = useState(false);
     const [updatingDaily, setUpdatingDaily] = useState(false);
     const [savingDailyConfig, setSavingDailyConfig] = useState(false);
 
@@ -169,9 +172,7 @@ export default function IronProtocolPage() {
 
         loadFast();
         loadHistory();
-        return () => {
-            cancelled = true;
-        };
+        return () => { cancelled = true; };
     }, [user]);
 
     const todayLog = useMemo<FitnessDailyLog>(() => {
@@ -193,7 +194,7 @@ export default function IronProtocolPage() {
 
     const activeDailyTracks = useMemo(() => {
         if (!dailyConfig) return [];
-        return sortTracks(dailyConfig.activeTracks.filter((track) => track.status === 'active'));
+        return sortTracks(dailyConfig.activeTracks.filter((t) => t.status === 'active'));
     }, [dailyConfig]);
 
     const seasonSummary = useMemo(() => {
@@ -202,25 +203,20 @@ export default function IronProtocolPage() {
     }, [dailyConfig]);
 
     const recommendedDailyTracks = useMemo(() => {
-        const activeNames = new Set(activeDailyTracks.map((track) => normalizeExerciseName(track.exerciseName)));
-        return DAILY_TRACK_LIBRARY.filter((track) => !activeNames.has(normalizeExerciseName(track.exerciseName)));
+        const activeNames = new Set(activeDailyTracks.map((t) => normalizeExerciseName(t.exerciseName)));
+        return DAILY_TRACK_LIBRARY.filter((t) => !activeNames.has(normalizeExerciseName(t.exerciseName)));
     }, [activeDailyTracks]);
 
     const dailySearchResults = useMemo(() => {
         if (dailySearch.trim().length < 2) return [];
-        const activeNames = new Set(activeDailyTracks.map((track) => normalizeExerciseName(track.exerciseName)));
+        const activeNames = new Set(activeDailyTracks.map((t) => normalizeExerciseName(t.exerciseName)));
         return searchExercises(dailySearch)
-            .map((exercise) => exercise.name)
+            .map((e) => e.name)
             .filter((name) => !activeNames.has(normalizeExerciseName(name)))
             .slice(0, 8);
     }, [activeDailyTracks, dailySearch]);
 
     const sixWeekRows = useMemo(() => buildSixWeekRows(workouts), [workouts]);
-
-    const scaledTemplateCount = useMemo(() => {
-        if (!oneRepMaxes) return 0;
-        return getScaledIronTemplates(oneRepMaxes).length;
-    }, [oneRepMaxes]);
 
     const todayTemplate = useMemo(() => {
         if (!oneRepMaxes || !todaySchedule.templateId) return null;
@@ -230,7 +226,7 @@ export default function IronProtocolPage() {
     }, [oneRepMaxes, todaySchedule.templateId]);
 
     const selectedSchedule = useMemo<IronScheduleDay>(() => {
-        return IRON_WEEKLY_SCHEDULE.find((entry) => entry.weekday === selectedWeekday) ?? todaySchedule;
+        return IRON_WEEKLY_SCHEDULE.find((e) => e.weekday === selectedWeekday) ?? todaySchedule;
     }, [selectedWeekday, todaySchedule]);
 
     const selectedTemplate = useMemo(() => {
@@ -246,9 +242,9 @@ export default function IronProtocolPage() {
         return Array.from(
             new Set(
                 template.phases
-                    .flatMap((phase) => phase.exercises)
-                    .filter((exercise) => exercise.weight > 0 && exercise.name.toLowerCase().includes(primaryKeyword))
-                    .map((exercise) => exercise.weight)
+                    .flatMap((p) => p.exercises)
+                    .filter((e) => e.weight > 0 && e.name.toLowerCase().includes(primaryKeyword))
+                    .map((e) => e.weight)
             )
         ).sort((a, b) => a - b);
     };
@@ -260,10 +256,6 @@ export default function IronProtocolPage() {
     const selectedTargetWeights = useMemo(() => {
         return getTargetWeights(selectedTemplate, selectedSchedule.primaryLift);
     }, [selectedTemplate, selectedSchedule.primaryLift]);
-
-    const oneRepMaxStatus = useMemo(() => {
-        return getOneRepMaxPromptStatus(oneRepMaxes, workouts, profile);
-    }, [oneRepMaxes, profile, workouts]);
 
     const saveDailyConfigState = async (nextConfig: FitnessDailyConfig) => {
         if (!user) return;
@@ -308,35 +300,6 @@ export default function IronProtocolPage() {
         }
     };
 
-    const updateMax = (key: keyof Omit<OneRepMaxes, 'userId' | 'updatedAt'>, value: number) => {
-        setOneRepMaxes((prev) => {
-            if (!prev) return prev;
-            return { ...prev, [key]: Math.max(0, value) };
-        });
-    };
-
-    const handleSaveOneRepMaxes = async () => {
-        if (!user || !oneRepMaxes) return;
-        setSavingMaxes(true);
-        const payload = { ...oneRepMaxes, userId: user.uid, updatedAt: Date.now() };
-        setOneRepMaxes(payload);
-
-        try {
-            await saveOneRepMaxes(user.uid, payload);
-            toast.success('1RMs updated');
-        } catch (error) {
-            await enqueueAction({
-                type: 'oneRepMaxes',
-                action: 'update',
-                data: { uid: user.uid, maxes: payload },
-            });
-            toast('Saved offline - will sync when online', { icon: '📴' });
-            console.warn('Failed to save 1RMs:', error);
-        } finally {
-            setSavingMaxes(false);
-        }
-    };
-
     const handleToggleDailyTrack = async (track: UserDailyTrack) => {
         if (!user) return;
         const currentEntry = getTrackEntry(todayLog, track.id);
@@ -351,10 +314,7 @@ export default function IronProtocolPage() {
         await saveDailyLogState(nextLog);
     };
 
-    const handleTrackEntryChange = async (
-        track: UserDailyTrack,
-        patch: Partial<DailyTrackLogEntry>
-    ) => {
+    const handleTrackEntryChange = async (track: UserDailyTrack, patch: Partial<DailyTrackLogEntry>) => {
         if (!user) return;
         const nextLog = updateTrackEntry(todayLog, track.id, patch);
         await saveDailyLogState(nextLog);
@@ -381,7 +341,7 @@ export default function IronProtocolPage() {
         if (!dailyConfig) return;
         await saveDailyConfigState({
             ...dailyConfig,
-            activeTracks: dailyConfig.activeTracks.filter((track) => track.id !== trackId),
+            activeTracks: dailyConfig.activeTracks.filter((t) => t.id !== trackId),
             updatedAt: Date.now(),
         });
     };
@@ -390,11 +350,9 @@ export default function IronProtocolPage() {
         if (!dailyConfig) return;
         await saveDailyConfigState({
             ...dailyConfig,
-            activeTracks: dailyConfig.activeTracks.map((track) => (
-                track.id === trackId
-                    ? { ...track, target: { ...track.target, ...patch } }
-                    : track
-            )),
+            activeTracks: dailyConfig.activeTracks.map((t) =>
+                t.id === trackId ? { ...t, target: { ...t.target, ...patch } } : t
+            ),
             updatedAt: Date.now(),
         });
     };
@@ -403,9 +361,9 @@ export default function IronProtocolPage() {
         if (!dailyConfig) return;
         await saveDailyConfigState({
             ...dailyConfig,
-            activeTracks: dailyConfig.activeTracks.map((track) => (
-                track.id === trackId ? setTrackStage(track, stage) : track
-            )),
+            activeTracks: dailyConfig.activeTracks.map((t) =>
+                t.id === trackId ? setTrackStage(t, stage) : t
+            ),
             updatedAt: Date.now(),
         });
     };
@@ -414,49 +372,35 @@ export default function IronProtocolPage() {
         if (!dailyConfig) return;
         await saveDailyConfigState({
             ...dailyConfig,
-            activeTracks: dailyConfig.activeTracks.map((track) => (
-                track.id === trackId ? applyGuidedRecommendation(track) : track
-            )),
+            activeTracks: dailyConfig.activeTracks.map((t) =>
+                t.id === trackId ? applyGuidedRecommendation(t) : t
+            ),
             updatedAt: Date.now(),
         });
     };
 
     const handleSeasonLengthChange = async (seasonLengthDays: 30 | 60 | 90) => {
         if (!dailyConfig) return;
-        await saveDailyConfigState({
-            ...dailyConfig,
-            seasonLengthDays,
-            updatedAt: Date.now(),
-        });
+        await saveDailyConfigState({ ...dailyConfig, seasonLengthDays, updatedAt: Date.now() });
     };
 
     const handleRestartSeason = async () => {
         if (!dailyConfig) return;
-        await saveDailyConfigState({
-            ...dailyConfig,
-            seasonStartedAt: Date.now(),
-            updatedAt: Date.now(),
-        });
+        await saveDailyConfigState({ ...dailyConfig, seasonStartedAt: Date.now(), updatedAt: Date.now() });
     };
 
     const resolveScaledTemplate = (schedule: IronScheduleDay) => {
         if (!oneRepMaxes || !schedule.templateId) return null;
         const template = getIronTemplateById(schedule.templateId);
-        if (!template) {
-            return null;
-        }
+        if (!template) return null;
         return scaleTemplateForOneRepMaxes(template, oneRepMaxes);
     };
 
     const handleStartSchedule = (schedule: IronScheduleDay) => {
         if (!user || !schedule.templateId) return;
         const scaledTemplate = resolveScaledTemplate(schedule);
-        if (!scaledTemplate) {
-            toast.error('Template not found');
-            return;
-        }
+        if (!scaledTemplate) { toast.error('Template not found'); return; }
         if (activeSession && !confirm('You already have an active workout. Start a new one?')) return;
-
         startFromTemplate(user.uid, scaledTemplate);
         navigate('/active-workout');
     };
@@ -464,12 +408,8 @@ export default function IronProtocolPage() {
     const handlePreviewSchedule = (schedule: IronScheduleDay) => {
         if (!user || !schedule.templateId) return;
         const scaledTemplate = resolveScaledTemplate(schedule);
-        if (!scaledTemplate) {
-            toast.error('Template not found');
-            return;
-        }
+        if (!scaledTemplate) { toast.error('Template not found'); return; }
         if (activeSession && !confirm('You already have an active workout. Replace it with this planned session?')) return;
-
         initFromTemplatePlan(user.uid, scaledTemplate);
         toast.success('Workout loaded in planner. Adjust sets/reps/weights, then start.');
         navigate('/workout');
@@ -478,172 +418,246 @@ export default function IronProtocolPage() {
     if (!oneRepMaxes || !dailyConfig) {
         return (
             <div className="max-w-lg mx-auto px-4 py-8">
-                <div className="glass rounded-2xl p-6 text-center">
-                    <p className="text-text-secondary">Loading Iron Protocol...</p>
+                <div className="bg-bg-card rounded-3xl p-8 text-center shadow-card">
+                    <div className="w-12 h-12 rounded-2xl bg-surface-inverse mx-auto mb-4 animate-pulse" />
+                    <p className="text-text-secondary font-medium">Loading Iron Protocol…</p>
                 </div>
             </div>
         );
     }
 
     return (
-        <div className="max-w-lg mx-auto px-4 pt-6 pb-24 space-y-5">
-            <div className="rounded-[2rem] border border-amber/25 bg-surface-inverse p-5 text-text-inverse shadow-lifted">
-                <p className="text-xs font-bold tracking-[0.16em] uppercase text-secondary">Kabunga performance</p>
-                <h1 className="font-display text-3xl font-extrabold mt-1 text-text-inverse">Iron Protocol</h1>
-                <p className="text-sm leading-6 mt-2 text-text-inverse/75">
-                    Weekly PPL structure, scaled from your 1RM data, with daily bodyweight progression.
-                </p>
+        <div className="max-w-lg mx-auto px-4 pt-6 pb-28 space-y-5">
+
+            {/* ── Hero Card ── */}
+            <div className="relative rounded-[2rem] bg-surface-inverse p-6 shadow-lifted overflow-hidden">
+                <div
+                    className="absolute top-0 right-0 w-40 h-40 rounded-full blur-3xl pointer-events-none"
+                    style={{ background: 'rgba(155,217,60,0.12)', transform: 'translate(30%, -30%)' }}
+                />
+                <div className="relative">
+                    <span className="inline-flex items-center gap-1.5 rounded-full bg-secondary/20 border border-secondary/30 px-3 py-1 text-[11px] font-bold tracking-[0.1em] uppercase text-secondary">
+                        <Zap size={10} />
+                        1RM Adaptive
+                    </span>
+                    <h1 className="font-display text-4xl font-extrabold mt-3 text-text-inverse leading-tight">
+                        Iron Protocol
+                    </h1>
+                    <p className="text-sm leading-6 mt-2 text-text-inverse/75">
+                        Weekly PPL structure with auto-loaded daily sessions from your 1RM.
+                    </p>
+                </div>
             </div>
 
-            <InsightCard
-                tone="progress"
-                title="Strength, not clutter"
-                description="Targets stay visible, bodyweight work still counts, and you can start the day’s session without rebuilding a plan."
-            />
-
-            <div className="glass rounded-2xl p-3">
-                <div className="flex items-center gap-2 mb-2 text-text-secondary text-xs uppercase tracking-wide">
-                    <Calendar size={13} />
-                    Weekly Calendar
+            {/* ── Weekly Calendar ── */}
+            <div className="bg-bg-card rounded-3xl p-4 shadow-card">
+                <div className="flex items-center gap-2 mb-3">
+                    <Calendar size={15} className="text-primary" />
+                    <h2 className="text-sm font-bold text-text-primary">Weekly Calendar</h2>
                 </div>
-                <div className="grid grid-cols-7 gap-1.5">
+                <div className="grid grid-cols-7 gap-1">
                     {IRON_WEEKLY_SCHEDULE.map((day) => {
                         const isToday = today.day() === day.weekday;
                         const isSelected = selectedSchedule.weekday === day.weekday;
+                        const sessionKey = day.sessionType === 'rest' ? 'Rest' : day.title.split(' ')[0];
+                        const DayIcon = SESSION_ICON[sessionKey] ?? Dumbbell;
+
                         return (
                             <button
                                 key={day.shortLabel}
                                 onClick={() => setSelectedWeekday(day.weekday)}
-                                className="rounded-xl p-2 border text-center transition-colors"
+                                className="rounded-2xl py-2.5 px-1 flex flex-col items-center gap-1 transition-all"
                                 style={{
-                                    borderColor: isSelected ? '#22d3ee' : isToday ? '#E8630A' : '#2D5F8A',
-                                    background: isSelected ? 'rgba(34, 211, 238, 0.15)' : isToday ? 'rgba(232, 99, 10, 0.18)' : '#12263A',
+                                    background: isSelected
+                                        ? '#17452a'
+                                        : isToday
+                                            ? '#e8f5e9'
+                                            : 'transparent',
+                                    border: isToday && !isSelected
+                                        ? '1.5px solid #9bd93c'
+                                        : '1.5px solid transparent',
                                 }}
                             >
-                                <p className="text-[11px] font-semibold" style={{ color: isSelected ? '#22d3ee' : isToday ? '#E8630A' : '#D6E4F0' }}>
+                                <span
+                                    className="text-[10px] font-bold"
+                                    style={{ color: isSelected ? '#9bd93c' : isToday ? '#17452a' : '#748177' }}
+                                >
                                     {day.shortLabel}
-                                </p>
-                                <p className="text-[10px] leading-tight mt-1 text-white">
-                                    {day.sessionType === 'rest' ? 'Rest' : day.title.split(' ')[0]}
-                                </p>
+                                </span>
+                                <DayIcon
+                                    size={13}
+                                    style={{ color: isSelected ? '#9bd93c' : isToday ? '#2f7d32' : '#9ca3af' }}
+                                />
+                                <span
+                                    className="text-[9px] font-semibold leading-tight text-center"
+                                    style={{ color: isSelected ? 'white' : isToday ? '#17452a' : '#9ca3af' }}
+                                >
+                                    {sessionKey}
+                                </span>
                             </button>
                         );
                     })}
                 </div>
             </div>
 
-            <div className="glass rounded-3xl p-5" style={{ borderColor: '#2D5F8A' }}>
-                <p className="text-xs uppercase tracking-wide text-text-muted">Today&apos;s Session</p>
-                <h2 className="text-xl font-black mt-1 text-white">{todaySchedule.title}</h2>
-                <p className="text-sm mt-1" style={{ color: '#D6E4F0' }}>
-                    Primary lift: <span className="font-semibold text-white">{todaySchedule.primaryLift}</span>
-                </p>
-
-                <div className="mt-3 flex flex-wrap gap-2">
-                    {todayTargetWeights.length > 0 ? (
-                        todayTargetWeights.map((weight) => (
-                            <span
-                                key={weight}
-                                className="px-2.5 py-1 rounded-lg text-xs font-semibold"
-                                style={{ background: 'rgba(45,95,138,0.35)', color: '#D6E4F0' }}
-                            >
-                                {weight}kg target
-                            </span>
-                        ))
-                    ) : (
-                        <span className="px-2.5 py-1 rounded-lg text-xs font-semibold bg-bg-card text-text-secondary">
-                            Bodyweight progression focus
-                        </span>
-                    )}
+            {/* ── Today's Session ── */}
+            <div className="bg-bg-card rounded-3xl p-5 shadow-card">
+                <div className="flex items-center gap-2 mb-1">
+                    <ShieldCheck size={16} className="text-primary" />
+                    <span className="text-xs font-semibold text-text-muted uppercase tracking-wide">Today's Session</span>
                 </div>
+                <p className="text-xs text-text-muted mb-3">Auto-loaded from Iron Protocol plan</p>
 
-                <button
-                    onClick={() => handleStartSchedule(todaySchedule)}
-                    disabled={!todaySchedule.templateId}
-                    className="mt-4 w-full py-4 rounded-2xl text-white font-semibold flex items-center justify-center gap-2 disabled:opacity-40"
-                    style={{ background: '#E8630A' }}
-                >
-                    <Dumbbell size={18} />
-                    Start Today&apos;s Workout
-                    <ChevronRight size={18} />
-                </button>
-                <button
-                    onClick={() => handlePreviewSchedule(todaySchedule)}
-                    disabled={!todaySchedule.templateId}
-                    className="mt-2 w-full py-3 rounded-2xl border border-border text-sm text-text-secondary font-medium flex items-center justify-center gap-2 disabled:opacity-40"
-                >
-                    <Eye size={16} />
-                    Preview & Edit Today
-                </button>
-            </div>
-
-            <div className="glass rounded-3xl p-5" style={{ borderColor: '#2D5F8A' }}>
-                <p className="text-xs uppercase tracking-wide text-text-muted">Selected Day</p>
-                <h2 className="text-xl font-black mt-1 text-white">
-                    {selectedSchedule.shortLabel} — {selectedSchedule.title}
-                </h2>
-                <p className="text-sm mt-1" style={{ color: '#D6E4F0' }}>
-                    Primary lift: <span className="font-semibold text-white">{selectedSchedule.primaryLift}</span>
+                <h2 className="text-xl font-extrabold text-text-primary">{todaySchedule.title}</h2>
+                <p className="text-sm text-text-secondary mt-1">
+                    Primary lift: <span className="font-bold text-text-primary">{todaySchedule.primaryLift}</span>
                 </p>
 
-                {selectedSchedule.sessionType === 'rest' || !selectedTemplate ? (
-                    <div className="mt-3 rounded-xl bg-bg-card p-3 text-sm text-text-secondary">
-                        Recovery day. Mobility + light walk + hydration.
+                {todayTargetWeights.length > 0 && (
+                    <div className="mt-3">
+                        <p className="text-[11px] font-bold text-text-muted uppercase tracking-wide mb-2">Primary lift targets</p>
+                        <div className="flex flex-wrap gap-2">
+                            {todayTargetWeights.map((weight) => (
+                                <span
+                                    key={weight}
+                                    className="px-3 py-1.5 rounded-full text-xs font-bold bg-primary-container text-primary"
+                                >
+                                    {weight} kg target
+                                </span>
+                            ))}
+                        </div>
+                    </div>
+                )}
+
+                {todaySchedule.sessionType === 'rest' ? (
+                    <div className="mt-4 rounded-2xl bg-bg-surface p-4">
+                        <p className="font-semibold text-text-primary mb-1">Rest Day</p>
+                        <p className="text-sm text-text-secondary">Recovery, mobility, and hydration. Rest is part of the protocol.</p>
                     </div>
                 ) : (
                     <>
-                        <div className="mt-3 flex flex-wrap gap-2">
-                            {selectedTargetWeights.length > 0 ? (
-                                selectedTargetWeights.map((weight) => (
-                                    <span
-                                        key={weight}
-                                        className="px-2.5 py-1 rounded-lg text-xs font-semibold"
-                                        style={{ background: 'rgba(45,95,138,0.35)', color: '#D6E4F0' }}
-                                    >
-                                        {weight}kg target
-                                    </span>
-                                ))
-                            ) : (
-                                <span className="px-2.5 py-1 rounded-lg text-xs font-semibold bg-bg-card text-text-secondary">
-                                    Bodyweight progression focus
+                        <button
+                            onClick={() => handleStartSchedule(todaySchedule)}
+                            disabled={!todaySchedule.templateId}
+                            className="mt-4 w-full py-4 rounded-2xl text-white font-bold text-base flex items-center justify-center gap-2.5 disabled:opacity-40 transition-opacity"
+                            style={{ background: '#d8871f' }}
+                        >
+                            <Play size={18} strokeWidth={2.5} />
+                            Start Today's Workout
+                            <ChevronRight size={17} />
+                        </button>
+                        <button
+                            onClick={() => handlePreviewSchedule(todaySchedule)}
+                            disabled={!todaySchedule.templateId}
+                            className="mt-2 w-full py-3 rounded-2xl border border-border/80 bg-bg-surface text-sm text-text-secondary font-semibold flex items-center justify-center gap-2 disabled:opacity-40"
+                        >
+                            <Eye size={16} />
+                            Preview &amp; Edit Today
+                        </button>
+                    </>
+                )}
+
+                <p className="mt-3 text-[11px] text-center text-text-muted">
+                    Targets are calculated from your 1RM.{' '}
+                    <button
+                        onClick={() => navigate('/profile?focus=one-rep-maxes')}
+                        className="text-primary font-bold underline-offset-2 underline"
+                    >
+                        Manage 1RM in Profile
+                    </button>
+                </p>
+            </div>
+
+            {/* ── Selected Day ── */}
+            <div className="bg-bg-card rounded-3xl p-5 shadow-card">
+                <p className="text-[11px] font-bold text-text-muted uppercase tracking-wide mb-1">Selected Day</p>
+                <h2 className="text-lg font-extrabold text-text-primary">
+                    {selectedSchedule.shortLabel} — {selectedSchedule.title}
+                </h2>
+
+                {selectedSchedule.sessionType === 'rest' || !selectedTemplate ? (
+                    <div className="mt-3 rounded-2xl bg-bg-surface p-4">
+                        <p className="font-semibold text-text-primary mb-1">Recovery Day</p>
+                        <p className="text-sm text-text-secondary">Mobility + light walk + hydration.</p>
+                    </div>
+                ) : (
+                    <>
+                        <div className="mt-4 divide-y divide-border">
+                            <div className="flex items-center justify-between py-3">
+                                <span className="text-sm text-text-muted">Primary lift</span>
+                                <span className="text-sm font-bold text-text-primary">{selectedSchedule.primaryLift}</span>
+                            </div>
+                            <div className="flex items-center justify-between py-3">
+                                <span className="text-sm text-text-muted">Warm-up (Set 0)</span>
+                                <span className="text-sm font-bold text-text-primary">Auto-loaded</span>
+                            </div>
+                            {(() => {
+                                const workPhase = selectedTemplate.phases.find((p) =>
+                                    p.name.toLowerCase().includes('work') || p.name.toLowerCase().includes('heavy')
+                                ) ?? selectedTemplate.phases[1] ?? selectedTemplate.phases[0];
+                                const workEx = workPhase?.exercises[0];
+                                if (!workEx) return null;
+                                return (
+                                    <div className="flex items-center justify-between py-3">
+                                        <span className="text-sm text-text-muted">Work Sets</span>
+                                        <span className="text-sm font-bold text-text-primary">
+                                            {workEx.sets} × {workEx.reps}{workEx.weight > 0 ? ` @ ${workEx.weight}kg` : ' @ 80% 1RM'}
+                                        </span>
+                                    </div>
+                                );
+                            })()}
+                            {(() => {
+                                const count = selectedTemplate.phases
+                                    .filter((p) =>
+                                        p.name.toLowerCase().includes('access') ||
+                                        p.name.toLowerCase().includes('supplement')
+                                    )
+                                    .reduce((sum, p) => sum + p.exercises.length, 0);
+                                return (
+                                    <div className="flex items-center justify-between py-3">
+                                        <span className="text-sm text-text-muted">Accessory lifts</span>
+                                        <span className="text-sm font-bold text-text-primary">
+                                            {count > 0 ? `${count} movements` : 'See plan'}
+                                        </span>
+                                    </div>
+                                );
+                            })()}
+                            <div className="flex items-center justify-between py-3">
+                                <span className="text-sm text-text-muted flex items-center gap-1.5">
+                                    <Clock size={13} />
+                                    Estimated duration
                                 </span>
-                            )}
+                                <span className="text-sm font-bold text-text-primary">60–75 min</span>
+                            </div>
                         </div>
 
-                        <div className="mt-3 space-y-2 max-h-[280px] overflow-y-auto pr-1">
-                            {selectedTemplate.phases.map((phase, phaseIndex) => (
-                                <div key={`${phase.name}-${phaseIndex}`} className="rounded-xl bg-bg-card p-3">
-                                    <p className="text-xs uppercase tracking-wide text-text-muted mb-2">{phase.name}</p>
-                                    <div className="space-y-1.5">
-                                        {phase.exercises.map((exercise, exerciseIndex) => (
-                                            <div key={`${phase.name}-${exercise.name}-${exerciseIndex}`} className="text-xs text-text-secondary">
-                                                <p className="font-semibold text-text-primary">{exercise.name}</p>
-                                                <p>
-                                                    {exercise.sets} sets × {exercise.reps} reps
-                                                    {exercise.weight > 0 ? ` @ ${exercise.weight}kg` : ''}
-                                                    {exercise.restSeconds > 0 ? ` • rest ${exercise.restSeconds}s` : ''}
-                                                </p>
-                                            </div>
-                                        ))}
-                                    </div>
-                                </div>
-                            ))}
-                        </div>
+                        {selectedTargetWeights.length > 0 && (
+                            <div className="mt-3 flex flex-wrap gap-2">
+                                {selectedTargetWeights.map((weight) => (
+                                    <span
+                                        key={weight}
+                                        className="px-2.5 py-1 rounded-full text-[11px] font-bold bg-primary-container text-primary"
+                                    >
+                                        {weight} kg
+                                    </span>
+                                ))}
+                            </div>
+                        )}
 
                         <div className="mt-4 grid grid-cols-2 gap-2">
                             <button
                                 onClick={() => handlePreviewSchedule(selectedSchedule)}
-                                className="py-3 rounded-xl border border-border text-sm text-text-secondary font-medium flex items-center justify-center gap-2"
+                                className="py-3 rounded-2xl border border-border/80 bg-bg-surface text-sm text-text-secondary font-semibold flex items-center justify-center gap-2"
                             >
                                 <Eye size={15} />
-                                Preview & Edit
+                                Preview &amp; Edit
                             </button>
                             <button
                                 onClick={() => handleStartSchedule(selectedSchedule)}
-                                className="py-3 rounded-xl text-white text-sm font-semibold flex items-center justify-center gap-2"
-                                style={{ background: '#E8630A' }}
+                                className="py-3 rounded-2xl text-white text-sm font-bold flex items-center justify-center gap-2"
+                                style={{ background: '#d8871f' }}
                             >
-                                <Dumbbell size={15} />
+                                <Play size={15} strokeWidth={2.5} />
                                 Start Session
                             </button>
                         </div>
@@ -651,12 +665,13 @@ export default function IronProtocolPage() {
                 )}
             </div>
 
-            <div className="glass rounded-2xl overflow-hidden">
+            {/* ── Set Pattern Reference ── */}
+            <div className="bg-bg-card rounded-2xl overflow-hidden shadow-card">
                 <button
                     onClick={() => setShowPatternRef((s) => !s)}
-                    className="w-full px-4 py-3 text-left flex items-center justify-between"
+                    className="w-full px-4 py-3.5 text-left flex items-center justify-between"
                 >
-                    <div className="flex items-center gap-2 text-sm font-semibold">
+                    <div className="flex items-center gap-2 text-sm font-semibold text-text-primary">
                         <TrendingUp size={16} className="text-accent" />
                         Set Pattern Reference
                     </div>
@@ -666,48 +681,32 @@ export default function IronProtocolPage() {
                     />
                 </button>
                 {showPatternRef && (
-                    <div className="px-4 pb-4 text-sm text-text-secondary space-y-1">
-                        <p><span className="text-text-primary font-semibold">Set 0:</span> Warm-up (not counted) - 40-50%, 15-20 reps</p>
-                        <p><span className="text-text-primary font-semibold">Sets 1-4:</span> Working - 60-70%, 8-12 reps</p>
-                        <p><span className="text-text-primary font-semibold">Sets 5-6:</span> Heavy - 80-87%, 3-6 reps</p>
-                        <p><span className="text-text-primary font-semibold">Sets 7-10:</span> Back-off - 60-70%, match Sets 1-4</p>
+                    <div className="px-4 pb-4 border-t border-border">
+                        <div className="pt-3 space-y-2 text-sm text-text-secondary">
+                            <p><span className="text-text-primary font-semibold">Set 0:</span> Warm-up (not counted) — 40–50%, 15–20 reps</p>
+                            <p><span className="text-text-primary font-semibold">Sets 1–4:</span> Working — 60–70%, 8–12 reps</p>
+                            <p><span className="text-text-primary font-semibold">Sets 5–6:</span> Heavy — 80–87%, 3–6 reps</p>
+                            <p><span className="text-text-primary font-semibold">Sets 7–10:</span> Back-off — 60–70%, match Sets 1–4</p>
+                        </div>
                     </div>
                 )}
             </div>
 
-            <div className="space-y-2">
-                <div className="flex items-center justify-between px-1">
-                    <div className="flex items-center gap-2">
-                        <Flame size={16} style={{ color: '#E8630A' }} />
-                        <h3 className="text-sm font-semibold">1RM Calculator</h3>
-                    </div>
-                    <span className="text-xs text-text-muted">{scaledTemplateCount}/6 templates updated</span>
-                </div>
-                <OneRepMaxCard
-                    title="Iron Strength Inputs"
-                    subtitle="Update these here or in Profile. New Iron sessions scale automatically from the latest values."
-                    maxes={oneRepMaxes}
-                    status={oneRepMaxStatus}
-                    saving={savingMaxes}
-                    onChange={updateMax}
-                    onSave={handleSaveOneRepMaxes}
-                />
-            </div>
-
-            <div className="glass rounded-2xl p-4">
+            {/* ── Fitness Dailies ── */}
+            <div className="bg-bg-card rounded-3xl p-4 shadow-card">
                 <div className="flex items-start justify-between gap-3">
                     <div>
-                        <h3 className="text-sm font-semibold">Fitness Dailies</h3>
-                        <p className="text-xs text-text-muted mt-1">
+                        <h3 className="text-sm font-bold text-text-primary">Fitness Dailies</h3>
+                        <p className="text-xs text-text-muted mt-0.5">
                             {activeDailyTracks.length} active track{activeDailyTracks.length === 1 ? '' : 's'}
-                            {seasonSummary ? ` • ${seasonSummary.remainingDays} days left in this block` : ''}
+                            {seasonSummary ? ` · ${seasonSummary.remainingDays} days left in this block` : ''}
                         </p>
                     </div>
                     <div className="flex items-center gap-2">
-                        <span className="text-xs text-text-muted">7-day streak: {dailyStreak}</span>
+                        <span className="text-xs text-text-muted">Streak: {dailyStreak}</span>
                         <button
                             onClick={() => setShowDailyManager(true)}
-                            className="rounded-lg border border-border px-2.5 py-1.5 text-[11px] font-semibold text-text-secondary"
+                            className="rounded-xl border border-border px-2.5 py-1.5 text-[11px] font-semibold text-text-secondary bg-bg-surface"
                         >
                             Manage
                         </button>
@@ -722,30 +721,32 @@ export default function IronProtocolPage() {
                         return (
                             <div
                                 key={track.id}
-                                className={`rounded-xl border p-3 transition-colors ${entry.completed ? 'border-green/40 bg-green/10' : 'border-border bg-bg-card'}`}
+                                className={`rounded-2xl border p-3 transition-colors ${entry.completed ? 'border-green/40 bg-green/8' : 'border-border bg-bg-surface'}`}
                             >
                                 <div className="flex items-start justify-between gap-2">
                                     <div>
                                         <div className="flex items-center gap-2 flex-wrap">
-                                            <p className="text-sm font-semibold">{track.exerciseName}</p>
+                                            <p className="text-sm font-semibold text-text-primary">{track.exerciseName}</p>
                                             {track.specializationKind && track.stage && (
                                                 <span className="rounded-full bg-cyan/10 px-2 py-0.5 text-[10px] font-semibold text-cyan">
                                                     {getGuidedStageLabel(track.stage)}
                                                 </span>
                                             )}
                                         </div>
-                                        <p className="text-xs text-text-muted mt-1">
+                                        <p className="text-xs text-text-muted mt-0.5">
                                             Target {formatDailyTarget(track)}
                                             {track.stage === 'weighted' && track.addedWeightKg ? ` @ ${track.addedWeightKg}kg` : ''}
-                                            {` • ${completionCount}/7 days complete`}
+                                            {` · ${completionCount}/7 days`}
                                         </p>
                                     </div>
                                     <button
                                         onClick={() => handleToggleDailyTrack(track)}
                                         disabled={updatingDaily}
-                                        className={`shrink-0 rounded-lg px-3 py-2 text-xs font-semibold ${entry.completed ? 'bg-green text-white' : 'bg-bg-input text-text-secondary'}`}
+                                        className={`shrink-0 rounded-xl px-3 py-2 text-xs font-bold ${entry.completed ? 'bg-green text-white' : 'bg-bg-input text-text-secondary border border-border'}`}
                                     >
-                                        {entry.completed ? 'Done' : 'Mark done'}
+                                        {entry.completed ? (
+                                            <span className="flex items-center gap-1"><Check size={12} /> Done</span>
+                                        ) : 'Mark done'}
                                     </button>
                                 </div>
 
@@ -757,14 +758,13 @@ export default function IronProtocolPage() {
                                                 type="number"
                                                 min={0}
                                                 value={entry.actualSeconds ?? track.target.seconds ?? ''}
-                                                onChange={(event) => handleTrackEntryChange(track, {
-                                                    actualSeconds: Math.max(0, Number(event.target.value) || 0),
+                                                onChange={(e) => handleTrackEntryChange(track, {
+                                                    actualSeconds: Math.max(0, Number(e.target.value) || 0),
                                                 })}
                                                 className="mt-1 w-full rounded-xl border border-border bg-bg-input px-3 py-2 text-sm text-text-primary"
                                             />
                                         </label>
                                     )}
-
                                     {track.metric === 'reps' && (
                                         <label className="text-[11px] text-text-muted sm:col-span-2">
                                             Reps
@@ -772,14 +772,13 @@ export default function IronProtocolPage() {
                                                 type="number"
                                                 min={0}
                                                 value={entry.actualReps ?? track.target.reps ?? ''}
-                                                onChange={(event) => handleTrackEntryChange(track, {
-                                                    actualReps: Math.max(0, Number(event.target.value) || 0),
+                                                onChange={(e) => handleTrackEntryChange(track, {
+                                                    actualReps: Math.max(0, Number(e.target.value) || 0),
                                                 })}
                                                 className="mt-1 w-full rounded-xl border border-border bg-bg-input px-3 py-2 text-sm text-text-primary"
                                             />
                                         </label>
                                     )}
-
                                     {track.metric === 'sets_reps' && (
                                         <>
                                             <label className="text-[11px] text-text-muted">
@@ -788,8 +787,8 @@ export default function IronProtocolPage() {
                                                     type="number"
                                                     min={0}
                                                     value={entry.actualSets ?? track.target.sets ?? ''}
-                                                    onChange={(event) => handleTrackEntryChange(track, {
-                                                        actualSets: Math.max(0, Number(event.target.value) || 0),
+                                                    onChange={(e) => handleTrackEntryChange(track, {
+                                                        actualSets: Math.max(0, Number(e.target.value) || 0),
                                                     })}
                                                     className="mt-1 w-full rounded-xl border border-border bg-bg-input px-3 py-2 text-sm text-text-primary"
                                                 />
@@ -800,8 +799,8 @@ export default function IronProtocolPage() {
                                                     type="number"
                                                     min={0}
                                                     value={entry.actualReps ?? track.target.reps ?? ''}
-                                                    onChange={(event) => handleTrackEntryChange(track, {
-                                                        actualReps: Math.max(0, Number(event.target.value) || 0),
+                                                    onChange={(e) => handleTrackEntryChange(track, {
+                                                        actualReps: Math.max(0, Number(e.target.value) || 0),
                                                     })}
                                                     className="mt-1 w-full rounded-xl border border-border bg-bg-input px-3 py-2 text-sm text-text-primary"
                                                 />
@@ -814,8 +813,8 @@ export default function IronProtocolPage() {
                                                         min={0}
                                                         step="0.5"
                                                         value={entry.actualLoadKg ?? track.addedWeightKg ?? ''}
-                                                        onChange={(event) => handleTrackEntryChange(track, {
-                                                            actualLoadKg: Math.max(0, Number(event.target.value) || 0),
+                                                        onChange={(e) => handleTrackEntryChange(track, {
+                                                            actualLoadKg: Math.max(0, Number(e.target.value) || 0),
                                                         })}
                                                         className="mt-1 w-full rounded-xl border border-border bg-bg-input px-3 py-2 text-sm text-text-primary"
                                                     />
@@ -842,13 +841,13 @@ export default function IronProtocolPage() {
                     })}
 
                     {activeDailyTracks.length === 0 && (
-                        <div className="rounded-xl border border-border bg-bg-card p-3 text-sm text-text-secondary">
+                        <div className="rounded-2xl border border-border bg-bg-surface p-4 text-sm text-text-secondary">
                             No active daily tracks yet. Add a few from the library to build your block.
                         </div>
                     )}
                 </div>
 
-                <div className="mt-3 grid grid-cols-7 gap-1">
+                <div className="mt-4 grid grid-cols-7 gap-1">
                     {Array.from({ length: 7 }, (_, idx) => {
                         const key = dayjs().subtract(6 - idx, 'day').format('YYYY-MM-DD');
                         const done = isDailyComplete(dailyLogs[key], dailyConfig);
@@ -863,31 +862,30 @@ export default function IronProtocolPage() {
                 </div>
             </div>
 
-            <div className="glass rounded-2xl p-4 overflow-x-auto">
+            {/* ── 6-Week Progress Log ── */}
+            <div className="bg-bg-card rounded-3xl p-4 shadow-card overflow-x-auto">
                 <div className="flex items-center gap-2 mb-3">
-                    <TrendingUp size={16} className="text-cyan" />
-                    <h3 className="text-sm font-semibold">6-Week Progress Log</h3>
+                    <TrendingUp size={15} className="text-primary" />
+                    <h3 className="text-sm font-bold text-text-primary">6-Week Progress Log</h3>
                 </div>
-                <table className="w-full text-xs">
+                <table className="w-full text-xs min-w-[320px]">
                     <thead>
                         <tr className="text-text-muted">
-                            <th className="text-left pb-2 font-medium">Week</th>
-                            <th className="text-left pb-2 font-medium">Bench</th>
-                            <th className="text-left pb-2 font-medium">Squat</th>
-                            <th className="text-left pb-2 font-medium">OHP</th>
-                            <th className="text-left pb-2 font-medium">Notes</th>
+                            <th className="text-left pb-2 font-semibold">Week</th>
+                            <th className="text-left pb-2 font-semibold">Bench</th>
+                            <th className="text-left pb-2 font-semibold">Squat</th>
+                            <th className="text-left pb-2 font-semibold">OHP</th>
+                            <th className="text-left pb-2 font-semibold">Notes</th>
                         </tr>
                     </thead>
                     <tbody>
                         {sixWeekRows.map((row) => (
                             <tr key={row.weekLabel} className="border-t border-border/50">
-                                <td className="py-2 pr-2 text-text-secondary">{row.weekLabel}</td>
-                                <td className="py-2 pr-2">{row.bench}</td>
-                                <td className="py-2 pr-2">{row.squat}</td>
-                                <td className="py-2 pr-2">{row.ohp}</td>
-                                <td className="py-2 text-text-secondary truncate max-w-[140px]" title={row.notes}>
-                                    {row.notes}
-                                </td>
+                                <td className="py-2 pr-2 text-text-secondary font-medium">{row.weekLabel}</td>
+                                <td className="py-2 pr-2 text-text-primary">{row.bench}</td>
+                                <td className="py-2 pr-2 text-text-primary">{row.squat}</td>
+                                <td className="py-2 pr-2 text-text-primary">{row.ohp}</td>
+                                <td className="py-2 text-text-secondary truncate max-w-[120px]" title={row.notes}>{row.notes}</td>
                             </tr>
                         ))}
                     </tbody>
@@ -896,29 +894,30 @@ export default function IronProtocolPage() {
 
             <button
                 onClick={() => navigate('/history')}
-                className="w-full py-3 rounded-xl border border-border text-sm text-text-secondary flex items-center justify-center gap-2"
+                className="w-full py-3 rounded-2xl border border-border bg-bg-card text-sm text-text-secondary font-semibold flex items-center justify-center gap-2 shadow-card"
             >
                 <Calendar size={16} />
                 Open Calendar History
             </button>
 
+            {/* ── Daily Manager Modal ── */}
             {showDailyManager && (
                 <div
                     className="fixed inset-0 z-[100] bg-black/60 flex items-end"
                     onClick={() => setShowDailyManager(false)}
                 >
                     <div
-                        className="w-full max-w-lg mx-auto bg-bg-surface rounded-t-3xl px-4 pt-3 pb-4 max-h-[88vh] flex flex-col animate-slide-up"
-                        onClick={(event) => event.stopPropagation()}
+                        className="w-full max-w-lg mx-auto bg-bg-surface rounded-t-3xl px-4 pt-3 pb-4 max-h-[88vh] flex flex-col"
+                        onClick={(e) => e.stopPropagation()}
                     >
                         <div className="w-12 h-1.5 rounded-full bg-border mx-auto mb-3" />
 
                         <div className="sticky top-0 z-10 bg-bg-surface pb-3">
                             <div className="flex items-start justify-between gap-3 mb-4">
                                 <div>
-                                    <h3 className="text-lg font-bold">Manage Fitness Dailies</h3>
+                                    <h3 className="text-lg font-bold text-text-primary">Manage Fitness Dailies</h3>
                                     <p className="text-xs text-text-muted mt-1">
-                                        Build your current block from the exercise library and keep specialization separate from the main Iron templates.
+                                        Build your current block from the exercise library.
                                     </p>
                                 </div>
                                 <button onClick={() => setShowDailyManager(false)} className="p-2 text-text-muted">
@@ -937,9 +936,9 @@ export default function IronProtocolPage() {
                                     <button
                                         onClick={handleRestartSeason}
                                         disabled={savingDailyConfig}
-                                        className="rounded-lg border border-border px-3 py-2 text-[11px] font-semibold text-text-secondary disabled:opacity-40"
+                                        className="rounded-xl border border-border px-3 py-2 text-[11px] font-semibold text-text-secondary disabled:opacity-40"
                                     >
-                                        Restart block
+                                        Restart
                                     </button>
                                 </div>
                                 <div className="mt-3 flex gap-2">
@@ -948,7 +947,7 @@ export default function IronProtocolPage() {
                                             key={days}
                                             onClick={() => handleSeasonLengthChange(days as 30 | 60 | 90)}
                                             disabled={savingDailyConfig}
-                                            className={`rounded-lg px-3 py-2 text-xs font-semibold ${dailyConfig.seasonLengthDays === days ? 'bg-accent text-white' : 'bg-bg-input text-text-secondary'}`}
+                                            className={`rounded-xl px-3 py-2 text-xs font-semibold ${dailyConfig.seasonLengthDays === days ? 'bg-accent text-white' : 'bg-bg-input text-text-secondary'}`}
                                         >
                                             {days} days
                                         </button>
@@ -957,12 +956,12 @@ export default function IronProtocolPage() {
                             </div>
 
                             <div className="relative mb-3">
-                                <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-text-muted" />
+                                <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-text-muted" />
                                 <input
                                     type="text"
                                     value={dailySearch}
-                                    onChange={(event) => setDailySearch(event.target.value)}
-                                    placeholder="Search the exercise library..."
+                                    onChange={(e) => setDailySearch(e.target.value)}
+                                    placeholder="Search exercise library…"
                                     className="w-full bg-bg-input border border-border rounded-xl py-3 pl-10 pr-4 text-sm focus:outline-none focus:border-accent/50"
                                 />
                             </div>
@@ -976,22 +975,22 @@ export default function IronProtocolPage() {
                                 </div>
                                 <div className="space-y-2">
                                     {activeDailyTracks.map((track) => (
-                                        <div key={track.id} className="rounded-xl border border-border bg-bg-card p-3">
+                                        <div key={track.id} className="rounded-2xl border border-border bg-bg-card p-3">
                                             <div className="flex items-start justify-between gap-3">
                                                 <div>
                                                     <div className="flex items-center gap-2 flex-wrap">
-                                                        <p className="text-sm font-semibold">{track.exerciseName}</p>
+                                                        <p className="text-sm font-semibold text-text-primary">{track.exerciseName}</p>
                                                         {track.specializationKind && track.stage && (
                                                             <span className="rounded-full bg-cyan/10 px-2 py-0.5 text-[10px] font-semibold text-cyan">
                                                                 {getGuidedStageLabel(track.stage)}
                                                             </span>
                                                         )}
                                                     </div>
-                                                    <p className="text-xs text-text-muted mt-1">Current target: {formatDailyTarget(track)}</p>
+                                                    <p className="text-xs text-text-muted mt-0.5">Target: {formatDailyTarget(track)}</p>
                                                 </div>
                                                 <button
                                                     onClick={() => handleRemoveDailyTrack(track.id)}
-                                                    className="rounded-lg bg-red/10 px-2.5 py-1.5 text-[11px] font-semibold text-red"
+                                                    className="rounded-xl bg-red/10 px-2.5 py-1.5 text-[11px] font-semibold text-red"
                                                 >
                                                     Remove
                                                 </button>
@@ -1003,7 +1002,7 @@ export default function IronProtocolPage() {
                                                         <button
                                                             key={`${track.id}-${stage}`}
                                                             onClick={() => handleTrackStageChange(track.id, stage)}
-                                                            className={`rounded-lg px-3 py-1.5 text-[11px] font-semibold ${track.stage === stage ? 'bg-cyan text-bg-surface' : 'bg-bg-input text-text-secondary'}`}
+                                                            className={`rounded-xl px-3 py-1.5 text-[11px] font-semibold ${track.stage === stage ? 'bg-cyan text-bg-surface' : 'bg-bg-input text-text-secondary'}`}
                                                         >
                                                             {getGuidedStageLabel(stage)}
                                                         </button>
@@ -1019,8 +1018,8 @@ export default function IronProtocolPage() {
                                                             type="number"
                                                             min={0}
                                                             value={track.target.seconds ?? ''}
-                                                            onChange={(event) => handleTrackTargetChange(track.id, {
-                                                                seconds: Math.max(0, Number(event.target.value) || 0),
+                                                            onChange={(e) => handleTrackTargetChange(track.id, {
+                                                                seconds: Math.max(0, Number(e.target.value) || 0),
                                                             })}
                                                             className="mt-1 w-full rounded-xl border border-border bg-bg-input px-3 py-2 text-sm text-text-primary"
                                                         />
@@ -1033,8 +1032,8 @@ export default function IronProtocolPage() {
                                                             type="number"
                                                             min={0}
                                                             value={track.target.reps ?? ''}
-                                                            onChange={(event) => handleTrackTargetChange(track.id, {
-                                                                reps: Math.max(0, Number(event.target.value) || 0),
+                                                            onChange={(e) => handleTrackTargetChange(track.id, {
+                                                                reps: Math.max(0, Number(e.target.value) || 0),
                                                             })}
                                                             className="mt-1 w-full rounded-xl border border-border bg-bg-input px-3 py-2 text-sm text-text-primary"
                                                         />
@@ -1048,8 +1047,8 @@ export default function IronProtocolPage() {
                                                                 type="number"
                                                                 min={0}
                                                                 value={track.target.sets ?? ''}
-                                                                onChange={(event) => handleTrackTargetChange(track.id, {
-                                                                    sets: Math.max(0, Number(event.target.value) || 0),
+                                                                onChange={(e) => handleTrackTargetChange(track.id, {
+                                                                    sets: Math.max(0, Number(e.target.value) || 0),
                                                                 })}
                                                                 className="mt-1 w-full rounded-xl border border-border bg-bg-input px-3 py-2 text-sm text-text-primary"
                                                             />
@@ -1060,8 +1059,8 @@ export default function IronProtocolPage() {
                                                                 type="number"
                                                                 min={0}
                                                                 value={track.target.reps ?? ''}
-                                                                onChange={(event) => handleTrackTargetChange(track.id, {
-                                                                    reps: Math.max(0, Number(event.target.value) || 0),
+                                                                onChange={(e) => handleTrackTargetChange(track.id, {
+                                                                    reps: Math.max(0, Number(e.target.value) || 0),
                                                                 })}
                                                                 className="mt-1 w-full rounded-xl border border-border bg-bg-input px-3 py-2 text-sm text-text-primary"
                                                             />
@@ -1074,13 +1073,13 @@ export default function IronProtocolPage() {
                                                                     min={0}
                                                                     step="0.5"
                                                                     value={track.addedWeightKg ?? ''}
-                                                                    onChange={(event) => saveDailyConfigState({
+                                                                    onChange={(e) => saveDailyConfigState({
                                                                         ...dailyConfig,
-                                                                        activeTracks: dailyConfig.activeTracks.map((candidate) => (
-                                                                            candidate.id === track.id
-                                                                                ? { ...candidate, addedWeightKg: Math.max(0, Number(event.target.value) || 0) }
-                                                                                : candidate
-                                                                        )),
+                                                                        activeTracks: dailyConfig.activeTracks.map((c) =>
+                                                                            c.id === track.id
+                                                                                ? { ...c, addedWeightKg: Math.max(0, Number(e.target.value) || 0) }
+                                                                                : c
+                                                                        ),
                                                                         updatedAt: Date.now(),
                                                                     })}
                                                                     className="mt-1 w-full rounded-xl border border-border bg-bg-input px-3 py-2 text-sm text-text-primary"
@@ -1098,21 +1097,22 @@ export default function IronProtocolPage() {
                             <div>
                                 <div className="flex items-center justify-between px-2 mb-2">
                                     <p className="text-[11px] font-semibold uppercase tracking-wide text-text-muted">Suggested library</p>
-                                    <span className="text-[11px] text-text-muted">Quick start</span>
                                 </div>
                                 <div className="space-y-2">
                                     {recommendedDailyTracks.map((track) => (
                                         <button
                                             key={track.id}
                                             onClick={() => handleAddDailyTrack(track.exerciseName)}
-                                            className="w-full rounded-xl border border-border bg-bg-card p-3 text-left"
+                                            className="w-full rounded-2xl border border-border bg-bg-card p-3 text-left"
                                         >
                                             <div className="flex items-center justify-between gap-3">
                                                 <div>
-                                                    <p className="text-sm font-semibold">{track.exerciseName}</p>
-                                                    <p className="text-xs text-text-muted mt-1">Default target: {track.defaultTarget.seconds ? `${track.defaultTarget.seconds / 60} min` : track.defaultTarget.sets ? `${track.defaultTarget.sets} x ${track.defaultTarget.reps}` : `${track.defaultTarget.reps} reps`}</p>
+                                                    <p className="text-sm font-semibold text-text-primary">{track.exerciseName}</p>
+                                                    <p className="text-xs text-text-muted mt-0.5">
+                                                        Default: {track.defaultTarget.seconds ? `${track.defaultTarget.seconds / 60} min` : track.defaultTarget.sets ? `${track.defaultTarget.sets} × ${track.defaultTarget.reps}` : `${track.defaultTarget.reps} reps`}
+                                                    </p>
                                                 </div>
-                                                <span className="rounded-lg bg-accent/15 px-2.5 py-1.5 text-[11px] font-semibold text-accent flex items-center gap-1">
+                                                <span className="rounded-xl bg-accent/15 px-2.5 py-1.5 text-[11px] font-semibold text-accent flex items-center gap-1 shrink-0">
                                                     <Plus size={12} />
                                                     Add
                                                 </span>
@@ -1124,24 +1124,21 @@ export default function IronProtocolPage() {
 
                             {dailySearch.trim().length >= 2 && (
                                 <div>
-                                    <div className="flex items-center justify-between px-2 mb-2">
-                                        <p className="text-[11px] font-semibold uppercase tracking-wide text-text-muted">Search results</p>
-                                        <span className="text-[11px] text-text-muted">Exercise library</span>
-                                    </div>
+                                    <p className="text-[11px] font-semibold uppercase tracking-wide text-text-muted px-2 mb-2">Search results</p>
                                     {dailySearchResults.length > 0 ? (
                                         <div className="space-y-2">
-                                            {dailySearchResults.map((exerciseName) => (
+                                            {dailySearchResults.map((name) => (
                                                 <button
-                                                    key={exerciseName}
-                                                    onClick={() => handleAddDailyTrack(exerciseName)}
-                                                    className="w-full rounded-xl border border-border bg-bg-card p-3 text-left"
+                                                    key={name}
+                                                    onClick={() => handleAddDailyTrack(name)}
+                                                    className="w-full rounded-2xl border border-border bg-bg-card p-3 text-left"
                                                 >
                                                     <div className="flex items-center justify-between gap-3">
                                                         <div>
-                                                            <p className="text-sm font-semibold">{exerciseName}</p>
-                                                            <p className="text-xs text-text-muted mt-1">Create a daily track from this exercise</p>
+                                                            <p className="text-sm font-semibold text-text-primary">{name}</p>
+                                                            <p className="text-xs text-text-muted mt-0.5">Add as a daily track</p>
                                                         </div>
-                                                        <span className="rounded-lg bg-accent/15 px-2.5 py-1.5 text-[11px] font-semibold text-accent flex items-center gap-1">
+                                                        <span className="rounded-xl bg-accent/15 px-2.5 py-1.5 text-[11px] font-semibold text-accent flex items-center gap-1 shrink-0">
                                                             <Plus size={12} />
                                                             Add
                                                         </span>
@@ -1150,8 +1147,8 @@ export default function IronProtocolPage() {
                                             ))}
                                         </div>
                                     ) : (
-                                        <div className="rounded-xl border border-border bg-bg-card p-3 text-sm text-text-secondary">
-                                            No matches yet. Try another exercise name.
+                                        <div className="rounded-2xl border border-border bg-bg-card p-3 text-sm text-text-secondary">
+                                            No matches. Try another exercise name.
                                         </div>
                                     )}
                                 </div>
