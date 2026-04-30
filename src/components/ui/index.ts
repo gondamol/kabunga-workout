@@ -1,5 +1,6 @@
 export { ActionButton } from './ActionButton';
 export { ActivityRing } from './ActivityRing';
+export { MiniActivityRing } from './MiniActivityRing';
 export { AppShell } from './AppShell';
 export { BottomSheet } from './BottomSheet';
 export { CoachCard } from './CoachCard';

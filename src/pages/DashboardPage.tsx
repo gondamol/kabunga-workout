@@ -25,7 +25,7 @@ import type {
     ReadinessStatus,
 } from '../lib/types';
 import { BarChart, Bar, XAxis, YAxis, ResponsiveContainer, Tooltip, Cell } from 'recharts';
-import { Dumbbell, ChevronRight, Zap, Trophy, BarChart3, TimerReset, Users, CalendarCheck, Flame, WifiOff, Droplets, PersonStanding, Activity, Footprints, Bike, Wind, ShieldCheck } from 'lucide-react';
+import { Dumbbell, ChevronRight, Zap, Trophy, BarChart3, TimerReset, Users, CalendarCheck, Flame, WifiOff, Droplets, PersonStanding, Activity, Footprints, Bike, Wind, ShieldCheck, Bell } from 'lucide-react';
 import dayjs from 'dayjs';
 import { getOneRepMaxPromptStatus, getOneRepMaxSnoozeUntil } from '../lib/oneRepMaxes';
 import { formatProgressionInsightTarget, getDashboardProgressionInsight } from '../lib/progressionInsights';
@@ -49,6 +49,7 @@ import {
     EmptyState,
     InsightCard,
     MetricCard,
+    MiniActivityRing,
     ProgressRing,
     ReadinessCard,
     RecoveryGuidanceCard,
@@ -130,7 +131,7 @@ const getGuidanceTone = (tone: GuidanceTone): {
 
 export default function DashboardPage() {
     const { user, profile } = useAuthStore();
-    const { activeSession, loadRepeatWorkout } = useWorkoutStore();
+    const { activeSession } = useWorkoutStore();
     const navigate = useNavigate();
     const todayKey = getTodayKey();
 
@@ -436,20 +437,6 @@ export default function DashboardPage() {
         }
     };
 
-    const handleRepeatLastWorkout = (startImmediately = false) => {
-        if (!user || !latestWorkout) return;
-
-        loadRepeatWorkout(user.uid, latestWorkout, { startImmediately });
-        if (startImmediately) {
-            toast.success('Last workout loaded and started.');
-            navigate('/active-workout');
-            return;
-        }
-
-        toast.success('Last workout loaded. Review it before starting.');
-        navigate('/workout');
-    };
-
     const chartData = useMemo(() => {
         const days = getDaysInRange(7);
         return days.map((day) => {
@@ -518,8 +505,10 @@ export default function DashboardPage() {
     };
 
     const handleTodayRecommendation = () => {
+        // "Repeat last session" was removed per UX feedback — repeats rarely match real intent.
+        // If the recommendation suggests repeating, route to history so the athlete picks intentionally.
         if (todayRecommendation.tone === 'repeat' && latestWorkout) {
-            handleRepeatLastWorkout(false);
+            navigate('/history');
             return;
         }
         navigate(todayRecommendation.route);
@@ -548,40 +537,72 @@ export default function DashboardPage() {
 
     // Weekly day strip (Mon-Sun, ISO week)
     const weekDays = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
-    const weekDaySet = new Set(workouts.map((w) => dayjs(w.startedAt).format('YYYY-MM-DD')));
     const mondayOffset = (dayjs().day() + 6) % 7; // 0=Mon
+    const todayKeyStr = dayjs().format('YYYY-MM-DD');
     const weekDayDates = Array.from({ length: 7 }, (_, i) => {
         const d = dayjs().subtract(mondayOffset - i, 'day');
-        return { label: weekDays[i], date: d.format('YYYY-MM-DD'), isToday: d.format('YYYY-MM-DD') === dayjs().format('YYYY-MM-DD') };
+        const dateKey = d.format('YYYY-MM-DD');
+        const dayWorkouts = workouts.filter((w) => dayjs(w.startedAt).format('YYYY-MM-DD') === dateKey);
+        const dayCal = dayWorkouts.reduce((sum, w) => sum + (w.caloriesEstimate ?? 0), 0);
+        const dayMin = dayWorkouts.reduce((sum, w) => sum + (w.duration ?? 0) / 60, 0);
+        const movePct = Math.min(100, (dayCal / 100) * 100); // 100 cal = full ring
+        const exercisePct = Math.min(100, (dayMin / 30) * 100); // 30 min = full ring
+        const standPct = dayWorkouts.length > 0 ? Math.min(100, dayWorkouts.length * 60) : 0;
+        return {
+            label: weekDays[i],
+            date: dateKey,
+            isToday: dateKey === todayKeyStr,
+            hasActivity: dayWorkouts.length > 0,
+            movePct,
+            exercisePct,
+            standPct,
+        };
     });
 
-    return (
-        <div className="shell-page space-y-5 pb-6 pt-5">
+    const notifCount = (oneRepMaxStatus.shouldPrompt ? 1 : 0) + (todayHealthCheck ? 0 : 1);
 
-            {/* ── Header Greeting ── */}
+    return (
+        <div className="shell-page space-y-5 pb-6 pt-4">
+
+            {/* ── Brand bar ── */}
             <header className="animate-fade-in px-1">
-                <div className="flex items-start justify-between gap-3">
-                    <div className="min-w-0 flex-1">
-                        <h1 className="font-display text-[1.7rem] font-extrabold leading-tight text-text-primary">
-                            {greetingWord}, {firstName}! <span className="inline-block">👋</span>
-                        </h1>
-                        <p className="mt-1 text-sm text-text-muted">Today is {dayjs().format('MMMM D, YYYY')}</p>
+                <div className="flex items-center justify-between gap-3 mb-3">
+                    <div className="flex items-center gap-2">
+                        <div className="w-9 h-9 rounded-xl bg-primary flex items-center justify-center">
+                            <Dumbbell size={17} className="text-secondary" strokeWidth={2.4} />
+                        </div>
+                        <div className="leading-tight">
+                            <p className="text-[12px] font-extrabold tracking-[0.18em] text-primary leading-none">KABUNGA</p>
+                            <p className="text-[9px] tracking-[0.16em] text-text-muted leading-none mt-1">WORKOUT</p>
+                        </div>
                     </div>
-                    <div className="flex flex-col items-end gap-1.5 shrink-0">
-                        {!isOnline && (
-                            <span className="flex items-center gap-1 rounded-full bg-amber/15 px-2.5 py-1 text-[10px] font-bold text-amber">
-                                <WifiOff size={11} />
-                                Offline
+                    <button
+                        type="button"
+                        onClick={() => navigate('/community')}
+                        className="relative w-10 h-10 rounded-2xl bg-bg-card border border-border flex items-center justify-center shadow-card"
+                        aria-label="Notifications"
+                    >
+                        <Bell size={18} className="text-text-secondary" strokeWidth={2.2} />
+                        {notifCount > 0 && (
+                            <span className="absolute -top-1 -right-1 min-w-[18px] h-[18px] rounded-full bg-primary text-secondary text-[10px] font-extrabold flex items-center justify-center px-1 border-2 border-bg-primary">
+                                {notifCount}
                             </span>
                         )}
-                        <button
-                            onClick={() => setShowHealthForm((c) => !c)}
-                            className="flex items-center gap-1.5 rounded-full bg-primary-container px-3 py-1.5 text-[11px] font-bold text-primary"
-                        >
-                            <ShieldCheck size={12} />
-                            Check-in
-                        </button>
+                    </button>
+                </div>
+                <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0 flex-1">
+                        <h1 className="font-display text-[1.85rem] font-extrabold leading-[1.05] text-text-primary">
+                            {greetingWord}, {firstName}! <span className="inline-block">👋</span>
+                        </h1>
+                        <p className="mt-1.5 text-sm text-text-muted">Today is {dayjs().format('MMMM D, YYYY')}</p>
                     </div>
+                    {!isOnline && (
+                        <span className="flex items-center gap-1 rounded-full bg-amber/15 px-2.5 py-1 text-[10px] font-bold text-amber shrink-0">
+                            <WifiOff size={11} />
+                            Offline
+                        </span>
+                    )}
                 </div>
             </header>
 
@@ -663,25 +684,23 @@ export default function DashboardPage() {
                     </div>
                 </div>
 
-                {/* Day strip */}
+                {/* Day strip with mini activity rings */}
                 <div className="mt-4 flex justify-between">
-                    {weekDayDates.map(({ label, date, isToday }) => {
-                        const done = weekDaySet.has(date);
-                        return (
-                            <div key={date} className="flex flex-col items-center gap-1">
-                                <span className={`text-[10px] font-semibold ${isToday ? 'text-primary' : 'text-text-muted'}`}>{label}</span>
-                                <div
-                                    className="w-6 h-6 rounded-full flex items-center justify-center"
-                                    style={{
-                                        background: done ? '#2f7d32' : isToday ? '#dcefd8' : '#edf4e8',
-                                        border: isToday && !done ? '2px solid #9bd93c' : '2px solid transparent',
-                                    }}
-                                >
-                                    {done && <span className="text-white text-[10px] font-bold">✓</span>}
-                                </div>
-                            </div>
-                        );
-                    })}
+                    {weekDayDates.map(({ label, date, isToday, hasActivity, movePct, exercisePct, standPct }) => (
+                        <div key={date} className="flex flex-col items-center gap-2">
+                            <span className={`text-[10px] font-semibold ${isToday ? 'text-primary' : 'text-text-muted'}`}>{label}</span>
+                            <MiniActivityRing
+                                size={32}
+                                outer={movePct}
+                                middle={exercisePct}
+                                inner={standPct}
+                                empty={!hasActivity && !isToday}
+                                isToday={isToday}
+                                label={label}
+                                className="text-primary"
+                            />
+                        </div>
+                    ))}
                 </div>
             </section>
 
@@ -771,16 +790,6 @@ export default function DashboardPage() {
                     {todayRecommendation.ctaLabel}
                     <ChevronRight size={18} strokeWidth={2.5} />
                 </button>
-
-                {!activeSession && latestWorkout && (
-                    <button
-                        type="button"
-                        onClick={() => handleRepeatLastWorkout(false)}
-                        className="mt-2 w-full py-3 rounded-2xl border border-border bg-bg-surface text-sm text-text-secondary font-semibold flex items-center justify-center gap-2"
-                    >
-                        Repeat: {getWorkoutHeadline(latestWorkout)}
-                    </button>
-                )}
             </section>
 
             {/* ── Quick Actions ── */}
