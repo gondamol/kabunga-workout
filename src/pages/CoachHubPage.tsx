@@ -45,6 +45,7 @@ import type {
 } from '../lib/types';
 import { copyToClipboard, formatDurationHuman, formatRelativeTime } from '../lib/utils';
 import { CoachCard, SegmentedControl, StatChip } from '../components/ui';
+import { ShareCodeChip, ReadinessBadge, ReadinessTrendStrip } from '../components/coach';
 
 interface PlanExerciseDraft {
     name: string;
@@ -872,25 +873,11 @@ export default function CoachHubPage() {
                 </>
             ) : (
                 <>
-                    <div className="glass rounded-2xl p-4">
-                        <div className="flex items-center justify-between gap-2">
-                            <div>
-                                <p className="text-xs text-text-muted uppercase tracking-wide">Your Coach Code</p>
-                                <p className="text-xl font-black mt-1">{profile?.coachCode || 'Unavailable'}</p>
-                            </div>
-                            <button
-                                onClick={() => void handleCopyCoachCode()}
-                                disabled={!profile?.coachCode}
-                                className="px-3 py-2 rounded-xl border border-border text-xs text-text-secondary disabled:opacity-40"
-                            >
-                                <Clipboard size={14} className="inline mr-1" />
-                                Copy
-                            </button>
-                        </div>
-                        <p className="text-xs text-text-secondary mt-2">
-                            Share this code with athletes so they can connect to you.
-                        </p>
-                    </div>
+                    <ShareCodeChip
+                        code={profile?.coachCode}
+                        label="Your coach code"
+                        helper="Share this code with athletes so they can connect to you."
+                    />
 
                     <div className="glass rounded-2xl p-4 space-y-3">
                         <h3 className="text-sm font-semibold flex items-center gap-2">
@@ -930,10 +917,8 @@ export default function CoachHubPage() {
                                             Coach-safe recovery summary for {selectedAthlete.athleteName}.
                                         </p>
                                     </div>
-                                    {athleteReadinessMeta && athleteReadiness && (
-                                        <span className={`rounded-full px-3 py-1 text-xs font-semibold ${athleteReadinessMeta.pill}`}>
-                                            {athleteReadinessMeta.label} • {athleteReadiness.score}/10
-                                        </span>
+                                    {athleteReadiness && (
+                                        <ReadinessBadge status={athleteReadiness.status} score={athleteReadiness.score} />
                                     )}
                                 </div>
 
@@ -958,35 +943,7 @@ export default function CoachHubPage() {
                                             </div>
                                         </div>
 
-                                        <div className="space-y-2">
-                                            <div className="flex items-center justify-between">
-                                                <p className="text-xs font-semibold text-text-secondary">Last 7 Days</p>
-                                                <p className="text-[11px] text-text-muted">Missing days stay blank</p>
-                                            </div>
-                                            <div className="grid grid-cols-7 gap-2">
-                                                {athleteReadinessTrend.map((point) => {
-                                                    const toneClass = point.status === 'excellent'
-                                                        ? 'border-green/30 bg-green/10 text-green'
-                                                        : point.status === 'good'
-                                                            ? 'border-cyan/30 bg-cyan/10 text-cyan'
-                                                            : point.status === 'moderate'
-                                                                ? 'border-amber/30 bg-amber/10 text-amber'
-                                                                : point.status === 'poor'
-                                                                    ? 'border-red/30 bg-red/10 text-red'
-                                                                    : 'border-border bg-bg-card text-text-muted';
-
-                                                    return (
-                                                        <div
-                                                            key={point.date}
-                                                            className={`rounded-xl border px-2 py-3 text-center ${toneClass}`}
-                                                        >
-                                                            <p className="text-[10px] font-semibold uppercase">{dayjs(point.date).format('dd')}</p>
-                                                            <p className="text-sm font-bold mt-1">{point.score ?? '—'}</p>
-                                                        </div>
-                                                    );
-                                                })}
-                                            </div>
-                                        </div>
+                                        <ReadinessTrendStrip points={athleteReadinessTrend} helper="Missing days stay blank" />
                                     </>
                                 ) : (
                                     <div className="rounded-xl bg-bg-card p-3 text-sm text-text-secondary">
