@@ -53,7 +53,7 @@ export default function WorkoutPage() {
     const { user } = useAuthStore();
     const {
         startWorkout, activeSession, addExercise, initPlan,
-        isTimerRunning, updateExercisePlan, removeExercise, loadCoachPlan, initFromTemplatePlan, activeTemplate, loadRepeatWorkout,
+        isTimerRunning, updateExercisePlan, removeExercise, loadCoachPlan, initFromTemplatePlan, activeTemplate,
     } = useWorkoutStore();
     const navigate = useNavigate();
 
@@ -127,22 +127,6 @@ export default function WorkoutPage() {
         }
         loadCoachPlan(user.uid, plan.id, plan.title, plan.notes, plan.exercises);
         toast.success('Coach plan loaded. Review and tap Start Workout.');
-    };
-
-    const handleRepeatLastWorkout = (startImmediately = false) => {
-        if (!user || !latestWorkout) return;
-        if (activeSession && queue.length > 0 && !confirm('Replace your current plan with your last workout?')) {
-            return;
-        }
-
-        loadRepeatWorkout(user.uid, latestWorkout, { startImmediately });
-        if (startImmediately) {
-            toast.success('Last workout loaded and started.');
-            navigate('/active-workout');
-            return;
-        }
-
-        toast.success('Last workout loaded. Review it before starting.');
     };
 
     const filtered = COMMON_EXERCISES.filter(e =>
@@ -314,14 +298,13 @@ export default function WorkoutPage() {
                             </button>
                             <button
                                 type="button"
-                                disabled={!latestWorkout}
-                                onClick={() => handleRepeatLastWorkout(false)}
-                                className="pressable premium-card p-4 text-left disabled:opacity-50"
+                                onClick={() => navigate('/history')}
+                                className="pressable premium-card p-4 text-left"
                             >
                                 <History size={20} className="text-tertiary" />
-                                <p className="mt-3 font-extrabold text-text-primary">Repeat last</p>
+                                <p className="mt-3 font-extrabold text-text-primary">Browse history</p>
                                 <p className="mt-1 text-xs leading-5 text-text-secondary">
-                                    {latestWorkout ? formatRelativeTime(latestWorkout.startedAt) : 'After your first session.'}
+                                    Pick a past session to use as inspiration.
                                 </p>
                             </button>
                         </div>
@@ -387,46 +370,36 @@ export default function WorkoutPage() {
                     )}
 
                     {latestWorkout && !isTimerRunning && (
-                        <div className="glass rounded-2xl p-4 animate-fade-in">
+                        <button
+                            type="button"
+                            onClick={() => navigate(`/history/${latestWorkout.id}`)}
+                            className="glass w-full text-left rounded-2xl p-4 animate-fade-in"
+                        >
                             <div className="flex items-start justify-between gap-3">
                                 <div>
                                     <p className="text-[11px] font-semibold uppercase tracking-wide text-cyan">Last session</p>
-                                    <h3 className="text-base font-bold mt-1">Repeat your last workout</h3>
-                                    <p className="text-sm text-text-secondary mt-1">{getWorkoutHeadline(latestWorkout)}</p>
+                                    <h3 className="text-base font-bold mt-1 text-text-primary">{getWorkoutHeadline(latestWorkout)}</h3>
+                                    <p className="text-xs text-text-secondary mt-1">Tap to review · {formatRelativeTime(latestWorkout.startedAt)}</p>
                                 </div>
-                                <div className="rounded-2xl bg-cyan/10 px-3 py-2 text-xs font-semibold text-cyan">
-                                    {formatRelativeTime(latestWorkout.startedAt)}
+                                <div className="rounded-2xl bg-cyan/10 px-3 py-2 text-xs font-semibold text-cyan whitespace-nowrap">
+                                    {formatDurationHuman(latestWorkout.duration)}
                                 </div>
                             </div>
                             <div className="mt-3 grid grid-cols-3 gap-2 text-center">
                                 <div className="rounded-xl bg-bg-card p-2">
                                     <p className="text-[10px] text-text-muted">Exercises</p>
-                                    <p className="text-sm font-semibold">{latestWorkout.exercises.length}</p>
+                                    <p className="text-sm font-semibold text-text-primary">{latestWorkout.exercises.length}</p>
                                 </div>
                                 <div className="rounded-xl bg-bg-card p-2">
                                     <p className="text-[10px] text-text-muted">Duration</p>
-                                    <p className="text-sm font-semibold">{formatDurationHuman(latestWorkout.duration)}</p>
+                                    <p className="text-sm font-semibold text-text-primary">{formatDurationHuman(latestWorkout.duration)}</p>
                                 </div>
                                 <div className="rounded-xl bg-bg-card p-2">
-                                    <p className="text-[10px] text-text-muted">Last Done</p>
-                                    <p className="text-sm font-semibold">{dayjs(latestWorkout.startedAt).format('MMM D')}</p>
+                                    <p className="text-[10px] text-text-muted">Date</p>
+                                    <p className="text-sm font-semibold text-text-primary">{dayjs(latestWorkout.startedAt).format('MMM D')}</p>
                                 </div>
                             </div>
-                            <div className="mt-3 flex gap-2">
-                                <button
-                                    onClick={() => handleRepeatLastWorkout(false)}
-                                    className="flex-1 py-3 rounded-2xl border border-border text-sm font-semibold text-text-primary"
-                                >
-                                    Load For Edit
-                                </button>
-                                <button
-                                    onClick={() => handleRepeatLastWorkout(true)}
-                                    className="flex-1 py-3 rounded-2xl gradient-primary text-white text-sm font-semibold"
-                                >
-                                    Start now
-                                </button>
-                            </div>
-                        </div>
+                        </button>
                     )}
 
                     <section className="premium-card p-4 animate-fade-in stagger-1">
@@ -518,12 +491,11 @@ export default function WorkoutPage() {
                     {/* Quick actions */}
                     <div className="grid grid-cols-3 gap-2 animate-fade-in stagger-2">
                         <button
-                            onClick={() => handleRepeatLastWorkout(false)}
-                            disabled={!latestWorkout}
-                            className="rounded-2xl bg-bg-card border border-border p-3 text-center shadow-card disabled:opacity-40"
+                            onClick={() => navigate('/history')}
+                            className="rounded-2xl bg-bg-card border border-border p-3 text-center shadow-card"
                         >
                             <History size={18} className="text-tertiary mx-auto mb-1" />
-                            <p className="text-[11px] font-semibold text-text-secondary leading-tight">Repeat Last</p>
+                            <p className="text-[11px] font-semibold text-text-secondary leading-tight">History</p>
                         </button>
                         <button
                             onClick={() => todayCoachPlans[0] ? handleLoadCoachPlan(todayCoachPlans[0]) : null}

@@ -9,7 +9,6 @@ import {
     getMealsByDate,
     getMyCommunityGroups,
     getOneRepMaxes,
-    updateUserProfile,
 } from '../lib/firestoreService';
 import { formatDurationHuman, formatRelativeTime, getTodayKey, getDaysInRange } from '../lib/utils';
 import { enqueueAction } from '../lib/offlineQueue';
@@ -27,7 +26,6 @@ import type {
 import { BarChart, Bar, XAxis, YAxis, ResponsiveContainer, Tooltip, Cell } from 'recharts';
 import { Dumbbell, ChevronRight, Zap, Trophy, BarChart3, TimerReset, Users, CalendarCheck, Flame, WifiOff, Droplets, PersonStanding, Activity, Footprints, Bike, Wind, ShieldCheck, Bell } from 'lucide-react';
 import dayjs from 'dayjs';
-import { getOneRepMaxPromptStatus, getOneRepMaxSnoozeUntil } from '../lib/oneRepMaxes';
 import { formatProgressionInsightTarget, getDashboardProgressionInsight } from '../lib/progressionInsights';
 import { getWorkoutHeadline } from '../lib/workoutSummary';
 import { buildReadinessRecoveryGuidance, summarizeDailyNutrition, type GuidanceTone } from '../lib/readinessGuidance';
@@ -144,7 +142,6 @@ export default function DashboardPage() {
     const [todayReadiness, setTodayReadiness] = useState<ReadinessScore | null>(null);
     const [showHealthForm, setShowHealthForm] = useState(false);
     const [loadingWorkouts, setLoadingWorkouts] = useState(true);
-    const [savingPromptState, setSavingPromptState] = useState(false);
     const [savingHealthCheck, setSavingHealthCheck] = useState(false);
     const [cardioOpen, setCardioOpen] = useState<{ open: boolean; activity: CardioActivityType }>({ open: false, activity: 'run' });
     const openCardio = (activity: CardioActivityType) => setCardioOpen({ open: true, activity });
@@ -274,63 +271,7 @@ export default function DashboardPage() {
         return { totalWorkouts: workouts.length, totalDuration, totalCalories, weeklyWorkouts, streak };
     }, [workouts]);
 
-    const oneRepMaxStatus = useMemo(() => {
-        return getOneRepMaxPromptStatus(oneRepMaxes, workouts, profile);
-    }, [oneRepMaxes, profile, workouts]);
     const progressionInsight = useMemo(() => getDashboardProgressionInsight(workouts), [workouts]);
-
-    useEffect(() => {
-        if (!user || !profile || !oneRepMaxStatus.shouldPrompt) return;
-        const lastShownAt = profile.oneRepMaxPromptLastShownAt || 0;
-        if (Date.now() - lastShownAt < 6 * 60 * 60 * 1000) return;
-
-        const nextShownAt = Date.now();
-        useAuthStore.setState((state) => {
-            if (!state.profile) return state;
-            return {
-                ...state,
-                profile: {
-                    ...state.profile,
-                    oneRepMaxPromptLastShownAt: nextShownAt,
-                },
-            };
-        });
-
-        void updateUserProfile(user.uid, {
-            oneRepMaxPromptLastShownAt: nextShownAt,
-        }).catch((error) => {
-            console.warn('Failed to record 1RM prompt impression:', error);
-        });
-    }, [oneRepMaxStatus.shouldPrompt, profile, user]);
-
-    const handleSnoozeOneRepMaxPrompt = async () => {
-        if (!user) return;
-
-        setSavingPromptState(true);
-        const snoozeUntil = getOneRepMaxSnoozeUntil();
-        useAuthStore.setState((state) => {
-            if (!state.profile) return state;
-            return {
-                ...state,
-                profile: {
-                    ...state.profile,
-                    oneRepMaxPromptSnoozeUntil: snoozeUntil,
-                    oneRepMaxPromptLastShownAt: Date.now(),
-                },
-            };
-        });
-
-        try {
-            await updateUserProfile(user.uid, {
-                oneRepMaxPromptSnoozeUntil: snoozeUntil,
-                oneRepMaxPromptLastShownAt: Date.now(),
-            });
-        } catch (error) {
-            console.warn('Failed to snooze 1RM prompt:', error);
-        } finally {
-            setSavingPromptState(false);
-        }
-    };
 
     const trendInsights = useMemo(() => {
         const now = Date.now();
@@ -559,7 +500,7 @@ export default function DashboardPage() {
         };
     });
 
-    const notifCount = (oneRepMaxStatus.shouldPrompt ? 1 : 0) + (todayHealthCheck ? 0 : 1);
+    const notifCount = todayHealthCheck ? 0 : 1;
 
     return (
         <div className="shell-page space-y-5 pb-6 pt-4">
@@ -835,38 +776,6 @@ export default function DashboardPage() {
                     </button>
                 </div>
             </div>
-
-            {/* ── 1RM Prompt ── */}
-            {oneRepMaxStatus.shouldPrompt && (
-                <div className="bg-bg-card rounded-3xl p-5 shadow-card border border-amber/20 animate-fade-in">
-                    <div className="flex items-start justify-between gap-3">
-                        <div>
-                            <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-amber">Strength profile</p>
-                            <h2 className="mt-1 text-base font-bold text-text-primary">Update your 1RM</h2>
-                            <p className="mt-1.5 text-sm text-text-secondary">{oneRepMaxStatus.reason}</p>
-                        </div>
-                        <div className="w-10 h-10 rounded-2xl bg-amber/10 flex items-center justify-center shrink-0">
-                            <BarChart3 size={18} className="text-amber" />
-                        </div>
-                    </div>
-                    <div className="mt-4 flex gap-2">
-                        <button
-                            onClick={() => navigate('/profile?focus=one-rep-maxes')}
-                            className="flex-1 rounded-2xl bg-amber px-4 py-3 font-bold text-white text-sm"
-                        >
-                            Update in Profile
-                        </button>
-                        <button
-                            onClick={() => void handleSnoozeOneRepMaxPrompt()}
-                            disabled={savingPromptState}
-                            className="flex items-center gap-2 rounded-2xl border border-border bg-bg-surface px-4 py-3 text-sm text-text-secondary disabled:opacity-50"
-                        >
-                            <TimerReset size={14} />
-                            7 days
-                        </button>
-                    </div>
-                </div>
-            )}
 
             {/* ── Progress section ── */}
             {!loadingWorkouts && !hasWorkoutHistory ? (
