@@ -5,6 +5,7 @@ import { useAuthStore } from '../stores/authStore';
 import { saveWorkout } from '../lib/firestoreService';
 import { enqueueAction } from '../lib/offlineQueue';
 import {
+    buildCardioWorkoutSession,
     computeCardioSummary,
     computeHeartPointsForCardio,
     estimateCardioCalories,
@@ -69,24 +70,12 @@ export function CardioQuickLog({ open, onClose, onSaved, initialActivity = 'run'
             return;
         }
         setSaving(true);
-        const now = Date.now();
-        const session: WorkoutSession = {
-            id: `cardio_${now}`,
+        const session = buildCardioWorkoutSession({
             userId: user.uid,
-            templateId: 'cardio_quick',
-            startedAt: now - durationSec * 1000,
-            endedAt: now,
-            duration: durationSec,
-            exercises: [],
-            mediaUrls: [],
-            caloriesEstimate: calories,
-            heartPoints,
-            cardio: summary,
-            notes: '',
-            status: 'completed',
-            createdAt: now,
-            updatedAt: now,
-        };
+            activity,
+            durationSeconds: durationSec,
+            distanceKm: typeof distanceKm === 'number' ? distanceKm : undefined,
+        });
         try {
             await saveWorkout(session);
             toast.success(`${ACTIVITY_OPTIONS.find((o) => o.id === activity)?.label ?? 'Cardio'} logged · ${heartPoints} heart pts`);

@@ -97,3 +97,39 @@ export function aggregateWeeklyHeartPoints(sessions: WorkoutSession[], windowMs 
         .filter((s) => s.startedAt >= since)
         .reduce((sum, s) => sum + summarizeHeartPoints(s), 0);
 }
+
+/**
+ * Build a completed cardio WorkoutSession from quick-log inputs. Pure (no IO),
+ * so the session shape can be unit-tested without firebase.
+ */
+export function buildCardioWorkoutSession(input: {
+    userId: string;
+    activity: CardioActivityType;
+    durationSeconds: number;
+    distanceKm?: number;
+    bodyWeightKg?: number;
+    now?: number;
+    notes?: string;
+}): WorkoutSession {
+    const now = input.now ?? Date.now();
+    const summary = computeCardioSummary(input.activity, input.durationSeconds, input.distanceKm);
+    const calories = estimateCardioCalories(input.activity, input.durationSeconds, input.bodyWeightKg ?? 70);
+    const heartPoints = computeHeartPointsForCardio(input.durationSeconds, summary.intensity ?? 'moderate');
+    return {
+        id: `cardio_${now}`,
+        userId: input.userId,
+        templateId: 'cardio_quick',
+        startedAt: now - input.durationSeconds * 1000,
+        endedAt: now,
+        duration: input.durationSeconds,
+        exercises: [],
+        mediaUrls: [],
+        caloriesEstimate: calories,
+        heartPoints,
+        cardio: summary,
+        notes: input.notes ?? '',
+        status: 'completed',
+        createdAt: now,
+        updatedAt: now,
+    };
+}
