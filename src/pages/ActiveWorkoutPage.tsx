@@ -24,6 +24,7 @@ import Webcam from 'react-webcam';
 import { isIronTemplateId } from '../lib/ironProtocol';
 import { ActionButton, EmptyState, ProgressRing, StatChip } from '../components/ui';
 import { summarizeHeartPoints } from '../lib/heartPoints';
+import { Confetti } from '../components/Confetti';
 
 const normalizeExerciseName = (name: string): string =>
     name.toLowerCase().trim().replace(/\s+/g, ' ');
@@ -178,17 +179,9 @@ export default function ActiveWorkoutPage() {
 
         return (
             <div className="max-w-lg mx-auto px-4 pt-6 pb-24 space-y-4">
-                {/* ── Hero with confetti decorations ── */}
-                <div className="relative pt-2">
-                    {/* Confetti decorations */}
-                    <div className="absolute inset-0 pointer-events-none overflow-hidden">
-                        <span className="absolute top-2 left-12 text-amber text-lg rotate-12">▍</span>
-                        <span className="absolute top-6 right-20 text-tertiary text-sm -rotate-12">▎</span>
-                        <span className="absolute top-14 left-4 text-secondary text-base rotate-45">▍</span>
-                        <span className="absolute top-20 right-8 text-amber text-sm">▎</span>
-                        <span className="absolute top-32 left-20 text-tertiary text-xs rotate-12">●</span>
-                        <span className="absolute top-2 right-2 text-secondary text-base rotate-12">▎</span>
-                    </div>
+                {/* ── Hero with animated confetti ── */}
+                <div className="relative pt-2 min-h-[220px]">
+                    <Confetti count={22} />
                     <div className="relative">
                         <h1 className="font-display text-[2.3rem] font-extrabold text-primary leading-[1.05]">
                             Workout<br />Complete! <span className="inline-block">🎉</span>

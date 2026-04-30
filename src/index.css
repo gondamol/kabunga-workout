@@ -146,6 +146,34 @@ button:disabled,
   to { transform: rotate(360deg); }
 }
 
+@keyframes confetti-fall {
+  0% {
+    transform: translate3d(var(--cf-x, 0), -120%, 0) rotate(var(--cf-rot-start, 0deg));
+    opacity: 0;
+  }
+  10% { opacity: 1; }
+  100% {
+    transform: translate3d(var(--cf-x-end, 0), 120%, 0) rotate(var(--cf-rot-end, 360deg));
+    opacity: 0.95;
+  }
+}
+
+.confetti-piece {
+  position: absolute;
+  top: 0;
+  left: 50%;
+  width: 8px;
+  height: 14px;
+  border-radius: 2px;
+  animation: confetti-fall var(--cf-duration, 2.6s) linear var(--cf-delay, 0s) infinite;
+  pointer-events: none;
+  will-change: transform, opacity;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .confetti-piece { animation: none; opacity: 0.6; }
+}
+
 .animate-fade-in {
   animation: fade-in 0.3s ease-out both;
 }
