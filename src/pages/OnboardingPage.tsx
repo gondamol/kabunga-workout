@@ -10,6 +10,7 @@ import {
     Check,
     Dumbbell,
     Flag,
+    Flame,
     HeartPulse,
     Home,
     MapPin,
@@ -158,14 +159,21 @@ const goalChoices: Array<Choice<PrimaryGoal>> = PRIMARY_GOAL_OPTIONS
         value: goal,
         label: getPrimaryGoalLabel(goal),
         detail: {
-            strength: 'Get stronger with progressive sessions.',
-            fat_loss: 'Train consistently without shame.',
-            general_fitness: 'Build a balanced routine.',
-            mobility: 'Move with less stiffness.',
-            consistency: 'Make showing up easier.',
-            mental_wellness: 'Use movement to support your day.',
+            strength: 'Increase muscle mass, get stronger, and feel powerful.',
+            fat_loss: 'Reduce body fat and improve overall health.',
+            general_fitness: 'Improve fitness, boost energy, feel your best.',
+            mobility: 'Move better, reduce stiffness, and prevent injuries.',
+            consistency: 'Build healthy habits and stay consistent.',
+            mental_wellness: 'Reduce stress, improve mood, and feel balanced.',
         }[goal] ?? 'Build lean muscle with steady training.',
-        icon: goal === 'mental_wellness' ? <HeartPulse size={21} /> : goal === 'mobility' ? <Sparkles size={21} /> : <Flag size={21} />,
+        icon: {
+            strength: <Dumbbell size={21} />,
+            fat_loss: <Flame size={21} />,
+            general_fitness: <BatteryCharging size={21} />,
+            mobility: <Sparkles size={21} />,
+            consistency: <CalendarDays size={21} />,
+            mental_wellness: <HeartPulse size={21} />,
+        }[goal] ?? <Flag size={21} />,
     }));
 
 const levelChoices: Array<Choice<ExperienceLevel>> = EXPERIENCE_LEVEL_OPTIONS.map((level) => ({
@@ -296,6 +304,57 @@ function ChoiceCard<T extends string | number>({
     );
 }
 
+const GOAL_TONES: Record<string, { iconBg: string; iconColor: string }> = {
+    strength: { iconBg: 'bg-primary-container', iconColor: 'text-primary' },
+    fat_loss: { iconBg: 'bg-amber/15', iconColor: 'text-amber' },
+    general: { iconBg: 'bg-tertiary-container', iconColor: 'text-tertiary' },
+    mobility: { iconBg: 'bg-secondary-container', iconColor: 'text-primary' },
+    consistency: { iconBg: 'bg-amber/15', iconColor: 'text-amber' },
+    mental: { iconBg: 'bg-tertiary-container', iconColor: 'text-tertiary' },
+};
+
+function GoalCard<T extends string | number>({
+    choice,
+    selected,
+    onSelect,
+}: {
+    choice: Choice<T>;
+    selected: boolean;
+    onSelect: (value: T) => void;
+}) {
+    const toneKey = String(choice.value);
+    const tone = GOAL_TONES[toneKey] ?? GOAL_TONES.strength;
+    return (
+        <button
+            type="button"
+            onClick={() => onSelect(choice.value)}
+            className={cx(
+                'pressable relative w-full rounded-[1.5rem] border-2 p-4 text-left transition-colors',
+                selected ? 'border-primary bg-primary-container/40 shadow-soft' : 'border-border bg-bg-card shadow-card hover:border-primary/40',
+            )}
+        >
+            <span className={cx('flex h-12 w-12 items-center justify-center rounded-full mb-3', tone.iconBg, tone.iconColor)}>
+                {choice.icon}
+            </span>
+            <span className="block text-base font-extrabold text-text-primary leading-tight">
+                {choice.label}
+            </span>
+            <span className="mt-1.5 block text-xs leading-snug text-text-secondary">
+                {choice.detail}
+            </span>
+            <span
+                className={cx(
+                    'absolute top-3.5 right-3.5 flex h-5 w-5 items-center justify-center rounded-full border-2',
+                    selected ? 'border-primary bg-primary' : 'border-border-light bg-transparent',
+                )}
+                aria-hidden="true"
+            >
+                {selected && <Check size={11} strokeWidth={3.5} className="text-white" />}
+            </span>
+        </button>
+    );
+}
+
 export default function OnboardingPage() {
     const navigate = useNavigate();
     const { user, profile } = useAuthStore();
@@ -406,7 +465,18 @@ export default function OnboardingPage() {
                     </div>
                 );
             case 'goal':
-                return <div className="grid gap-3">{goalChoices.map((choice) => <ChoiceCard key={choice.value} choice={choice} selected={draft.primaryGoal === choice.value} onSelect={(value) => setChoice('primaryGoal', value)} />)}</div>;
+                return (
+                    <div className="grid grid-cols-2 gap-3">
+                        {goalChoices.map((choice) => (
+                            <GoalCard
+                                key={choice.value}
+                                choice={choice}
+                                selected={draft.primaryGoal === choice.value}
+                                onSelect={(value) => setChoice('primaryGoal', value)}
+                            />
+                        ))}
+                    </div>
+                );
             case 'level':
                 return <div className="grid gap-3">{levelChoices.map((choice) => <ChoiceCard key={choice.value} choice={choice} selected={draft.experienceLevel === choice.value} onSelect={(value) => setChoice('experienceLevel', value)} />)}</div>;
             case 'context':
@@ -483,44 +553,100 @@ export default function OnboardingPage() {
         }
     };
 
+    // Group steps into 4 phases for the phase indicator
+    const phaseMap: Record<StepId, number> = {
+        welcome: 1, goal: 1,
+        level: 2, context: 2, equipment: 2,
+        time: 3, days: 3, coach: 3, limitation: 3, style: 3,
+        summary: 4,
+    };
+    const phaseLabels = ['Goal', 'Profile', 'Experience', 'Plan'];
+    const currentPhase = phaseMap[currentStep.id] ?? 1;
+
     return (
         <AppShell className="bg-transparent">
-            <div className="space-y-6">
-                <header className="flex items-center justify-between gap-4">
-                    <ActionButton
-                        size="icon"
-                        variant="secondary"
-                        icon={<ArrowLeft size={20} />}
-                        aria-label="Go back"
-                        onClick={previousStep}
-                        disabled={stepIndex === 0}
-                    />
-                    <div className="min-w-0 flex-1">
-                        <div className="h-2 overflow-hidden rounded-full bg-surface-container">
-                            <div className="h-full rounded-full bg-secondary transition-all duration-500 ease-out" style={{ width: `${progress}%` }} />
+            <div className="space-y-5">
+                <header>
+                    {/* Logo + Skip */}
+                    <div className="flex items-center justify-between mb-4">
+                        <div className="flex items-center gap-2">
+                            <div className="w-8 h-8 rounded-xl bg-primary flex items-center justify-center">
+                                <Dumbbell size={16} className="text-white" />
+                            </div>
+                            <div>
+                                <p className="text-[10px] font-bold text-primary leading-none">KABUNGA</p>
+                                <p className="text-[9px] text-text-muted leading-none">WORKOUT</p>
+                            </div>
                         </div>
-                        <p className="mt-2 text-center text-xs font-bold text-text-muted">
-                            Step {stepIndex + 1} of {steps.length}
-                        </p>
+                        <button
+                            type="button"
+                            className="rounded-full px-3 py-1.5 text-sm font-bold text-text-muted border border-border"
+                            onClick={() => setStepIndex(steps.length - 1)}
+                        >
+                            Skip
+                        </button>
                     </div>
-                    <button
-                        type="button"
-                        className="touch-target rounded-full px-3 text-sm font-bold text-text-muted"
-                        onClick={() => setStepIndex(steps.length - 1)}
-                    >
-                        Skip
-                    </button>
+
+                    {/* Phase pills */}
+                    <div className="flex items-center gap-1">
+                        {phaseLabels.map((label, idx) => {
+                            const phase = idx + 1;
+                            const isActive = phase === currentPhase;
+                            const isDone = phase < currentPhase;
+                            return (
+                                <div key={label} className="flex items-center gap-1 flex-1">
+                                    <div className="flex items-center gap-1.5 flex-1">
+                                        <div
+                                            className="flex items-center justify-center rounded-full text-[11px] font-extrabold shrink-0"
+                                            style={{
+                                                width: 22,
+                                                height: 22,
+                                                background: isActive ? '#17452a' : isDone ? '#9bd93c' : '#e9f0e3',
+                                                color: isActive ? 'white' : isDone ? '#17452a' : '#748177',
+                                            }}
+                                        >
+                                            {isDone ? '✓' : phase}
+                                        </div>
+                                        <span className={`text-[11px] font-bold truncate ${isActive ? 'text-primary' : isDone ? 'text-green' : 'text-text-muted'}`}>
+                                            {label}
+                                        </span>
+                                    </div>
+                                    {idx < 3 && <div className="w-4 h-px bg-border shrink-0" />}
+                                </div>
+                            );
+                        })}
+                    </div>
+
+                    {/* Back button */}
+                    {stepIndex > 0 && (
+                        <button
+                            type="button"
+                            onClick={previousStep}
+                            className="mt-3 flex items-center gap-1.5 text-sm font-semibold text-text-muted"
+                        >
+                            <ArrowLeft size={16} />
+                            Back
+                        </button>
+                    )}
                 </header>
 
-                <section className="premium-card-high p-5">
+                <section>
                     <p className="text-xs font-bold uppercase tracking-[0.16em] text-primary">{currentStep.eyebrow}</p>
-                    <h1 className="mt-3 font-display text-3xl font-extrabold leading-tight text-text-primary">{currentStep.title}</h1>
-                    <p className="mt-3 text-sm leading-6 text-text-secondary">{currentStep.detail}</p>
+                    <h1 className="mt-2 font-display text-3xl font-extrabold leading-tight text-text-primary">
+                        {currentStep.id === 'goal' ? 'What brings you here? 👋' : currentStep.title}
+                    </h1>
+                    <p className="mt-2 text-sm leading-6 text-text-secondary">{currentStep.detail}</p>
                 </section>
 
                 <section className="animate-slide-up">{renderStep()}</section>
 
-                <div className="sticky bottom-4 z-10 rounded-[1.5rem] border border-outline/80 bg-bg-card/92 p-3 shadow-lifted backdrop-blur-xl">
+                {currentStep.id === 'goal' && (
+                    <p className="text-center text-xs text-text-muted">
+                        ℹ️ You can change your goal anytime in your profile settings.
+                    </p>
+                )}
+
+                <div className="sticky bottom-4 z-10 rounded-[1.75rem] border border-outline/80 bg-bg-card/92 p-3 shadow-lifted backdrop-blur-xl">
                     {isSummary ? (
                         <ActionButton fullWidth size="lg" onClick={handleFinish} disabled={!readyToFinish || saving} isLoading={saving}>
                             Open my dashboard
@@ -532,7 +658,7 @@ export default function OnboardingPage() {
                             onClick={nextStep}
                             trailingIcon={<ArrowRight size={19} />}
                         >
-                            {currentStep.id === 'limitation' ? 'Continue' : 'Next'}
+                            Continue
                         </ActionButton>
                     )}
                 </div>
