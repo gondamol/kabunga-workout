@@ -8,10 +8,12 @@ import {
     Github,
     LogOut,
     Moon,
+    Pencil,
     Shield,
     Smartphone,
     Users,
 } from 'lucide-react';
+import { EditProfileSheet } from '../components/EditProfileSheet';
 import { useAuthStore } from '../stores/authStore';
 import { formatDate } from '../lib/utils';
 import { getOneRepMaxes, getUserWorkouts, saveOneRepMaxes, updateUserProfile } from '../lib/firestoreService';
@@ -35,6 +37,7 @@ export default function ProfilePage() {
     const [workouts, setWorkouts] = useState<WorkoutSession[]>([]);
     const [savingMaxes, setSavingMaxes] = useState(false);
     const [highlightOneRepMaxes, setHighlightOneRepMaxes] = useState(false);
+    const [editProfileOpen, setEditProfileOpen] = useState(false);
 
     useEffect(() => {
         if (!user) return;
@@ -158,28 +161,53 @@ export default function ProfilePage() {
                 className="animate-fade-in"
             />
 
-            <div className="premium-card-high p-6 flex items-center gap-4 animate-fade-in stagger-1">
-                <div className="w-16 h-16 rounded-2xl bg-accent/10 text-accent flex items-center justify-center text-2xl font-black shrink-0 overflow-hidden">
-                    {profile?.photoURL ? (
-                        <img src={profile.photoURL} alt="" className="w-full h-full rounded-2xl object-cover" />
-                    ) : (
-                        (profile?.displayName?.[0] || 'K').toUpperCase()
-                    )}
-                </div>
-                <div className="flex-1 min-w-0">
-                    <h2 className="font-bold text-lg truncate">{profile?.displayName || 'Athlete'}</h2>
-                    <p className="text-sm text-text-secondary truncate">{user?.email}</p>
-                    <p className="text-xs text-text-muted mt-1">
-                        Joined {profile?.createdAt ? formatDate(profile.createdAt) : 'recently'}
-                    </p>
-                    <div className="mt-3 flex flex-wrap gap-2">
-                        <StatChip label="Role" value={profile?.role === 'coach' ? 'Coach' : 'Athlete'} tone="tertiary" />
-                        {profile?.onboarding?.trainingDaysPerWeek && (
-                            <StatChip label="Weekly goal" value={`${profile.onboarding.trainingDaysPerWeek} days`} tone="secondary" />
+            <div className="premium-card-high p-6 animate-fade-in stagger-1">
+                <div className="flex items-start gap-4">
+                    <div className="w-16 h-16 rounded-2xl bg-accent/10 text-accent flex items-center justify-center text-2xl font-black shrink-0 overflow-hidden">
+                        {profile?.photoURL ? (
+                            <img src={profile.photoURL} alt="" className="w-full h-full rounded-2xl object-cover" />
+                        ) : (
+                            (profile?.displayName?.[0] || 'K').toUpperCase()
                         )}
                     </div>
+                    <div className="flex-1 min-w-0">
+                        <h2 className="font-bold text-lg truncate">{profile?.displayName || 'Athlete'}</h2>
+                        <p className="text-sm text-text-secondary truncate">{user?.email}</p>
+                        <p className="text-xs text-text-muted mt-1">
+                            Joined {profile?.createdAt ? formatDate(profile.createdAt) : 'recently'}
+                        </p>
+                    </div>
+                    <button
+                        type="button"
+                        onClick={() => setEditProfileOpen(true)}
+                        className="shrink-0 flex items-center gap-1.5 rounded-xl border border-border bg-bg-surface px-3 py-2 text-xs font-bold text-text-secondary"
+                        aria-label="Edit profile"
+                    >
+                        <Pencil size={13} />
+                        Edit
+                    </button>
+                </div>
+                {profile?.bio && (
+                    <p className="mt-4 text-sm text-text-secondary leading-relaxed border-t border-border pt-4">
+                        {profile.bio}
+                    </p>
+                )}
+                <div className="mt-4 flex flex-wrap gap-2">
+                    <StatChip label="Role" value={profile?.role === 'coach' ? 'Coach' : 'Athlete'} tone="tertiary" />
+                    {profile?.onboarding?.trainingDaysPerWeek && (
+                        <StatChip label="Weekly goal" value={`${profile.onboarding.trainingDaysPerWeek} days`} tone="secondary" />
+                    )}
+                    {typeof profile?.bodyWeightKg === 'number' && profile.bodyWeightKg > 0 && (
+                        <StatChip label="Body weight" value={`${profile.bodyWeightKg} kg`} tone="primary" />
+                    )}
                 </div>
             </div>
+
+            <EditProfileSheet
+                open={editProfileOpen}
+                profile={profile}
+                onClose={() => setEditProfileOpen(false)}
+            />
 
             {oneRepMaxes && (
                 <div

@@ -27,6 +27,8 @@ export interface UserProfile {
     email: string;
     displayName: string;
     photoURL: string | null;
+    bio?: string | null;
+    bodyWeightKg?: number | null;
     role?: UserRole;
     coachCode?: string | null;
     onboarding?: UserOnboarding | null;

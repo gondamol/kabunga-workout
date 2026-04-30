@@ -34,20 +34,21 @@ type CardioQuickLogProps = {
 };
 
 export function CardioQuickLog({ open, onClose, onSaved, initialActivity = 'run' }: CardioQuickLogProps) {
-    const { user } = useAuthStore();
+    const { user, profile } = useAuthStore();
     const [activity, setActivity] = useState<CardioActivityType>(initialActivity);
     const [minutes, setMinutes] = useState(30);
     const [distanceKm, setDistanceKm] = useState<number | ''>('');
     const [saving, setSaving] = useState(false);
 
     const durationSec = minutes * 60;
+    const bodyWeightKg = typeof profile?.bodyWeightKg === 'number' ? profile.bodyWeightKg : undefined;
     const summary = useMemo(
         () => computeCardioSummary(activity, durationSec, typeof distanceKm === 'number' ? distanceKm : undefined),
         [activity, durationSec, distanceKm],
     );
     const calories = useMemo(
-        () => estimateCardioCalories(activity, durationSec),
-        [activity, durationSec],
+        () => estimateCardioCalories(activity, durationSec, bodyWeightKg),
+        [activity, durationSec, bodyWeightKg],
     );
     const heartPoints = useMemo(
         () => computeHeartPointsForCardio(durationSec, summary.intensity ?? 'moderate'),
@@ -75,6 +76,7 @@ export function CardioQuickLog({ open, onClose, onSaved, initialActivity = 'run'
             activity,
             durationSeconds: durationSec,
             distanceKm: typeof distanceKm === 'number' ? distanceKm : undefined,
+            bodyWeightKg,
         });
         try {
             await saveWorkout(session);

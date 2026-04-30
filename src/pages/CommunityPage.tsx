@@ -288,14 +288,14 @@ export default function CommunityPage() {
         }
     };
 
-    const loadChallengeEntries = async (challengeId: string) => {
-        if (!challengeId) {
+    const loadChallengeEntries = async (groupId: string, challengeId: string) => {
+        if (!groupId || !challengeId) {
             setChallengeEntries([]);
             return;
         }
         setLoadingChallengeEntries(true);
         try {
-            const entries = await getCommunityGroupChallengeEntries(challengeId, 80);
+            const entries = await getCommunityGroupChallengeEntries(groupId, challengeId, 80);
             setChallengeEntries(sortCommunityGroupChallengeEntries(entries));
         } catch (error) {
             console.warn('Failed to load community challenge entries:', error);
@@ -359,8 +359,8 @@ export default function CommunityPage() {
     }, [selectedGroup, isSelectedGroupOwner, user]);
 
     useEffect(() => {
-        void loadChallengeEntries(selectedGroupChallengeId);
-    }, [selectedGroupChallengeId]);
+        void loadChallengeEntries(selectedGroupChallenge?.groupId || selectedGroupId, selectedGroupChallengeId);
+    }, [selectedGroupChallenge?.groupId, selectedGroupChallengeId, selectedGroupId]);
 
     useEffect(() => {
         setSelectedReportTarget(null);

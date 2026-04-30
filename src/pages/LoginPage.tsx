@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useAuthStore } from '../stores/authStore';
 import { Dumbbell, Mail, Lock, User, Eye, EyeOff } from 'lucide-react';
 import toast from 'react-hot-toast';
+import { getGoogleAuthErrorMessage } from '../lib/profileEditing';
 
 export default function LoginPage() {
     const { signIn, signUp, signInWithGoogle, loading } = useAuthStore();
@@ -43,7 +44,7 @@ export default function LoginPage() {
             toast.success('Welcome! 💪');
         } catch (err: any) {
             if (err?.code !== 'auth/popup-closed-by-user') {
-                toast.error(`Google error: ${err?.code || err?.message || 'Unknown'}`, { duration: 6000 });
+                toast.error(getGoogleAuthErrorMessage(err), { duration: 8000 });
                 console.error('Google auth error:', err);
             }
         }

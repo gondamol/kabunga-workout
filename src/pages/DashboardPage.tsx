@@ -1,4 +1,4 @@
-import { useEffect, useState, useMemo, useRef } from 'react';
+import { useEffect, useState, useMemo, useRef, type ReactNode } from 'react';
 import { useNavigate } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import { useAuthStore } from '../stores/authStore';
@@ -7,8 +7,6 @@ import {
     getRecentWorkouts,
     getActiveChallenges,
     getMealsByDate,
-    getMyCommunityGroups,
-    getOneRepMaxes,
 } from '../lib/firestoreService';
 import { formatDurationHuman, formatRelativeTime, getTodayKey, getDaysInRange } from '../lib/utils';
 import { enqueueAction } from '../lib/offlineQueue';
@@ -16,21 +14,18 @@ import { calculateReadinessScore, getAthleteReadiness, getHealthCheck, saveHealt
 import type {
     WorkoutSession,
     Challenge,
-    CommunityGroup,
     Meal,
-    OneRepMaxes,
     HealthCheck,
     ReadinessScore,
     ReadinessStatus,
 } from '../lib/types';
 import { BarChart, Bar, XAxis, YAxis, ResponsiveContainer, Tooltip, Cell } from 'recharts';
-import { Dumbbell, ChevronRight, Zap, Trophy, BarChart3, TimerReset, Users, CalendarCheck, Flame, WifiOff, Droplets, PersonStanding, Activity, Footprints, Bike, Wind, ShieldCheck, Bell } from 'lucide-react';
+import { Dumbbell, ChevronRight, Trophy, BarChart3, TimerReset, WifiOff, Droplets, PersonStanding, Footprints, Wind, ShieldCheck, Bell, Smile, Flame } from 'lucide-react';
 import dayjs from 'dayjs';
 import { formatProgressionInsightTarget, getDashboardProgressionInsight } from '../lib/progressionInsights';
 import { getWorkoutHeadline } from '../lib/workoutSummary';
-import { buildReadinessRecoveryGuidance, summarizeDailyNutrition, type GuidanceTone } from '../lib/readinessGuidance';
+import { buildReadinessRecoveryGuidance, summarizeDailyNutrition } from '../lib/readinessGuidance';
 import {
-    buildCircleShortcutCard,
     buildDashboardGoalHero,
     buildDashboardProgressEmptyState,
     buildRecoveryAlternatives,
@@ -45,15 +40,9 @@ import {
     ActionButton,
     ActivityRing,
     EmptyState,
-    InsightCard,
-    MetricCard,
     MiniActivityRing,
     ProgressRing,
-    ReadinessCard,
     RecoveryGuidanceCard,
-    SectionHeader,
-    StatChip,
-    WorkoutCard,
 } from '../components/ui';
 
 const getReadinessTone = (status: ReadinessStatus): {
@@ -94,39 +83,6 @@ const getReadinessTone = (status: ReadinessStatus): {
     };
 };
 
-const getGuidanceTone = (tone: GuidanceTone): {
-    border: string;
-    badge: string;
-    surface: string;
-} => {
-    if (tone === 'green') {
-        return {
-            border: 'border-green/20',
-            badge: 'bg-green/15 text-green',
-            surface: 'bg-green/5',
-        };
-    }
-    if (tone === 'cyan') {
-        return {
-            border: 'border-cyan/20',
-            badge: 'bg-cyan/15 text-cyan',
-            surface: 'bg-cyan/5',
-        };
-    }
-    if (tone === 'amber') {
-        return {
-            border: 'border-amber/20',
-            badge: 'bg-amber/15 text-amber',
-            surface: 'bg-amber/5',
-        };
-    }
-    return {
-        border: 'border-red/20',
-        badge: 'bg-red/15 text-red',
-        surface: 'bg-red/5',
-    };
-};
-
 export default function DashboardPage() {
     const { user, profile } = useAuthStore();
     const { activeSession } = useWorkoutStore();
@@ -135,9 +91,7 @@ export default function DashboardPage() {
 
     const [workouts, setWorkouts] = useState<WorkoutSession[]>([]);
     const [challenges, setChallenges] = useState<Challenge[]>([]);
-    const [myGroups, setMyGroups] = useState<CommunityGroup[]>([]);
     const [todayMeals, setTodayMeals] = useState<Meal[]>([]);
-    const [oneRepMaxes, setOneRepMaxes] = useState<OneRepMaxes | null>(null);
     const [todayHealthCheck, setTodayHealthCheck] = useState<HealthCheck | null>(null);
     const [todayReadiness, setTodayReadiness] = useState<ReadinessScore | null>(null);
     const [showHealthForm, setShowHealthForm] = useState(false);
@@ -167,17 +121,13 @@ export default function DashboardPage() {
             const [
                 workoutsResult,
                 challengesResult,
-                groupsResult,
                 mealsResult,
-                maxesResult,
                 healthCheckResult,
                 readinessResult,
             ] = await Promise.allSettled([
                 getRecentWorkouts(user.uid, 120),
                 getActiveChallenges(user.uid),
-                getMyCommunityGroups(user.uid),
                 getMealsByDate(user.uid, todayKey),
-                getOneRepMaxes(user.uid),
                 getHealthCheck(user.uid, todayKey),
                 getAthleteReadiness(user.uid, todayKey),
             ]);
@@ -194,22 +144,10 @@ export default function DashboardPage() {
                 console.warn('Failed to load challenges for dashboard:', challengesResult.reason);
             }
 
-            if (groupsResult.status === 'fulfilled') {
-                setMyGroups(groupsResult.value);
-            } else {
-                console.warn('Failed to load circles for dashboard:', groupsResult.reason);
-            }
-
             if (mealsResult.status === 'fulfilled') {
                 setTodayMeals(mealsResult.value);
             } else {
                 console.warn('Failed to load meals for dashboard:', mealsResult.reason);
-            }
-
-            if (maxesResult.status === 'fulfilled') {
-                setOneRepMaxes(maxesResult.value);
-            } else {
-                console.warn('Failed to load 1RM data for dashboard:', maxesResult.reason);
             }
 
             if (healthCheckResult.status === 'fulfilled') {
@@ -400,17 +338,10 @@ export default function DashboardPage() {
         () => buildDashboardProgressEmptyState({ profile, workoutCount: workouts.length }),
         [profile, workouts.length]
     );
-    const circleShortcut = useMemo(
-        () => buildCircleShortcutCard({ profile, hasCircle: myGroups.length > 0 }),
-        [profile, myGroups.length]
-    );
     const readinessStrip = useMemo(
         () => buildReadinessStrip({ readiness: todayReadiness, healthCheck: todayHealthCheck }),
         [todayHealthCheck, todayReadiness]
     );
-    const weeklyGoal = profile?.onboarding?.trainingDaysPerWeek || 3;
-    const weeklyProgress = Math.min(stats.weeklyWorkouts, weeklyGoal);
-    const weeklyProgressPct = weeklyGoal > 0 ? Math.round((weeklyProgress / weeklyGoal) * 100) : 0;
     const todayRecommendation = useMemo(
         () => buildTodayRecommendation({
             activeSession,
@@ -425,18 +356,6 @@ export default function DashboardPage() {
         () => buildRecoveryAlternatives({ readiness: todayReadiness }),
         [todayReadiness]
     );
-    const readinessStripBadgeClass = readinessStrip.tone === 'empty'
-        ? 'bg-bg-input text-text-secondary'
-        : readinessTone?.badge ?? 'bg-bg-input text-text-secondary';
-    const readinessStripDotClass = readinessStrip.tone === 'empty'
-        ? 'bg-border-light'
-        : readinessStrip.tone === 'excellent'
-            ? 'bg-green'
-            : readinessStrip.tone === 'good'
-                ? 'bg-cyan'
-                : readinessStrip.tone === 'moderate'
-                    ? 'bg-amber'
-                    : 'bg-red';
     const handlePrimaryAction = () => {
         if (activeSession) {
             navigate('/active-workout');
@@ -446,12 +365,6 @@ export default function DashboardPage() {
     };
 
     const handleTodayRecommendation = () => {
-        // "Repeat last session" was removed per UX feedback — repeats rarely match real intent.
-        // If the recommendation suggests repeating, route to history so the athlete picks intentionally.
-        if (todayRecommendation.tone === 'repeat' && latestWorkout) {
-            navigate('/history');
-            return;
-        }
         navigate(todayRecommendation.route);
     };
 
@@ -473,6 +386,10 @@ export default function DashboardPage() {
     const exerciseGoal = 150;
     const standDays = Math.min(7, stats.weeklyWorkouts + Math.floor(stats.streak / 2));
     const standGoal = 7;
+    const moveGoalPct = Math.round(Math.min(moveCalories / moveGoal, 1) * 100);
+    const exerciseGoalPct = Math.round(Math.min(exerciseMinutes / exerciseGoal, 1) * 100);
+    const standGoalPct = Math.round(Math.min(standDays / standGoal, 1) * 100);
+    const readinessScorePct = todayReadiness ? Math.round(todayReadiness.score * 10) : 0;
 
     const weeklyHeartPoints = useMemo(() => aggregateWeeklyHeartPoints(workouts), [workouts]);
 
@@ -538,12 +455,15 @@ export default function DashboardPage() {
                         </h1>
                         <p className="mt-1.5 text-sm text-text-muted">Today is {dayjs().format('MMMM D, YYYY')}</p>
                     </div>
-                    {!isOnline && (
-                        <span className="flex items-center gap-1 rounded-full bg-amber/15 px-2.5 py-1 text-[10px] font-bold text-amber shrink-0">
-                            <WifiOff size={11} />
-                            Offline
-                        </span>
-                    )}
+                    <div className="flex shrink-0 flex-col items-end gap-2">
+                        {!isOnline && (
+                            <span className="flex items-center gap-1 rounded-full bg-amber/15 px-2.5 py-1 text-[10px] font-bold text-amber">
+                                <WifiOff size={11} />
+                                Offline
+                            </span>
+                        )}
+                        <DashboardAthleteIllustration />
+                    </div>
                 </div>
             </header>
 
@@ -571,49 +491,48 @@ export default function DashboardPage() {
                     </button>
                 </div>
 
-                <div className="flex items-center gap-4">
+                <div className="grid grid-cols-[132px_minmax(0,1fr)] items-center gap-5 max-[390px]:grid-cols-1 max-[390px]:justify-items-center">
                     <ActivityRing
-                        size={108}
-                        centerValue={String(activityPoints)}
-                        centerLabel="pts"
+                        size={132}
+                        centerValue={activityPoints.toLocaleString()}
+                        centerLabel={`of ${activityPointsGoal.toLocaleString()}`}
                         rings={[
                             { value: Math.min(moveCalories, moveGoal), max: moveGoal, label: 'Move', tone: 'accent' },
                             { value: Math.min(exerciseMinutes, exerciseGoal), max: exerciseGoal, label: 'Exercise', tone: 'secondary' },
                             { value: standDays, max: standGoal, label: 'Stand', tone: 'tertiary' },
                         ]}
                     />
-                    <div className="flex-1 space-y-2.5">
-                        <div className="flex items-center justify-between">
-                            <div className="flex items-center gap-2">
-                                <span className="w-2.5 h-2.5 rounded-full bg-amber shrink-0" />
-                                <span className="text-xs font-semibold text-text-primary">Move</span>
-                            </div>
-                            <div className="text-right">
-                                <span className="text-xs font-bold text-text-primary">{moveCalories.toLocaleString()} Cal</span>
-                                <span className="text-[10px] text-text-muted ml-1">{Math.round(Math.min(moveCalories / moveGoal, 1) * 100)}%</span>
-                            </div>
+                    <div className="w-full space-y-3">
+                        <div className="rounded-2xl bg-bg-surface/70 px-3 py-2 text-center max-[390px]:w-full">
+                            <span className="text-[11px] font-bold uppercase tracking-wide text-text-muted">
+                                {activityPointsPct}% of weekly activity points
+                            </span>
                         </div>
-                        <div className="flex items-center justify-between">
-                            <div className="flex items-center gap-2">
-                                <span className="w-2.5 h-2.5 rounded-full bg-secondary shrink-0" />
-                                <span className="text-xs font-semibold text-text-primary">Exercise</span>
-                            </div>
-                            <div className="text-right">
-                                <span className="text-xs font-bold text-text-primary">{exerciseMinutes} / 150 min</span>
-                                <span className="text-[10px] text-text-muted ml-1">{Math.round(Math.min(exerciseMinutes / exerciseGoal, 1) * 100)}%</span>
-                            </div>
-                        </div>
-                        <div className="flex items-center justify-between">
-                            <div className="flex items-center gap-2">
-                                <span className="w-2.5 h-2.5 rounded-full bg-tertiary shrink-0" />
-                                <span className="text-xs font-semibold text-text-primary">Stand</span>
-                            </div>
-                            <div className="text-right">
-                                <span className="text-xs font-bold text-text-primary">{standDays} / 7 hr</span>
-                                <span className="text-[10px] text-text-muted ml-1">{Math.round((standDays / standGoal) * 100)}%</span>
-                            </div>
-                        </div>
-                        <div className="flex items-center justify-between border-t border-border pt-2 mt-1">
+                        <ActivityProgressRow
+                            icon={<Flame size={14} />}
+                            label="Move"
+                            value={`${moveCalories.toLocaleString()} Cal`}
+                            percent={moveGoalPct}
+                            barClassName="bg-amber"
+                            iconClassName="bg-amber/15 text-amber"
+                        />
+                        <ActivityProgressRow
+                            icon={<PersonStanding size={14} />}
+                            label="Exercise"
+                            value={`${exerciseMinutes} / ${exerciseGoal} min`}
+                            percent={exerciseGoalPct}
+                            barClassName="bg-secondary"
+                            iconClassName="bg-secondary-container text-primary"
+                        />
+                        <ActivityProgressRow
+                            icon={<ShieldCheck size={14} />}
+                            label="Stand"
+                            value={`${standDays} / ${standGoal} days`}
+                            percent={standGoalPct}
+                            barClassName="bg-tertiary"
+                            iconClassName="bg-tertiary-container text-tertiary"
+                        />
+                        <div className="flex items-center justify-between border-t border-border pt-2">
                             <div className="flex items-center gap-2">
                                 <span className="w-6 h-6 rounded-full bg-red/10 flex items-center justify-center" aria-hidden="true">
                                     <span className="text-red text-[11px]">♥</span>
@@ -649,15 +568,29 @@ export default function DashboardPage() {
             <div className="grid grid-cols-2 gap-3 animate-fade-in stagger-1">
                 {/* Readiness */}
                 <div
-                    className={`rounded-3xl p-4 shadow-card border ${readinessTone?.border ?? 'border-border'}`}
+                    className={`rounded-3xl p-4 shadow-card border bg-bg-card ${readinessTone?.border ?? 'border-border'}`}
                     style={{ background: todayReadiness ? undefined : '#fff' }}
                 >
-                    <p className="text-[11px] font-bold uppercase tracking-wide text-text-muted">Readiness</p>
-                    <div className="mt-1 flex items-end gap-1">
-                        <span className="font-display text-4xl font-extrabold text-text-primary leading-none">
-                            {todayReadiness ? Math.round(todayReadiness.score * 10) : '--'}
-                        </span>
-                        <span className="text-sm text-text-muted mb-0.5">/100</span>
+                    <div className="flex items-start justify-between gap-2">
+                        <div>
+                            <p className="text-[11px] font-bold uppercase tracking-wide text-text-muted">Readiness</p>
+                            <div className="mt-1 flex items-end gap-1">
+                                <span className="font-display text-3xl font-extrabold text-text-primary leading-none">
+                                    {todayReadiness ? readinessScorePct : '--'}
+                                </span>
+                                <span className="text-xs text-text-muted mb-0.5">/100</span>
+                            </div>
+                        </div>
+                        <ProgressRing
+                            value={readinessScorePct}
+                            size={58}
+                            strokeWidth={8}
+                            tone={todayReadiness?.status === 'poor' ? 'danger' : todayReadiness?.status === 'moderate' ? 'warning' : 'tertiary'}
+                            showValue={false}
+                            label="Readiness"
+                        >
+                            <Smile size={18} className={todayReadiness ? 'text-tertiary' : 'text-text-muted'} />
+                        </ProgressRing>
                     </div>
                     <p className="mt-1.5 text-[11px] leading-4 text-text-secondary">
                         {readinessStrip.tone === 'empty'
@@ -674,59 +607,63 @@ export default function DashboardPage() {
 
                 {/* Streak */}
                 <div className="rounded-3xl p-4 shadow-card bg-bg-card border border-amber/20">
-                    <p className="text-[11px] font-bold uppercase tracking-wide text-text-muted">Streak 🔥</p>
-                    <div className="mt-1 flex items-end gap-1">
-                        <span className="font-display text-4xl font-extrabold text-amber leading-none">
-                            {stats.streak}
-                        </span>
-                        <span className="text-sm text-text-muted mb-0.5">days</span>
+                    <div className="flex items-start justify-between gap-2">
+                        <div>
+                            <p className="text-[11px] font-bold uppercase tracking-wide text-text-muted">Streak</p>
+                            <div className="mt-1 flex items-end gap-1">
+                                <span className="font-display text-3xl font-extrabold text-amber leading-none">
+                                    {stats.streak}
+                                </span>
+                                <span className="text-xs text-text-muted mb-0.5">days</span>
+                            </div>
+                        </div>
+                        <div className="relative w-14 h-14 rounded-[1.25rem] bg-amber/15 border border-amber/25 flex items-center justify-center text-amber">
+                            <ShieldCheck size={28} strokeWidth={2.2} />
+                            <span className="absolute -bottom-1.5 -right-1.5 min-w-6 h-6 rounded-full bg-amber text-white text-[10px] font-extrabold flex items-center justify-center border-2 border-bg-card">
+                                {stats.streak}
+                            </span>
+                        </div>
                     </div>
                     <p className="mt-1.5 text-[11px] leading-4 text-text-secondary">
                         {stats.streak > 0 ? "Keep it up! You're building a strong habit." : 'Start your streak today!'}
                     </p>
-                    <div className="mt-3 flex items-center justify-center">
-                        <div className="w-10 h-10 rounded-full bg-amber/15 border-2 border-amber flex items-center justify-center">
-                            <span className="text-sm font-extrabold text-amber">{stats.streak}</span>
-                        </div>
-                    </div>
                 </div>
             </div>
 
             {/* ── Recommended Workout ── */}
-            <section className="bg-bg-card rounded-3xl p-5 shadow-card animate-fade-in stagger-1">
-                <span className="inline-block rounded-full bg-secondary-container px-2.5 py-1 text-[10px] font-bold text-primary uppercase tracking-[0.1em]">
-                    Recommended for you
-                </span>
-                <h2 className="mt-2 font-display text-2xl font-extrabold text-text-primary leading-tight">
-                    {todayRecommendation.title}
-                </h2>
-                <div className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-text-secondary">
-                    {profile?.onboarding?.timeAvailableMinutes && (
-                        <span className="flex items-center gap-1">
-                            <TimerReset size={12} className="text-text-muted" />
-                            {profile.onboarding.timeAvailableMinutes} min
+            <section className="overflow-hidden bg-bg-card rounded-3xl p-5 shadow-card animate-fade-in stagger-1">
+                <div className="flex items-start gap-4">
+                    <div className="min-w-0 flex-1">
+                        <span className="inline-block rounded-full bg-secondary-container px-2.5 py-1 text-[10px] font-bold text-primary uppercase tracking-[0.1em]">
+                            Recommended for you
                         </span>
-                    )}
-                    <span className="text-text-muted">·</span>
-                    <span className="flex items-center gap-1">
-                        <BarChart3 size={12} className="text-text-muted" />
-                        {goalHero.eyebrow}
-                    </span>
-                    {profile?.onboarding?.trainingEnvironment && (
-                        <>
-                            <span className="text-text-muted">·</span>
-                            <span className="text-text-secondary capitalize">{profile.onboarding.trainingEnvironment.replace(/_/g, ' ')}</span>
-                        </>
-                    )}
+                        <h2 className="mt-2 font-display text-2xl font-extrabold text-text-primary leading-tight">
+                            {todayRecommendation.title}
+                        </h2>
+                        <p className="mt-2.5 text-sm leading-6 text-text-secondary">
+                            {todayRecommendation.detail}
+                        </p>
+                    </div>
+                    <WorkoutRecommendationIllustration />
                 </div>
-                <p className="mt-2.5 text-sm leading-6 text-text-secondary">
-                    {todayRecommendation.detail}
-                </p>
+
+                <div className="mt-4 grid grid-cols-3 gap-2">
+                    {profile?.onboarding?.timeAvailableMinutes && (
+                        <RecommendationMeta icon={<TimerReset size={13} />} label={`${profile.onboarding.timeAvailableMinutes} min`} />
+                    )}
+                    <RecommendationMeta icon={<BarChart3 size={13} />} label={goalHero.eyebrow} />
+                    <RecommendationMeta
+                        icon={<Dumbbell size={13} />}
+                        label={profile?.onboarding?.trainingEnvironment
+                            ? profile.onboarding.trainingEnvironment.replace(/_/g, ' ')
+                            : 'Mixed'}
+                    />
+                </div>
 
                 <button
                     type="button"
                     onClick={handleTodayRecommendation}
-                    className="mt-4 w-full py-4 rounded-2xl bg-primary text-text-inverse font-bold text-base flex items-center justify-center gap-2"
+                    className="mt-4 w-full min-h-12 rounded-2xl bg-primary px-4 py-3.5 text-text-inverse font-bold text-base flex items-center justify-center gap-2 shadow-[0_14px_32px_rgba(23,69,42,0.18)] active:scale-[0.98] transition-transform"
                 >
                     {todayRecommendation.ctaLabel}
                     <ChevronRight size={18} strokeWidth={2.5} />
@@ -735,20 +672,21 @@ export default function DashboardPage() {
 
             {/* ── Quick Actions ── */}
             <section className="animate-fade-in stagger-2">
-                <div className="flex gap-2 overflow-x-auto pb-1 -mx-1 px-1">
+                <div className="grid grid-cols-2 gap-3">
                     {[
-                        { icon: Footprints, label: 'Go for a Run', color: 'text-secondary', bg: 'bg-secondary-container', onClick: () => openCardio('run') },
-                        { icon: Dumbbell, label: 'Strength', color: 'text-amber', bg: 'bg-amber/15', onClick: () => navigate('/workout') },
-                        { icon: PersonStanding, label: 'Mobility', color: 'text-primary', bg: 'bg-primary-container', onClick: () => navigate('/workout') },
-                        { icon: Wind, label: 'Outdoor Walk', color: 'text-tertiary', bg: 'bg-tertiary-container', onClick: () => openCardio('walk') },
-                    ].map(({ icon: Icon, label, color, bg, onClick }) => (
+                        { icon: Footprints, label: 'Go for a Run', helper: 'Log cardio', color: 'text-secondary', bg: 'bg-secondary-container', onClick: () => openCardio('run') },
+                        { icon: Dumbbell, label: 'Strength', helper: 'Build sets', color: 'text-amber', bg: 'bg-amber/15', onClick: () => navigate('/workout') },
+                        { icon: PersonStanding, label: 'Mobility', helper: 'Move gently', color: 'text-primary', bg: 'bg-primary-container', onClick: () => navigate('/workout') },
+                        { icon: Wind, label: 'Outdoor Walk', helper: 'Easy effort', color: 'text-tertiary', bg: 'bg-tertiary-container', onClick: () => openCardio('walk') },
+                    ].map(({ icon: Icon, label, helper, color, bg, onClick }) => (
                         <button
                             key={label}
                             onClick={onClick}
-                            className={`shrink-0 flex items-center gap-2 rounded-2xl ${bg} px-3.5 py-3 min-w-[110px]`}
+                            className={`min-h-[84px] rounded-3xl ${bg} px-4 py-3 text-left active:scale-[0.98] transition-transform`}
                         >
-                            <Icon size={20} className={color} strokeWidth={2.4} />
-                            <span className={`text-[12px] font-bold ${color} text-left leading-tight`}>{label}</span>
+                            <Icon size={22} className={color} strokeWidth={2.4} />
+                            <span className={`mt-2 block text-sm font-extrabold ${color} leading-tight`}>{label}</span>
+                            <span className="mt-0.5 block text-[11px] font-semibold text-text-muted">{helper}</span>
                         </button>
                     ))}
                 </div>
@@ -997,6 +935,88 @@ export default function DashboardPage() {
                     />
                 </div>
             )}
+        </div>
+    );
+}
+
+function DashboardAthleteIllustration() {
+    return (
+        <div
+            className="relative h-[92px] w-[106px] max-[360px]:hidden"
+            aria-hidden="true"
+        >
+            <div className="absolute bottom-0 right-0 h-[68px] w-[68px] rounded-[2rem] bg-secondary-container" />
+            <div className="absolute bottom-1 left-4 h-4 w-16 rounded-full bg-primary/10" />
+            <div className="absolute left-8 top-4 h-7 w-7 rounded-full bg-amber/25" />
+            <div className="absolute left-[42px] top-[36px] h-10 w-8 rotate-[-10deg] rounded-[18px] bg-primary" />
+            <div className="absolute left-[34px] top-[64px] h-5 w-12 rotate-[-12deg] rounded-full bg-tertiary" />
+            <div className="absolute left-[60px] top-[62px] h-5 w-9 rotate-[28deg] rounded-full bg-secondary" />
+            <div className="absolute right-2 top-6 h-8 w-10 rotate-[20deg] rounded-full border-[5px] border-amber border-l-transparent border-b-transparent" />
+        </div>
+    );
+}
+
+function WorkoutRecommendationIllustration() {
+    return (
+        <div className="relative h-[112px] w-[104px] shrink-0 max-[340px]:hidden" aria-hidden="true">
+            <div className="absolute bottom-0 right-0 h-[92px] w-[92px] rounded-[2rem] bg-primary-container" />
+            <div className="absolute bottom-4 left-1 h-5 w-16 rounded-full bg-primary/10" />
+            <div className="absolute left-7 top-2 h-8 w-8 rounded-full bg-amber/25" />
+            <div className="absolute left-[42px] top-[35px] h-11 w-8 rounded-[18px] bg-tertiary" />
+            <div className="absolute left-[20px] top-[48px] h-4 w-10 rotate-[-24deg] rounded-full bg-primary" />
+            <div className="absolute right-[10px] top-[48px] h-4 w-10 rotate-[24deg] rounded-full bg-primary" />
+            <div className="absolute left-[9px] top-[43px] h-3 w-3 rounded bg-amber" />
+            <div className="absolute right-0 top-[43px] h-3 w-3 rounded bg-amber" />
+            <div className="absolute left-[40px] bottom-4 h-7 w-4 rotate-[12deg] rounded-full bg-secondary" />
+            <div className="absolute left-[58px] bottom-4 h-7 w-4 rotate-[-12deg] rounded-full bg-secondary" />
+        </div>
+    );
+}
+
+function RecommendationMeta({ icon, label }: { icon: ReactNode; label: string }) {
+    return (
+        <div className="min-w-0 rounded-2xl bg-bg-surface px-3 py-2">
+            <div className="mb-1 text-text-muted">{icon}</div>
+            <p className="truncate text-[11px] font-bold capitalize text-text-secondary">{label}</p>
+        </div>
+    );
+}
+
+function ActivityProgressRow({
+    icon,
+    label,
+    value,
+    percent,
+    barClassName,
+    iconClassName,
+}: {
+    icon: ReactNode;
+    label: string;
+    value: string;
+    percent: number;
+    barClassName: string;
+    iconClassName: string;
+}) {
+    return (
+        <div className="space-y-1.5">
+            <div className="flex items-center justify-between gap-2">
+                <div className="flex min-w-0 items-center gap-2">
+                    <span className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-full ${iconClassName}`}>
+                        {icon}
+                    </span>
+                    <span className="truncate text-xs font-bold text-text-primary">{label}</span>
+                </div>
+                <div className="shrink-0 text-right">
+                    <span className="text-xs font-extrabold text-text-primary">{value}</span>
+                    <span className="ml-1 text-[10px] text-text-muted">{percent}%</span>
+                </div>
+            </div>
+            <div className="h-2 w-full overflow-hidden rounded-full bg-bg-input">
+                <div
+                    className={`h-full rounded-full transition-all duration-700 ease-out ${barClassName}`}
+                    style={{ width: `${Math.max(3, Math.min(100, percent))}%` }}
+                />
+            </div>
         </div>
     );
 }

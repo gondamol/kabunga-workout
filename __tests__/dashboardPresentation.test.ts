@@ -194,7 +194,7 @@ export function validateDashboardPresentation(): ValidationResult {
         errors.push(`✗ Low readiness recommendation was wrong: ${JSON.stringify(recoveryRecommendation)}`);
     }
 
-    const repeatRecommendation = buildTodayRecommendation({
+    const progressRecommendation = buildTodayRecommendation({
         activeSession: null,
         latestWorkout: buildWorkout({ exercises: [buildExercise({ name: 'Upper Body Push' })] }),
         readiness: buildReadiness({ score: 8, status: 'good' }),
@@ -203,14 +203,15 @@ export function validateDashboardPresentation(): ValidationResult {
     });
 
     if (
-        repeatRecommendation.title === 'Your last session is ready to repeat' &&
-        repeatRecommendation.ctaLabel === 'Repeat last workout' &&
-        repeatRecommendation.detail.includes('Offline gym mode')
+        progressRecommendation.title === 'Plan today from your progress' &&
+        progressRecommendation.ctaLabel === "Build today's workout" &&
+        progressRecommendation.tone === 'start' &&
+        progressRecommendation.detail.includes('Offline gym mode')
     ) {
         passed++;
     } else {
         failed++;
-        errors.push(`✗ Repeat recommendation was wrong: ${JSON.stringify(repeatRecommendation)}`);
+        errors.push(`✗ Progress-based recommendation was wrong: ${JSON.stringify(progressRecommendation)}`);
     }
 
     const coachRecommendation = buildTodayRecommendation({

@@ -40,7 +40,7 @@ export interface TodayRecommendation {
     detail: string;
     ctaLabel: string;
     route: '/workout' | '/active-workout' | '/coach' | '/nutrition';
-    tone: 'active' | 'coach' | 'recovery' | 'repeat' | 'start';
+    tone: 'active' | 'coach' | 'recovery' | 'start';
 }
 
 export interface RecoveryAlternatives {
@@ -269,13 +269,13 @@ export const buildTodayRecommendation = ({
     }
 
     if (latestWorkout) {
-        const firstExercise = latestWorkout.exercises[0]?.name || 'your last session';
+        const firstExercise = latestWorkout.exercises[0]?.name || 'your recent training';
         return {
-            title: 'Your last session is ready to repeat',
-            detail: `${isOnline ? 'Small progress is still progress.' : 'Offline gym mode is ready.'} Start from ${firstExercise}.`,
-            ctaLabel: 'Repeat last workout',
+            title: 'Plan today from your progress',
+            detail: `${isOnline ? 'Small progress is still progress.' : 'Offline gym mode is ready.'} Use ${firstExercise} as context, then choose what fits today.`,
+            ctaLabel: "Build today's workout",
             route: '/workout',
-            tone: 'repeat',
+            tone: 'start',
         };
     }
 

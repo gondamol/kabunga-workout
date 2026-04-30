@@ -31,6 +31,7 @@ import {
     sortCommunityGroupChallengeEntries,
     sortCommunityGroupChallenges,
 } from './communityChallenges';
+import { buildCommunityChallengeEntriesScope } from './communityChallengeQueries';
 
 const WORKOUT_CACHE_TTL_MS = 5 * 60 * 1000;
 const WORKOUT_PERSISTED_CACHE_TTL_MS = 60 * 60 * 1000;
@@ -741,13 +742,16 @@ export const getCommunityGroupChallenges = async (
 };
 
 export const getCommunityGroupChallengeEntries = async (
+    groupId: string,
     challengeId: string,
     maxResults = 80
 ): Promise<CommunityGroupChallengeEntry[]> => {
+    const scope = buildCommunityChallengeEntriesScope({ groupId, challengeId, maxResults });
     const q = query(
         collection(db, 'communityGroupChallengeEntries'),
-        where('challengeId', '==', challengeId),
-        limit(maxResults)
+        where('groupId', '==', scope.groupId),
+        where('challengeId', '==', scope.challengeId),
+        limit(scope.maxResults)
     );
     const snap = await getDocs(q);
     return sortCommunityGroupChallengeEntries(
