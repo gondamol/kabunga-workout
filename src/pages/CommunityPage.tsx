@@ -69,13 +69,19 @@ import { ActionButton, InsightCard, StatChip } from '../components/ui';
 
 const createId = (): string => `${Math.random().toString(36).slice(2, 10)}${Date.now().toString(36)}`;
 
+const isPermissionDenied = (error: unknown): boolean => {
+    if (!error || typeof error !== 'object') return false;
+    const code = (error as { code?: string }).code;
+    return code === 'permission-denied' || code === 'unauthenticated';
+};
+
 const getFriendlyError = (context: string, error: unknown): string => {
     const fallback = `${context}. Please try again.`;
     if (!error || typeof error !== 'object') return fallback;
     const candidate = error as { code?: string; message?: string };
 
     if (candidate.code === 'permission-denied') {
-        return `${context}. Permission denied. Deploy latest Firestore rules and sign in again.`;
+        return `${context}. You may need to join this circle first.`;
     }
     if (candidate.code === 'unauthenticated') {
         return `${context}. Session expired. Sign out and sign back in.`;
@@ -249,7 +255,10 @@ export default function CommunityPage() {
             setMessages(list);
         } catch (error) {
             console.warn('Failed to load messages:', error);
-            toast.error(getFriendlyError('Could not load messages', error), { id: 'community-messages-load' });
+            setMessages([]);
+            if (!isPermissionDenied(error)) {
+                toast.error(getFriendlyError('Could not load messages', error), { id: 'community-messages-load' });
+            }
         } finally {
             setLoadingMessages(false);
         }
@@ -269,7 +278,11 @@ export default function CommunityPage() {
             });
         } catch (error) {
             console.warn('Failed to load community challenges:', error);
-            toast.error(getFriendlyError('Could not load group challenges', error), { id: 'community-challenges-load' });
+            setGroupChallenges([]);
+            setSelectedGroupChallengeId('');
+            if (!isPermissionDenied(error)) {
+                toast.error(getFriendlyError('Could not load group challenges', error), { id: 'community-challenges-load' });
+            }
         } finally {
             setLoadingChallenges(false);
         }
@@ -286,7 +299,11 @@ export default function CommunityPage() {
             setChallengeEntries(sortCommunityGroupChallengeEntries(entries));
         } catch (error) {
             console.warn('Failed to load community challenge entries:', error);
-            toast.error(getFriendlyError('Could not load leaderboard', error), { id: 'community-challenge-entries-load' });
+            setChallengeEntries([]);
+            // Silently degrade on permission-denied — viewer simply isn't a member yet.
+            if (!isPermissionDenied(error)) {
+                toast.error(getFriendlyError('Could not load leaderboard', error), { id: 'community-challenge-entries-load' });
+            }
         } finally {
             setLoadingChallengeEntries(false);
         }
