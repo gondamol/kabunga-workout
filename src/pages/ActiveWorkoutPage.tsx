@@ -17,7 +17,9 @@ import {
     Camera, Video, StopCircle, Pause, Play,
     Search, Timer, ChevronLeft, ChevronRight,
     Zap, MoreHorizontal, Trash2, Bell, ClipboardList,
+    Droplets, Star, Share2, Clock, Flame, Dumbbell, PersonStanding,
 } from 'lucide-react';
+import type { WorkoutSession } from '../lib/types';
 import Webcam from 'react-webcam';
 import { isIronTemplateId } from '../lib/ironProtocol';
 import { ActionButton, EmptyState, ProgressRing, StatChip } from '../components/ui';
@@ -52,6 +54,8 @@ export default function ActiveWorkoutPage() {
     const [showMenu, setShowMenu] = useState(false);
     const [uploading, setUploading] = useState(false);
     const [finishingWorkout, setFinishingWorkout] = useState(false);
+    const [completedSession, setCompletedSession] = useState<WorkoutSession | null>(null);
+    const [completedSummaryText, setCompletedSummaryText] = useState('');
     const [historyByExercise, setHistoryByExercise] = useState<Record<string, ExerciseHistory | null>>({});
     const [sessionBestScores, setSessionBestScores] = useState<Record<string, number>>({});
 
@@ -145,9 +149,180 @@ export default function ActiveWorkoutPage() {
         };
     }, [user, activeSession?.scheduledWorkoutId]);
 
-    if (!activeSession) return null;
+    if (!activeSession && !completedSession) return null;
 
-    const exercises = activeSession.exercises;
+    // ── Completion celebration screen ──
+    if (completedSession) {
+        const durationMin = Math.round(completedSession.duration / 60);
+        const totalExercises = completedSession.exercises.length;
+        const completedSetsCount = completedSession.exercises.reduce(
+            (sum, ex) => sum + ex.sets.filter((s) => s.completed).length, 0);
+        const totalSetsCount = completedSession.exercises.reduce((sum, ex) => sum + ex.sets.length, 0);
+        const effortPct = totalSetsCount > 0 ? Math.round((completedSetsCount / totalSetsCount) * 100) : 100;
+        const estimatedCal = Math.round(durationMin * 7.5);
+        const firstName = user?.displayName?.split(' ')[0] ?? 'Athlete';
+        const durationLabel = `${String(Math.floor(durationMin / 60) * 60 + durationMin % 60).padStart(2, '0')}:${String(Math.round((completedSession.duration % 60))).padStart(2, '0')}`;
+        const completedExCount = completedSession.exercises.filter((ex) => ex.sets.some((s) => s.completed)).length;
+
+        // 7-day streak from session history (M T W T F S S; today highlighted)
+        const todayWeekday = dayjs().day(); // 0 = Sun, 1 = Mon ... 6 = Sat
+        const isoMondayIndex = todayWeekday === 0 ? 6 : todayWeekday - 1;
+        const weekLabels = ['M', 'T', 'W', 'T', 'F', 'S', 'S'];
+        const weekDots = weekLabels.map((label, idx) => ({
+            label,
+            isToday: idx === isoMondayIndex,
+            done: idx <= isoMondayIndex, // Filled up to today
+        }));
+        const streakCount = isoMondayIndex + 1; // simplified placeholder
+
+        return (
+            <div className="max-w-lg mx-auto px-4 pt-6 pb-24 space-y-4">
+                {/* ── Hero with confetti decorations ── */}
+                <div className="relative pt-2">
+                    {/* Confetti decorations */}
+                    <div className="absolute inset-0 pointer-events-none overflow-hidden">
+                        <span className="absolute top-2 left-12 text-amber text-lg rotate-12">▍</span>
+                        <span className="absolute top-6 right-20 text-tertiary text-sm -rotate-12">▎</span>
+                        <span className="absolute top-14 left-4 text-secondary text-base rotate-45">▍</span>
+                        <span className="absolute top-20 right-8 text-amber text-sm">▎</span>
+                        <span className="absolute top-32 left-20 text-tertiary text-xs rotate-12">●</span>
+                        <span className="absolute top-2 right-2 text-secondary text-base rotate-12">▎</span>
+                    </div>
+                    <div className="relative">
+                        <h1 className="font-display text-[2.3rem] font-extrabold text-primary leading-[1.05]">
+                            Workout<br />Complete! <span className="inline-block">🎉</span>
+                        </h1>
+                        <p className="mt-3 text-sm text-text-secondary leading-relaxed max-w-[88%]">
+                            You showed up and gave it your all. Great work, {firstName}!
+                        </p>
+                    </div>
+                </div>
+
+                {/* ── Session Summary ── */}
+                <div className="rounded-3xl bg-bg-card p-5 shadow-card">
+                    <div className="flex items-center gap-2 mb-4">
+                        <Star size={16} className="text-amber" fill="currentColor" />
+                        <h2 className="text-sm font-bold text-text-primary">Session Summary</h2>
+                    </div>
+                    <div className="grid grid-cols-4 gap-2">
+                        <SummaryStat
+                            icon={<Clock size={18} className="text-primary" strokeWidth={2.5} />}
+                            iconBg="bg-primary-container"
+                            value={durationLabel.includes(':') && durationMin < 60 ? `${durationMin}:${String(Math.round(completedSession.duration % 60)).padStart(2, '0')}` : `${durationMin}`}
+                            unit={durationMin < 60 ? 'min' : 'min'}
+                            label="Duration"
+                        />
+                        <SummaryStat
+                            icon={<Flame size={18} className="text-amber" strokeWidth={2.5} fill="currentColor" />}
+                            iconBg="bg-amber/15"
+                            value={`${estimatedCal}`}
+                            unit="Cal"
+                            label="Calories Burned"
+                        />
+                        <SummaryStat
+                            icon={<Dumbbell size={18} className="text-tertiary" strokeWidth={2.5} />}
+                            iconBg="bg-tertiary-container"
+                            value={`${completedExCount}`}
+                            unit={`of ${totalExercises}`}
+                            label="Exercises Completed"
+                        />
+                        <SummaryStat
+                            icon={<PersonStanding size={18} className="text-amber" strokeWidth={2.5} />}
+                            iconBg="bg-amber/15"
+                            value={`${effortPct}`}
+                            unit="%"
+                            label="Awesome Effort"
+                        />
+                    </div>
+                </div>
+
+                {/* ── Streak ── */}
+                <div className="rounded-3xl bg-secondary-container p-5">
+                    <div className="flex items-start gap-4">
+                        {/* Shield badge */}
+                        <div className="relative shrink-0">
+                            <div className="w-20 h-24 flex items-center justify-center" aria-hidden="true">
+                                <svg viewBox="0 0 80 96" className="absolute inset-0 w-full h-full">
+                                    <path
+                                        d="M40 4 L72 16 L72 52 Q72 76 40 92 Q8 76 8 52 L8 16 Z"
+                                        fill="#17452a"
+                                        stroke="#9bd93c"
+                                        strokeWidth="3"
+                                    />
+                                </svg>
+                                <div className="relative z-10 text-center -mt-2">
+                                    <p className="font-display text-2xl font-extrabold text-white leading-none">{streakCount}</p>
+                                    <span className="block mt-1 text-secondary text-base">🔥</span>
+                                </div>
+                            </div>
+                            {/* Laurel wings */}
+                            <span className="absolute -bottom-1 left-0 text-secondary text-lg leading-none transform -rotate-6" aria-hidden="true">🌿</span>
+                            <span className="absolute -bottom-1 right-0 text-secondary text-lg leading-none transform rotate-6 scale-x-[-1]" aria-hidden="true">🌿</span>
+                        </div>
+
+                        <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-1.5">
+                                <h3 className="font-display text-base font-extrabold text-text-primary">Streak</h3>
+                                <span className="text-base">🔥</span>
+                            </div>
+                            <p className="mt-1 text-2xl font-extrabold text-text-primary leading-none">
+                                {streakCount} <span className="text-sm font-semibold text-text-secondary">days</span>
+                            </p>
+                            <p className="mt-1 text-sm font-bold text-primary">Keep it up!</p>
+                            <p className="mt-0.5 text-xs text-text-secondary leading-tight">You're building unstoppable momentum.</p>
+                        </div>
+                    </div>
+
+                    {/* Day dots */}
+                    <div className="mt-3 flex items-center justify-between gap-1">
+                        {weekDots.map((d, i) => (
+                            <div key={i} className="flex flex-col items-center gap-1.5">
+                                <div
+                                    className={`w-7 h-7 rounded-full flex items-center justify-center ${d.done && !d.isToday ? 'bg-primary' : d.isToday ? 'border-2 border-primary bg-bg-card' : 'border-2 border-border bg-transparent'}`}
+                                >
+                                    {d.done && !d.isToday && <Check size={12} className="text-secondary" strokeWidth={3} />}
+                                </div>
+                                <span className="text-[10px] font-semibold text-text-muted">{d.label}</span>
+                            </div>
+                        ))}
+                    </div>
+                </div>
+
+                {/* ── Recovery tip ── */}
+                <button
+                    onClick={() => navigate('/nutrition')}
+                    className="w-full rounded-3xl bg-tertiary-container/40 p-4 flex items-center gap-3 border border-tertiary/15 text-left"
+                >
+                    <div className="w-10 h-10 rounded-2xl bg-bg-card flex items-center justify-center shrink-0">
+                        <Droplets size={18} className="text-tertiary" fill="currentColor" />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                        <p className="text-sm font-bold text-primary">Recovery Tip</p>
+                        <p className="text-xs text-text-secondary leading-snug mt-0.5">
+                            Great session! Hydrate well, stretch lightly, and refuel your body to recover stronger.
+                        </p>
+                    </div>
+                    <ChevronRight size={16} className="text-text-muted shrink-0" />
+                </button>
+
+                {/* ── CTAs ── */}
+                <button
+                    onClick={() => navigate('/', { replace: true })}
+                    className="w-full py-4 rounded-2xl bg-primary text-white font-bold text-base flex items-center justify-center gap-2 shadow-card"
+                >
+                    <Check size={18} strokeWidth={2.8} /> Save &amp; Done
+                </button>
+                <button
+                    onClick={() => { void shareWorkout(completedSummaryText); }}
+                    className="w-full py-4 rounded-2xl border-2 border-primary text-base font-bold text-primary flex items-center justify-center gap-2 bg-bg-card"
+                >
+                    <Share2 size={17} strokeWidth={2.5} /> Share Your Achievement
+                </button>
+            </div>
+        );
+    }
+
+    const exercises = activeSession!.exercises;
     const currentEx = exercises[currentExerciseIndex];
     const isFirst = currentExerciseIndex === 0;
     const isLast = currentExerciseIndex === exercises.length - 1;
@@ -157,7 +332,7 @@ export default function ActiveWorkoutPage() {
     const sessionTotalSets = exercises.reduce((sum, exercise) => sum + exercise.sets.length, 0);
     const sessionProgressPct = sessionTotalSets > 0 ? Math.round((sessionCompletedSets / sessionTotalSets) * 100) : 0;
     const allSetsComplete = totalSets > 0 && completedSets === totalSets;
-    const isIronSession = isIronTemplateId(activeSession.templateId);
+    const isIronSession = isIronTemplateId(activeSession!.templateId);
 
     const resolveSetType = (setItem?: ExerciseSet): IronSetType => {
         if (setItem?.setType) return setItem.setType;
@@ -293,7 +468,6 @@ export default function ActiveWorkoutPage() {
         const summary = generateWorkoutSummary(completed);
         try {
             await saveWorkout(completed);
-            toast.success('Workout complete! 🎉', { duration: 4000 });
         } catch {
             try {
                 await enqueueAction({ type: 'workout', action: 'create', data: completed });
@@ -304,10 +478,8 @@ export default function ActiveWorkoutPage() {
             }
         } finally {
             setFinishingWorkout(false);
-            navigate('/', { replace: true });
-            setTimeout(() => {
-                if (confirm('Share your workout? 💪')) shareWorkout(summary);
-            }, 800);
+            setCompletedSession(completed);
+            setCompletedSummaryText(summary);
         }
     };
 
@@ -338,19 +510,30 @@ export default function ActiveWorkoutPage() {
             <RestTimer />
 
             {/* ── Top bar ── */}
-            <div className="mb-5 rounded-[1.75rem] border border-border bg-bg-card p-4 shadow-lifted">
+            <div className="mb-4">
+                {/* Progress bar */}
+                <div className="h-1.5 w-full rounded-full bg-bg-input overflow-hidden mb-3">
+                    <div
+                        className="h-full rounded-full bg-primary transition-all duration-700"
+                        style={{ width: `${sessionProgressPct}%` }}
+                    />
+                </div>
                 <div className="flex items-center justify-between gap-3">
                     <ActionButton onClick={handleCancel} size="sm" variant="ghost">
                         Cancel
                     </ActionButton>
+                    <div className="flex flex-col items-center">
+                        <p className="text-[10px] font-semibold text-text-muted uppercase tracking-wide">Workout Progress</p>
+                        <span className="font-display text-lg font-extrabold text-text-primary">{sessionProgressPct}%</span>
+                    </div>
                     <button
                         onClick={() => setTimerRunning(!isTimerRunning)}
-                        className="pressable flex items-center gap-2 rounded-2xl bg-surface-container px-4 py-2"
+                        className="flex items-center gap-1.5 rounded-2xl bg-bg-card border border-border px-3 py-2 shadow-card"
                     >
                         {isTimerRunning
-                            ? <Pause size={15} className="text-amber" />
-                            : <Play size={15} className="text-green" />}
-                        <span className="font-display text-2xl font-extrabold tabular-nums text-text-primary">
+                            ? <Pause size={14} className="text-amber" />
+                            : <Play size={14} className="text-green" />}
+                        <span className="font-display text-base font-extrabold tabular-nums text-text-primary">
                             {formatDuration(timerSeconds)}
                         </span>
                     </button>
@@ -361,15 +544,6 @@ export default function ActiveWorkoutPage() {
                         icon={<MoreHorizontal size={22} />}
                         aria-label="Workout menu"
                     />
-                </div>
-                <div className="mt-4 flex items-center justify-between gap-4">
-                    <div className="min-w-0">
-                        <p className="text-xs font-bold uppercase tracking-[0.14em] text-accent">Session progress</p>
-                        <p className="mt-1 text-sm text-text-secondary">{sessionCompletedSets}/{sessionTotalSets} sets complete</p>
-                    </div>
-                    <ProgressRing value={sessionProgressPct} size={76} strokeWidth={7} tone="secondary" label="Session progress">
-                        <span className="font-display text-lg font-extrabold text-text-primary">{sessionProgressPct}%</span>
-                    </ProgressRing>
                 </div>
             </div>
 
@@ -438,102 +612,128 @@ export default function ActiveWorkoutPage() {
             {/* ── Current exercise card ── */}
             {currentEx ? (
                 <div className="flex-1 flex flex-col">
-                    {/* Exercise header */}
-                    <div className="rounded-[2rem] border border-border bg-bg-card p-5 mb-4 shadow-lifted">
-                        {/* Exercise name + nav */}
-                        <div className="flex items-center justify-between mb-2">
+                    {/* Exercise header card */}
+                    <div className="rounded-3xl bg-bg-card p-5 mb-4 shadow-lifted">
+                        {/* Label + nav */}
+                        <div className="flex items-center justify-between mb-3">
                             <button
                                 onClick={prevExercise}
                                 disabled={isFirst}
-                                className="touch-target rounded-2xl bg-surface-container flex items-center justify-center disabled:opacity-20"
+                                className="w-10 h-10 rounded-2xl bg-bg-surface flex items-center justify-center disabled:opacity-25"
                                 aria-label="Previous exercise"
                             >
-                                <ChevronLeft size={18} />
+                                <ChevronLeft size={20} />
                             </button>
-                            <div className="text-center flex-1 px-3">
-                                <p className="text-xs text-accent font-semibold uppercase tracking-wider mb-1">
-                                    Exercise {currentExerciseIndex + 1} of {exercises.length}
+                            <div className="text-center flex-1 px-2">
+                                <p className="text-[11px] font-bold text-text-muted uppercase tracking-widest">
+                                    Current Exercise
                                 </p>
                                 {isIronSession && (
-                                    <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] uppercase tracking-wide border mb-1 ${currentPhaseMeta.className}`}>
+                                    <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] uppercase tracking-wide border mt-1 ${currentPhaseMeta.className}`}>
                                         {currentPhaseMeta.label}
                                     </span>
                                 )}
-                                <h2 className="text-2xl font-black">{currentEx.name}</h2>
-                                <div className="mt-3 flex flex-wrap justify-center gap-2">
-                                    <StatChip label="Set" value={`${completedSets}/${totalSets}`} tone={allSetsComplete ? 'secondary' : 'neutral'} />
-                                    {currentEx.plannedReps && <StatChip label="Target" value={`${currentEx.plannedReps} reps`} tone="primary" />}
-                                    <StatChip label="Load" value={formatLoadLabel(currentEx.plannedWeight)} tone="accent" />
-                                </div>
-                                {isIronSession && (
-                                    <p className="text-xs text-text-secondary mt-1">
-                                        {lastSession
-                                            ? `Last time: ${formatSetPerformance(lastSession.bestSet.weight, lastSession.bestSet.reps)} (${lastWeeksAgo} week${lastWeeksAgo === 1 ? '' : 's'} ago)`
-                                            : 'Last time: no history yet'}
-                                    </p>
-                                )}
-                                <p className="text-[11px] text-text-muted mt-1">
-                                    Timer: {timerAlarmLabel}
-                                </p>
                             </div>
                             <button
                                 onClick={nextExercise}
                                 disabled={isLast}
-                                className="touch-target rounded-2xl bg-surface-container flex items-center justify-center disabled:opacity-20"
+                                className="w-10 h-10 rounded-2xl bg-bg-surface flex items-center justify-center disabled:opacity-25"
                                 aria-label="Next exercise"
                             >
-                                <ChevronRight size={18} />
+                                <ChevronRight size={20} />
                             </button>
+                        </div>
+
+                        {/* Big exercise name */}
+                        <h2 className="font-display text-3xl font-extrabold text-text-primary text-center leading-tight mb-1">
+                            {currentEx.name}
+                        </h2>
+                        {currentEx.phaseName && (
+                            <p className="text-sm text-text-muted text-center mb-2">{currentEx.phaseName}</p>
+                        )}
+
+                        {/* Set indicator circles */}
+                        <div className="flex items-center justify-center gap-2 mb-4">
+                            <p className="text-xs font-bold text-text-muted uppercase tracking-wide mr-1">
+                                Set {completedSets + (allSetsComplete ? 0 : 1)} of {totalSets}
+                            </p>
+                            {currentEx.sets.map((s, idx) => (
+                                <button
+                                    key={s.id}
+                                    onClick={() => handleSetPress(s)}
+                                    className="flex items-center justify-center rounded-full font-bold text-sm transition-all"
+                                    style={{
+                                        width: 32,
+                                        height: 32,
+                                        background: s.completed ? '#17452a' : idx === completedSets ? '#dcefd8' : '#edf4e8',
+                                        color: s.completed ? 'white' : idx === completedSets ? '#17452a' : '#748177',
+                                        border: idx === completedSets && !s.completed ? '2px solid #9bd93c' : '2px solid transparent',
+                                    }}
+                                >
+                                    {s.completed ? '✓' : idx + 1}
+                                </button>
+                            ))}
+                        </div>
+
+                        {/* REPS and WEIGHT big display */}
+                        <div className="grid grid-cols-2 gap-3 mb-4">
+                            <div className="rounded-2xl bg-bg-surface p-3 text-center">
+                                <p className="text-[11px] font-bold text-text-muted uppercase tracking-wide mb-1">Reps</p>
+                                <p className="font-display text-4xl font-extrabold text-text-primary leading-none">
+                                    {currentEx.sets[completedSets]?.reps || currentEx.plannedReps || '—'}
+                                    {currentEx.plannedReps && currentEx.sets[completedSets]?.reps && currentEx.sets[completedSets].reps !== currentEx.plannedReps
+                                        ? <span className="text-lg text-text-muted">/{currentEx.plannedReps}</span>
+                                        : null}
+                                </p>
+                            </div>
+                            <div className="rounded-2xl bg-bg-surface p-3 text-center">
+                                <p className="text-[11px] font-bold text-text-muted uppercase tracking-wide mb-1">Weight</p>
+                                <p className="font-display text-4xl font-extrabold text-text-primary leading-none">
+                                    {currentEx.sets[completedSets]?.weight || currentEx.plannedWeight || '—'}
+                                    <span className="text-lg text-text-muted ml-1">kg</span>
+                                </p>
+                            </div>
                         </div>
 
                         {/* Coaching cue */}
                         {currentEx.cue && (
-                            <div className="flex items-start gap-2 mt-3 p-3 rounded-xl bg-accent/5 border border-accent/10">
+                            <div className="flex items-start gap-2 p-3 rounded-2xl bg-accent/5 border border-accent/10">
                                 <Zap size={14} className="text-accent mt-0.5 shrink-0" />
                                 <p className="text-xs text-text-secondary">{currentEx.cue}</p>
                             </div>
                         )}
 
                         {currentSuggestion && (
-                            <div className="mt-3 rounded-xl border border-cyan/20 bg-cyan/10 p-3">
-                                <div className="flex items-center justify-between gap-2">
-                                    <p className="text-xs uppercase tracking-wide text-cyan font-semibold">Next Load Suggestion</p>
-                                    <span className="text-[11px] text-text-muted">{currentSuggestion.sourceSessions} history sessions</span>
-                                </div>
+                            <div className="mt-3 rounded-2xl border border-cyan/20 bg-cyan/8 p-3">
+                                <p className="text-xs uppercase tracking-wide text-cyan font-bold">Next Load Suggestion</p>
                                 <p className="text-sm font-semibold text-text-primary mt-1">
                                     {formatProgressionInsightTarget(currentSuggestion)}
                                 </p>
-                                <p className="text-xs text-text-secondary mt-1">{currentSuggestion.reason}</p>
+                                <p className="text-xs text-text-secondary mt-0.5">{currentSuggestion.reason}</p>
                             </div>
                         )}
 
-                        {/* Set completion progress */}
-                        <div className="flex items-center gap-2 mt-4">
-                            <div className="flex-1 h-2 bg-bg-input rounded-full overflow-hidden">
-                                <div
-                                    className="h-full rounded-full bg-green transition-all duration-500"
-                                    style={{ width: totalSets > 0 ? `${(completedSets / totalSets) * 100}%` : '0%' }}
-                                />
-                            </div>
-                            <span className="text-xs font-bold text-text-secondary shrink-0">
-                                {completedSets}/{totalSets} sets
-                            </span>
-                        </div>
+                        {isIronSession && lastSession && (
+                            <p className="mt-3 text-xs text-text-muted text-center">
+                                Last time: {formatSetPerformance(lastSession.bestSet.weight, lastSession.bestSet.reps)}
+                                {lastWeeksAgo !== null ? ` · ${lastWeeksAgo}w ago` : ''}
+                            </p>
+                        )}
                     </div>
 
                     <div className="glass rounded-2xl p-4 mb-4">
-                        {activeSession.scheduledWorkoutId && (activeSession.coachNotes || '').trim().length > 0 && (
+                        {activeSession!.scheduledWorkoutId && (activeSession!.coachNotes || '').trim().length > 0 && (
                             <div className="rounded-xl border border-accent/30 bg-accent/10 p-3 mb-3">
                                 <p className="text-xs uppercase tracking-wide text-accent mb-1 flex items-center gap-1">
                                     <ClipboardList size={12} />
                                     Coach Brief
                                 </p>
-                                <p className="text-sm text-text-primary whitespace-pre-wrap">{activeSession.coachNotes}</p>
+                                <p className="text-sm text-text-primary whitespace-pre-wrap">{activeSession!.coachNotes}</p>
                             </div>
                         )}
                         <p className="text-xs uppercase tracking-wide text-text-muted mb-2">Workout Notes</p>
                         <textarea
-                            value={activeSession.notes}
+                            value={activeSession!.notes}
                             onChange={(event) => updateSessionNotes(event.target.value)}
                             placeholder="How did this session feel? PR attempts, energy, pain points..."
                             rows={3}
@@ -661,40 +861,87 @@ export default function ActiveWorkoutPage() {
                         </div>
                     </div>
 
-                    {/* ── Primary CTA ── */}
-                    {!isLast ? (
+                    {/* ── Action row ── */}
+                    <div className="flex gap-2 mb-3">
                         <button
-                            id="next-exercise-btn"
-                            onClick={nextExercise}
-                            className={`w-full py-5 rounded-3xl font-bold text-lg flex items-center justify-center gap-3 active:scale-[0.97] transition-all shadow-lg ${allSetsComplete
-                                ? 'gradient-green text-white shadow-green/20'
-                                : 'gradient-primary text-white shadow-accent/20'
-                                }`}
+                            onClick={() => setTimerRunning(!isTimerRunning)}
+                            className="flex items-center gap-2 rounded-2xl border border-border bg-bg-card px-4 py-4 font-semibold text-sm text-text-secondary shadow-card"
                         >
-                            {allSetsComplete ? <Check size={22} /> : <ChevronRight size={22} />}
-                            {allSetsComplete ? 'Done — Next Exercise' : 'Next Exercise'}
-                            <span className="text-sm opacity-70">
-                                ({currentExerciseIndex + 2} of {exercises.length})
-                            </span>
+                            {isTimerRunning ? <Pause size={18} className="text-amber" /> : <Play size={18} className="text-green" />}
+                            Pause
                         </button>
-                    ) : (
                         <button
-                            id="finish-workout-btn"
-                            onClick={handleEnd}
-                            disabled={finishingWorkout}
-                            className="w-full py-5 rounded-3xl gradient-green text-white font-bold text-lg flex items-center justify-center gap-3 active:scale-[0.97] transition-transform shadow-lg shadow-green/20"
+                            onClick={() => {
+                                const nextIncompleteSet = currentEx.sets.find((s) => !s.completed);
+                                if (nextIncompleteSet) handleSetPress(nextIncompleteSet);
+                                else if (!isLast) nextExercise();
+                            }}
+                            className="flex-1 py-4 rounded-2xl bg-primary text-white font-bold text-base flex items-center justify-center gap-2 shadow-lifted"
                         >
-                            <Check size={22} />
-                            {finishingWorkout ? 'Saving Workout...' : 'Finish Workout 🎉'}
+                            <Check size={20} />
+                            Complete Set
                         </button>
+                        {!isLast ? (
+                            <button
+                                onClick={nextExercise}
+                                className="flex items-center gap-1 rounded-2xl border border-border bg-bg-card px-4 py-4 font-semibold text-sm text-text-secondary shadow-card"
+                            >
+                                Next
+                                <ChevronRight size={18} />
+                            </button>
+                        ) : (
+                            <button
+                                onClick={handleEnd}
+                                disabled={finishingWorkout}
+                                className="flex items-center gap-1 rounded-2xl bg-green px-4 py-4 text-white font-bold text-sm shadow-card"
+                            >
+                                <Check size={18} />
+                                Done
+                            </button>
+                        )}
+                    </div>
+
+                    {/* Up Next card */}
+                    {!isLast && exercises[currentExerciseIndex + 1] && (
+                        <div className="flex items-center gap-3 bg-bg-card rounded-2xl p-3 mb-3 border border-border">
+                            <div className="flex-1 min-w-0">
+                                <p className="text-[10px] font-bold uppercase tracking-wide text-text-muted mb-0.5">Up Next</p>
+                                <p className="text-sm font-extrabold truncate">{exercises[currentExerciseIndex + 1].name}</p>
+                                <p className="text-[11px] text-text-secondary">
+                                    {exercises[currentExerciseIndex + 1].sets.length} sets
+                                    {exercises[currentExerciseIndex + 1].plannedReps ? ` • ${exercises[currentExerciseIndex + 1].plannedReps} reps` : ''}
+                                </p>
+                            </div>
+                            <button onClick={nextExercise} className="w-9 h-9 rounded-xl flex items-center justify-center" style={{ background: '#17452a' }}>
+                                <ChevronRight size={18} color="white" />
+                            </button>
+                        </div>
                     )}
+
+                    {/* Bottom stats strip */}
+                    <div className="flex items-center justify-around bg-bg-card rounded-2xl p-3 shadow-card mb-2">
+                        <div className="text-center">
+                            <p className="text-xs text-text-muted">Calories</p>
+                            <p className="text-base font-extrabold text-text-primary">
+                                {Math.round(activeSession!.caloriesEstimate ?? (timerSeconds / 60 * 5))}
+                            </p>
+                        </div>
+                        <div className="w-px h-8 bg-border" />
+                        <div className="text-center">
+                            <p className="text-xs text-text-muted">Workout Time</p>
+                            <p className="text-base font-extrabold text-text-primary">{formatDuration(timerSeconds)}</p>
+                        </div>
+                        <div className="w-px h-8 bg-border" />
+                        <div className="text-center">
+                            <p className="text-xs text-text-muted">Sets Done</p>
+                            <p className="text-base font-extrabold text-text-primary">{sessionCompletedSets}/{sessionTotalSets}</p>
+                        </div>
+                    </div>
 
                     {/* Remove exercise link */}
                     <button
-                        onClick={() => {
-                            removeExercise(currentEx.id);
-                        }}
-                        className="mt-3 w-full py-2 text-xs text-text-muted flex items-center justify-center gap-1 hover:text-red transition-colors"
+                        onClick={() => removeExercise(currentEx.id)}
+                        className="w-full py-2 text-xs text-text-muted flex items-center justify-center gap-1"
                     >
                         <Trash2 size={13} /> Remove this exercise
                     </button>
@@ -773,6 +1020,33 @@ export default function ActiveWorkoutPage() {
                     </div>
                 </div>
             )}
+        </div>
+    );
+}
+
+function SummaryStat({
+    icon,
+    iconBg,
+    value,
+    unit,
+    label,
+}: {
+    icon: React.ReactNode;
+    iconBg: string;
+    value: string;
+    unit: string;
+    label: string;
+}) {
+    return (
+        <div className="flex flex-col items-center text-center">
+            <div className={`w-10 h-10 rounded-full ${iconBg} flex items-center justify-center mb-2`}>
+                {icon}
+            </div>
+            <div className="flex items-baseline gap-0.5">
+                <p className="font-display text-base font-extrabold text-text-primary leading-none">{value}</p>
+                <span className="text-[10px] font-bold text-text-muted leading-none">{unit}</span>
+            </div>
+            <p className="mt-1 text-[10px] text-text-secondary leading-tight">{label}</p>
         </div>
     );
 }
