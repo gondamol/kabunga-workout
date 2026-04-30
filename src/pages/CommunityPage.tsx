@@ -1069,108 +1069,140 @@ export default function CommunityPage() {
                                     })}
                                 </div>
 
-                                {selectedGroupChallenge && (
+                                {selectedGroupChallenge && (() => {
+                                    const daysLeft = Math.max(0, dayjs(selectedGroupChallenge.endDate).diff(dayjs(), 'day'));
+                                    const totalCompleted = challengeEntries.reduce((s, e) => s + e.completedWorkouts, 0);
+                                    const totalTarget = challengeEntries.reduce((s, e) => s + e.targetCount, 0);
+                                    const groupPct = totalTarget > 0 ? Math.min(100, Math.round((totalCompleted / totalTarget) * 100)) : 0;
+                                    const estimatedMinutes = totalCompleted * 45;
+                                    return (
                                     <>
-                                        <div className="rounded-xl border border-border bg-bg-surface p-3">
-                                            <div className="flex items-start justify-between gap-3">
+                                        {/* Featured Challenge hero card */}
+                                        <div className="rounded-3xl p-5 text-white" style={{ background: '#17452a' }}>
+                                            <p className="text-[10px] font-bold tracking-widest uppercase opacity-70 mb-2">Featured Challenge</p>
+                                            <h3 className="font-display text-xl font-extrabold leading-tight mb-1">{selectedGroupChallenge.title}</h3>
+                                            <p className="text-sm opacity-80 leading-snug mb-1">
+                                                {selectedGroupChallenge.description || 'Move daily. Build a stronger you — together.'}
+                                            </p>
+                                            <p className="text-[11px] opacity-60 mb-4">
+                                                📅 {dayjs(selectedGroupChallenge.startDate).format('MMM D')} – {dayjs(selectedGroupChallenge.endDate).format('MMM D, YYYY')}
+                                            </p>
+
+                                            {/* Group progress */}
+                                            <div className="mb-2 flex items-center justify-between text-xs">
+                                                <span className="opacity-70">Together, we've got this! 🤜</span>
+                                                <span className="font-bold">{groupPct}%</span>
+                                            </div>
+                                            <div className="h-2.5 rounded-full bg-white/20 overflow-hidden mb-4">
+                                                <div className="h-full rounded-full transition-all duration-700" style={{ width: `${groupPct}%`, background: '#9bd93c' }} />
+                                            </div>
+
+                                            {/* Stats row */}
+                                            <div className="grid grid-cols-3 gap-3 text-center">
                                                 <div>
-                                                    <p className="text-sm font-semibold">{selectedGroupChallenge.title}</p>
-                                                    <p className="text-xs text-text-secondary mt-1">
-                                                        {selectedGroupChallenge.description || 'Workout count challenge for this group.'}
-                                                    </p>
+                                                    <p className="font-display text-lg font-extrabold">{challengeEntries.length}</p>
+                                                    <p className="text-[10px] opacity-70">Participants</p>
                                                 </div>
-                                                <span className={`rounded-full px-2 py-1 text-[10px] font-semibold ${
-                                                    getCommunityGroupChallengeStatus(selectedGroupChallenge) === 'completed'
-                                                        ? 'bg-green/15 text-green'
-                                                        : 'bg-amber/15 text-amber'
-                                                }`}>
-                                                    {getCommunityGroupChallengeStatus(selectedGroupChallenge)}
-                                                </span>
-                                            </div>
-                                            <div className="mt-3 grid grid-cols-3 gap-2 text-center">
-                                                <div className="rounded-lg bg-bg-card p-2">
-                                                    <p className="text-[10px] text-text-muted">Window</p>
-                                                    <p className="text-xs font-semibold capitalize">{selectedGroupChallenge.period}</p>
+                                                <div>
+                                                    <p className="font-display text-lg font-extrabold">{estimatedMinutes.toLocaleString()}</p>
+                                                    <p className="text-[10px] opacity-70">Active Minutes</p>
                                                 </div>
-                                                <div className="rounded-lg bg-bg-card p-2">
-                                                    <p className="text-[10px] text-text-muted">Target</p>
-                                                    <p className="text-xs font-semibold">{selectedGroupChallenge.targetCount} workouts</p>
-                                                </div>
-                                                <div className="rounded-lg bg-bg-card p-2">
-                                                    <p className="text-[10px] text-text-muted">Ends</p>
-                                                    <p className="text-xs font-semibold">{dayjs(selectedGroupChallenge.endDate).format('MMM D')}</p>
+                                                <div>
+                                                    <p className="font-display text-lg font-extrabold">{daysLeft}</p>
+                                                    <p className="text-[10px] opacity-70">Days Left</p>
                                                 </div>
                                             </div>
-                                            {myChallengeEntry && myChallengeEntry.challengeId === selectedGroupChallenge.id && (
-                                                <p className="text-[11px] text-text-muted mt-3">
-                                                    You are at {myChallengeEntry.completedWorkouts}/{myChallengeEntry.targetCount} workouts.
-                                                </p>
-                                            )}
-                                            {!myChallengeEntry && isSelectedGroupMember && (
-                                                <p className="text-[11px] text-text-muted mt-3">
-                                                    Your workouts are not on this board yet. Tap Sync My Workouts to pull them in.
-                                                </p>
-                                            )}
-                                            {isSelectedGroupMember ? (
-                                                <button
-                                                    onClick={() => void handleSyncChallengeProgress()}
-                                                    disabled={syncingChallengeId === selectedGroupChallenge.id}
-                                                    className="mt-3 w-full py-3 rounded-xl gradient-primary text-white text-sm font-semibold disabled:opacity-40"
-                                                >
-                                                    {syncingChallengeId === selectedGroupChallenge.id ? 'Syncing Workouts...' : 'Sync My Workouts'}
-                                                </button>
-                                            ) : (
-                                                <p className="text-xs text-text-secondary mt-3">
-                                                    Join this group to sync your workout count into the leaderboard.
-                                                </p>
-                                            )}
                                         </div>
 
-                                        <div className="space-y-2">
-                                            {loadingChallengeEntries ? (
-                                                <p className="text-xs text-text-muted">Loading leaderboard...</p>
-                                            ) : challengeEntries.length === 0 ? (
-                                                <p className="text-xs text-text-secondary">No one has synced yet. Be the first to put a score on the board.</p>
-                                            ) : (
-                                                challengeEntries.slice(0, 8).map((entry, index) => {
-                                                    const pct = Math.min(100, Math.round((entry.completedWorkouts / Math.max(1, entry.targetCount)) * 100));
-                                                    const mine = entry.userId === user?.uid;
-                                                    return (
-                                                        <div
-                                                            key={entry.id}
-                                                            className={`rounded-xl border p-3 ${mine ? 'border-accent bg-accent/10' : 'border-border bg-bg-surface'}`}
-                                                        >
-                                                            <div className="flex items-center justify-between gap-3">
-                                                                <div className="flex items-center gap-3 min-w-0">
-                                                                    <div className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-black ${index === 0 ? 'bg-amber/20 text-amber' : 'bg-bg-card text-text-secondary'}`}>
-                                                                        #{index + 1}
+                                        {/* My progress note */}
+                                        {myChallengeEntry && myChallengeEntry.challengeId === selectedGroupChallenge.id && (
+                                            <div className="rounded-2xl bg-primary-container px-4 py-3 text-sm text-primary font-medium">
+                                                You are at {myChallengeEntry.completedWorkouts}/{myChallengeEntry.targetCount} workouts.
+                                            </div>
+                                        )}
+                                        {!myChallengeEntry && isSelectedGroupMember && (
+                                            <div className="rounded-2xl bg-bg-card px-4 py-3 text-[11px] text-text-muted">
+                                                Your workouts are not on this board yet. Tap Sync My Workouts to pull them in.
+                                            </div>
+                                        )}
+
+                                        {/* Top Movers leaderboard */}
+                                        <div className="rounded-3xl bg-bg-card p-4">
+                                            <p className="text-sm font-semibold text-text-primary mb-3">Top Movers 🏅</p>
+                                            <div className="space-y-3">
+                                                {loadingChallengeEntries ? (
+                                                    <p className="text-xs text-text-muted">Loading leaderboard...</p>
+                                                ) : challengeEntries.length === 0 ? (
+                                                    <p className="text-xs text-text-secondary">No one has synced yet. Be the first!</p>
+                                                ) : (
+                                                    challengeEntries.slice(0, 8).map((entry, index) => {
+                                                        const pct = Math.min(100, Math.round((entry.completedWorkouts / Math.max(1, entry.targetCount)) * 100));
+                                                        const mine = entry.userId === user?.uid;
+                                                        const initials = (entry.userName || 'U').slice(0, 2).toUpperCase();
+                                                        const colors = ['#17452a', '#3468b7', '#9bd93c', '#d8871f', '#6b7280'];
+                                                        const bgColor = mine ? '#9bd93c' : colors[index % colors.length];
+                                                        return (
+                                                            <div key={entry.id} className={`rounded-2xl p-3 ${mine ? 'border-2' : 'border border-border'} bg-bg-surface`}
+                                                                style={mine ? { borderColor: '#9bd93c' } : undefined}
+                                                            >
+                                                                <div className="flex items-center gap-3">
+                                                                    <span className="text-sm font-bold text-text-muted w-5 shrink-0">{index + 1}</span>
+                                                                    <div className="w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold shrink-0"
+                                                                        style={{ background: bgColor, color: mine ? '#17452a' : 'white' }}>
+                                                                        {initials}
                                                                     </div>
-                                                                    <div className="min-w-0">
-                                                                        <p className="text-sm font-semibold truncate">{entry.userName}</p>
-                                                                        <p className="text-[11px] text-text-muted">
-                                                                            {entry.lastWorkoutAt ? `Last workout ${dayjs(entry.lastWorkoutAt).format('MMM D')}` : 'No workout synced yet'}
-                                                                        </p>
+                                                                    <div className="flex-1 min-w-0">
+                                                                        <div className="flex items-center justify-between gap-2">
+                                                                            <p className="text-sm font-semibold truncate">{mine ? 'You' : entry.userName}</p>
+                                                                            <p className="text-xs font-bold text-text-primary shrink-0">
+                                                                                {entry.lastWorkoutAt ? `${dayjs(entry.lastWorkoutAt).diff(dayjs(selectedGroupChallenge.startDate), 'day')} days` : '—'}
+                                                                            </p>
+                                                                        </div>
+                                                                        <div className="mt-1.5 h-1.5 rounded-full bg-bg-card overflow-hidden">
+                                                                            <div className="h-full rounded-full transition-all duration-700"
+                                                                                style={{ width: `${pct}%`, background: mine ? '#9bd93c' : '#17452a' }} />
+                                                                        </div>
                                                                     </div>
                                                                 </div>
-                                                                <div className="text-right shrink-0">
-                                                                    <p className="text-sm font-bold">{entry.completedWorkouts}/{entry.targetCount}</p>
-                                                                    <p className="text-[11px] text-text-muted">workouts</p>
-                                                                </div>
                                                             </div>
-                                                            <div className="mt-2 h-2 rounded-full bg-bg-card overflow-hidden">
-                                                                <div
-                                                                    className={`h-full rounded-full ${mine ? 'bg-accent' : 'bg-amber'}`}
-                                                                    style={{ width: `${pct}%` }}
-                                                                />
-                                                            </div>
-                                                        </div>
-                                                    );
-                                                })
-                                            )}
+                                                        );
+                                                    })
+                                                )}
+                                            </div>
                                         </div>
 
+                                        {/* Motivation + Send Cheer */}
+                                        <div className="rounded-3xl bg-bg-card p-4 flex items-center justify-between gap-3">
+                                            <p className="text-xs text-text-secondary leading-snug flex-1">
+                                                We rise when we move together. Cheer, encourage, and keep each other going!
+                                            </p>
+                                            <button
+                                                onClick={() => toast.success('Cheer sent! 🎉')}
+                                                className="shrink-0 px-4 py-2.5 rounded-xl text-sm font-bold text-white"
+                                                style={{ background: '#17452a' }}
+                                            >
+                                                Send Cheer
+                                            </button>
+                                        </div>
+
+                                        {/* Sync / Join CTA */}
+                                        {isSelectedGroupMember ? (
+                                            <button
+                                                onClick={() => void handleSyncChallengeProgress()}
+                                                disabled={syncingChallengeId === selectedGroupChallenge.id}
+                                                className="w-full py-4 rounded-2xl text-white text-sm font-bold disabled:opacity-40 flex items-center justify-center gap-2"
+                                                style={{ background: '#17452a' }}
+                                            >
+                                                {syncingChallengeId === selectedGroupChallenge.id ? 'Syncing Workouts...' : '→ Sync My Workouts'}
+                                            </button>
+                                        ) : (
+                                            <p className="text-xs text-center text-text-secondary">
+                                                Join this group to sync your workout count into the leaderboard.
+                                            </p>
+                                        )}
                                     </>
-                                )}
+                                    );
+                                })()}
                             </>
                         )}
                     </div>

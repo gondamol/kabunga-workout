@@ -23,6 +23,7 @@ import type { WorkoutSession } from '../lib/types';
 import Webcam from 'react-webcam';
 import { isIronTemplateId } from '../lib/ironProtocol';
 import { ActionButton, EmptyState, ProgressRing, StatChip } from '../components/ui';
+import { summarizeHeartPoints } from '../lib/heartPoints';
 
 const normalizeExerciseName = (name: string): string =>
     name.toLowerCase().trim().replace(/\s+/g, ' ');
@@ -200,9 +201,15 @@ export default function ActiveWorkoutPage() {
 
                 {/* ── Session Summary ── */}
                 <div className="rounded-3xl bg-bg-card p-5 shadow-card">
-                    <div className="flex items-center gap-2 mb-4">
-                        <Star size={16} className="text-amber" fill="currentColor" />
-                        <h2 className="text-sm font-bold text-text-primary">Session Summary</h2>
+                    <div className="flex items-center justify-between mb-4">
+                        <div className="flex items-center gap-2">
+                            <Star size={16} className="text-amber" fill="currentColor" />
+                            <h2 className="text-sm font-bold text-text-primary">Session Summary</h2>
+                        </div>
+                        <span className="inline-flex items-center gap-1 rounded-full bg-red/10 px-2.5 py-1 text-[11px] font-bold text-red">
+                            <span aria-hidden>♥</span>
+                            {summarizeHeartPoints(completedSession)} pts
+                        </span>
                     </div>
                     <div className="grid grid-cols-4 gap-2">
                         <SummaryStat
@@ -463,14 +470,18 @@ export default function ActiveWorkoutPage() {
         if (finishingWorkout) return;
         const completed = endWorkout();
         if (!completed) return;
+        const enriched: typeof completed = {
+            ...completed,
+            heartPoints: summarizeHeartPoints(completed),
+        };
         setFinishingWorkout(true);
 
-        const summary = generateWorkoutSummary(completed);
+        const summary = generateWorkoutSummary(enriched);
         try {
-            await saveWorkout(completed);
+            await saveWorkout(enriched);
         } catch {
             try {
-                await enqueueAction({ type: 'workout', action: 'create', data: completed });
+                await enqueueAction({ type: 'workout', action: 'create', data: enriched });
                 toast('Saved offline — will sync when online', { icon: '📴' });
             } catch (queueError) {
                 console.warn('Failed to save workout and enqueue fallback:', queueError);
@@ -478,7 +489,7 @@ export default function ActiveWorkoutPage() {
             }
         } finally {
             setFinishingWorkout(false);
-            setCompletedSession(completed);
+            setCompletedSession(enriched);
             setCompletedSummaryText(summary);
         }
     };

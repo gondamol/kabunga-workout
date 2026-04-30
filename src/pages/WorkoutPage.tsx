@@ -249,16 +249,33 @@ export default function WorkoutPage() {
     };
 
     return (
-        <div className="shell-page pt-6 pb-24 space-y-5">
-            <PageHeader
-                eyebrow="Today's training"
-                title="Plan your session"
-                subtitle="Fast lanes first, details when you need them. Bodyweight stays bodyweight when weight is zero."
-                action={
-                    <ActionButton size="icon" variant="secondary" icon={<Search size={19} />} aria-label="Search exercises" onClick={() => setShowPicker(true)} />
-                }
-                className="animate-fade-in"
-            />
+        <div className="shell-page pt-5 pb-28 space-y-4">
+            {/* Header */}
+            <div className="flex items-start justify-between gap-3 animate-fade-in px-1">
+                <div>
+                    <h1 className="font-display text-2xl font-extrabold text-text-primary">Workout Planner</h1>
+                    <p className="text-sm text-text-muted mt-0.5">Plan your perfect workout</p>
+                </div>
+                <button
+                    onClick={() => setShowPicker(true)}
+                    className="flex items-center gap-2 rounded-2xl bg-primary px-4 py-2.5 text-sm font-bold text-white shadow-card shrink-0"
+                >
+                    <Plus size={16} />
+                    Add Exercise
+                </button>
+            </div>
+
+            {/* Search bar */}
+            <div className="relative animate-fade-in">
+                <Search size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-text-muted" />
+                <input
+                    type="text"
+                    readOnly
+                    onClick={() => setShowPicker(true)}
+                    placeholder="Search exercises or body parts…"
+                    className="w-full bg-bg-card border border-border rounded-2xl py-3 pl-10 pr-4 text-sm text-text-muted cursor-pointer shadow-card"
+                />
+            </div>
 
             <SegmentedControl
                 ariaLabel="Workout page sections"
@@ -474,11 +491,62 @@ export default function WorkoutPage() {
                         )}
                     </div>
 
+                    {/* ── Bottom summary strip ── */}
+                    {queue.length > 0 && (
+                        <div className="bg-bg-card rounded-2xl px-4 py-3 flex items-center justify-between gap-2 shadow-card animate-fade-in stagger-2 border border-border">
+                            <div className="text-center flex-1">
+                                <p className="text-[10px] text-text-muted uppercase tracking-wide">Est. Time</p>
+                                <p className="text-sm font-bold text-text-primary">
+                                    {planBreakdown.sets > 0 ? `${Math.round(planBreakdown.sets * 2.5)}–${Math.round(planBreakdown.sets * 3.5)} min` : '—'}
+                                </p>
+                            </div>
+                            <div className="w-px h-8 bg-border" />
+                            <div className="text-center flex-1">
+                                <p className="text-[10px] text-text-muted uppercase tracking-wide">Est. Cal</p>
+                                <p className="text-sm font-bold text-text-primary">
+                                    {planBreakdown.sets > 0 ? `${planBreakdown.sets * 15}–${planBreakdown.sets * 25} Cal` : '—'}
+                                </p>
+                            </div>
+                            <div className="w-px h-8 bg-border" />
+                            <div className="text-center flex-1">
+                                <p className="text-[10px] text-text-muted uppercase tracking-wide">Exercises</p>
+                                <p className="text-sm font-bold text-text-primary">{queue.length}</p>
+                            </div>
+                        </div>
+                    )}
+
+                    {/* Quick actions */}
+                    <div className="grid grid-cols-3 gap-2 animate-fade-in stagger-2">
+                        <button
+                            onClick={() => handleRepeatLastWorkout(false)}
+                            disabled={!latestWorkout}
+                            className="rounded-2xl bg-bg-card border border-border p-3 text-center shadow-card disabled:opacity-40"
+                        >
+                            <History size={18} className="text-tertiary mx-auto mb-1" />
+                            <p className="text-[11px] font-semibold text-text-secondary leading-tight">Repeat Last</p>
+                        </button>
+                        <button
+                            onClick={() => todayCoachPlans[0] ? handleLoadCoachPlan(todayCoachPlans[0]) : null}
+                            disabled={todayCoachPlans.length === 0}
+                            className="rounded-2xl bg-bg-card border border-border p-3 text-center shadow-card disabled:opacity-40"
+                        >
+                            <Users size={18} className="text-primary mx-auto mb-1" />
+                            <p className="text-[11px] font-semibold text-text-secondary leading-tight">Coach Plan</p>
+                        </button>
+                        <button
+                            onClick={() => { if (user) { initPlan(user.uid); startWorkout(user.uid); navigate('/active-workout'); } }}
+                            className="rounded-2xl bg-bg-card border border-border p-3 text-center shadow-card"
+                        >
+                            <Sparkles size={18} className="text-amber mx-auto mb-1" />
+                            <p className="text-[11px] font-semibold text-text-secondary leading-tight">Quick Session</p>
+                        </button>
+                    </div>
+
                     {/* Start / Resume button */}
                     {activeSession && isTimerRunning ? (
                         <button
                             onClick={() => navigate('/active-workout')}
-                            className="w-full py-5 rounded-3xl bg-amber text-bg-primary font-bold text-lg flex items-center justify-center gap-3 active:scale-[0.97] transition-transform shadow-lg shadow-amber/20 animate-fade-in stagger-2"
+                            className="w-full py-5 rounded-3xl bg-amber text-white font-bold text-lg flex items-center justify-center gap-3 active:scale-[0.97] transition-transform shadow-lg animate-fade-in stagger-2"
                         >
                             <Play size={24} fill="currentColor" />
                             Resume Workout
@@ -488,12 +556,12 @@ export default function WorkoutPage() {
                             id="start-workout-btn"
                             onClick={handleResumeOrStart}
                             disabled={queue.length === 0}
-                            className="w-full py-5 rounded-3xl gradient-primary text-white font-bold text-lg flex items-center justify-center gap-3 active:scale-[0.97] transition-transform shadow-xl shadow-accent/25 disabled:opacity-40 disabled:scale-100 animate-fade-in stagger-2"
+                            className="w-full py-5 rounded-3xl bg-primary text-white font-bold text-lg flex items-center justify-center gap-3 active:scale-[0.97] transition-transform shadow-xl disabled:opacity-40 disabled:scale-100 animate-fade-in stagger-2"
                         >
                             <Play size={24} fill="white" />
-                            Start Workout
+                            {queue.length > 0 ? 'Review & Start Workout' : 'Start Workout'}
                             {queue.length > 0 && (
-                                <span className="text-sm opacity-80">({queue.length} exercises)</span>
+                                <span className="text-sm opacity-80">({queue.length})</span>
                             )}
                         </button>
                     )}

@@ -260,6 +260,16 @@ export interface Exercise {
     exerciseTime?: number; // seconds spent on this exercise
 }
 
+export type CardioActivityType = 'run' | 'walk' | 'cycle' | 'hike' | 'row';
+
+export interface CardioSummary {
+    activity: CardioActivityType;
+    distanceKm?: number;
+    avgPaceMinPerKm?: number; // computed from duration + distance
+    avgSpeedKmh?: number;
+    intensity?: 'easy' | 'moderate' | 'vigorous';
+}
+
 export interface WorkoutSession {
     id: string;
     userId: string;
@@ -272,6 +282,8 @@ export interface WorkoutSession {
     exercises: Exercise[];
     mediaUrls: string[];
     caloriesEstimate: number;
+    heartPoints?: number; // Google-Fit-style metric: 1 pt/min moderate, 2 pts/min vigorous
+    cardio?: CardioSummary;
     notes: string;
     status: 'active' | 'completed' | 'cancelled';
     createdAt: number;

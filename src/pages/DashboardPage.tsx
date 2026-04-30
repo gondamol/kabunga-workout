@@ -40,6 +40,9 @@ import {
     buildTodayRecommendation,
 } from '../lib/dashboardPresentation';
 import HealthCheckForm from '../components/HealthCheckForm';
+import { CardioQuickLog } from '../components/CardioQuickLog';
+import type { CardioActivityType } from '../lib/types';
+import { aggregateWeeklyHeartPoints } from '../lib/heartPoints';
 import {
     ActionButton,
     ActivityRing,
@@ -142,6 +145,8 @@ export default function DashboardPage() {
     const [loadingWorkouts, setLoadingWorkouts] = useState(true);
     const [savingPromptState, setSavingPromptState] = useState(false);
     const [savingHealthCheck, setSavingHealthCheck] = useState(false);
+    const [cardioOpen, setCardioOpen] = useState<{ open: boolean; activity: CardioActivityType }>({ open: false, activity: 'run' });
+    const openCardio = (activity: CardioActivityType) => setCardioOpen({ open: true, activity });
     const chartContainerRef = useRef<HTMLDivElement>(null);
     const [isChartReady, setIsChartReady] = useState(false);
     const latestWorkout = workouts[0] ?? null;
@@ -539,6 +544,8 @@ export default function DashboardPage() {
     const standDays = Math.min(7, stats.weeklyWorkouts + Math.floor(stats.streak / 2));
     const standGoal = 7;
 
+    const weeklyHeartPoints = useMemo(() => aggregateWeeklyHeartPoints(workouts), [workouts]);
+
     // Weekly day strip (Mon-Sun, ISO week)
     const weekDays = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
     const weekDaySet = new Set(workouts.map((w) => dayjs(w.startedAt).format('YYYY-MM-DD')));
@@ -643,6 +650,15 @@ export default function DashboardPage() {
                                 <span className="text-xs font-bold text-text-primary">{standDays} / 7 hr</span>
                                 <span className="text-[10px] text-text-muted ml-1">{Math.round((standDays / standGoal) * 100)}%</span>
                             </div>
+                        </div>
+                        <div className="flex items-center justify-between border-t border-border pt-2 mt-1">
+                            <div className="flex items-center gap-2">
+                                <span className="w-6 h-6 rounded-full bg-red/10 flex items-center justify-center" aria-hidden="true">
+                                    <span className="text-red text-[11px]">♥</span>
+                                </span>
+                                <span className="text-xs font-bold text-text-primary">Heart pts</span>
+                            </div>
+                            <span className="text-xs font-extrabold text-red">{weeklyHeartPoints}</span>
                         </div>
                     </div>
                 </div>
@@ -771,18 +787,18 @@ export default function DashboardPage() {
             <section className="animate-fade-in stagger-2">
                 <div className="flex gap-2 overflow-x-auto pb-1 -mx-1 px-1">
                     {[
-                        { icon: Footprints, label: 'Go for a Run', color: 'text-cyan', bg: 'bg-cyan/10', onClick: () => navigate('/workout') },
-                        { icon: Dumbbell, label: 'Strength', color: 'text-primary', bg: 'bg-primary-container', onClick: () => navigate('/workout') },
-                        { icon: Wind, label: 'Mobility', color: 'text-tertiary', bg: 'bg-tertiary-container', onClick: () => navigate('/workout') },
-                        { icon: Bike, label: 'Outdoor', color: 'text-amber', bg: 'bg-amber/10', onClick: () => navigate('/workout') },
+                        { icon: Footprints, label: 'Go for a Run', color: 'text-secondary', bg: 'bg-secondary-container', onClick: () => openCardio('run') },
+                        { icon: Dumbbell, label: 'Strength', color: 'text-amber', bg: 'bg-amber/15', onClick: () => navigate('/workout') },
+                        { icon: PersonStanding, label: 'Mobility', color: 'text-primary', bg: 'bg-primary-container', onClick: () => navigate('/workout') },
+                        { icon: Wind, label: 'Outdoor Walk', color: 'text-tertiary', bg: 'bg-tertiary-container', onClick: () => openCardio('walk') },
                     ].map(({ icon: Icon, label, color, bg, onClick }) => (
                         <button
                             key={label}
                             onClick={onClick}
-                            className={`shrink-0 flex flex-col items-center gap-2 rounded-2xl ${bg} px-4 py-3 min-w-[72px]`}
+                            className={`shrink-0 flex items-center gap-2 rounded-2xl ${bg} px-3.5 py-3 min-w-[110px]`}
                         >
-                            <Icon size={22} className={color} />
-                            <span className={`text-[11px] font-semibold ${color} text-center leading-tight`}>{label}</span>
+                            <Icon size={20} className={color} strokeWidth={2.4} />
+                            <span className={`text-[12px] font-bold ${color} text-left leading-tight`}>{label}</span>
                         </button>
                     ))}
                 </div>
@@ -1043,6 +1059,13 @@ export default function DashboardPage() {
                     </div>
                 </div>
             )}
+
+            <CardioQuickLog
+                open={cardioOpen.open}
+                initialActivity={cardioOpen.activity}
+                onClose={() => setCardioOpen({ open: false, activity: cardioOpen.activity })}
+                onSaved={(session) => setWorkouts((prev) => [session, ...prev])}
+            />
 
             {/* ── Recovery guidance ── */}
             {todayReadiness && todayRecoveryGuidance && (
