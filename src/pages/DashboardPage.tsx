@@ -25,7 +25,7 @@ import type {
     ReadinessStatus,
 } from '../lib/types';
 import { BarChart, Bar, XAxis, YAxis, ResponsiveContainer, Tooltip, Cell } from 'recharts';
-import { Dumbbell, ChevronRight, Zap, Trophy, Plus, BarChart3, TimerReset, Users, CalendarCheck, Flame, WifiOff } from 'lucide-react';
+import { Dumbbell, ChevronRight, Zap, Trophy, BarChart3, TimerReset, Users, CalendarCheck, Flame, WifiOff, Droplets, PersonStanding, Activity, Footprints, Bike, Wind, ShieldCheck } from 'lucide-react';
 import dayjs from 'dayjs';
 import { getOneRepMaxPromptStatus, getOneRepMaxSnoozeUntil } from '../lib/oneRepMaxes';
 import { formatProgressionInsightTarget, getDashboardProgressionInsight } from '../lib/progressionInsights';
@@ -521,131 +521,64 @@ export default function DashboardPage() {
     };
 
     const firstName = profile?.displayName?.split(' ')[0] || 'Athlete';
-    const heroIconClass = activeSession ? 'bg-cyan/12 text-cyan' : latestWorkout ? 'bg-green/12 text-green' : 'bg-accent/12 text-accent';
-    const proofTopLiftLabel = workouts.length > 0 ? trendInsights.topExerciseName : 'First lift ahead';
-    const proofTopLiftValue = workouts.length > 0 ? `${trendInsights.topExerciseVolume} kg·reps` : 'Log a session';
     const hasWorkoutHistory = workouts.length > 0;
 
+    const hourNow = dayjs().hour();
+    const greetingWord = hourNow < 12 ? 'Good morning' : hourNow < 18 ? 'Good afternoon' : 'Good evening';
+
+    // Activity Points: fun metric based on weekly workouts + streak
+    const activityPoints = stats.weeklyWorkouts * 80 + stats.streak * 30 + (todayReadiness?.score ?? 0) * 20;
+    const activityPointsGoal = 1000;
+    const activityPointsPct = Math.min(100, Math.round((activityPoints / activityPointsGoal) * 100));
+
+    // Derive Move/Exercise/Stand ring values from weekly data
+    const moveCalories = stats.totalCalories;
+    const moveGoal = 700;
+    const exerciseMinutes = Math.round(stats.totalDuration / 60);
+    const exerciseGoal = 150;
+    const standDays = Math.min(7, stats.weeklyWorkouts + Math.floor(stats.streak / 2));
+    const standGoal = 7;
+
+    // Weekly day strip (Mon-Sun, ISO week)
+    const weekDays = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+    const weekDaySet = new Set(workouts.map((w) => dayjs(w.startedAt).format('YYYY-MM-DD')));
+    const mondayOffset = (dayjs().day() + 6) % 7; // 0=Mon
+    const weekDayDates = Array.from({ length: 7 }, (_, i) => {
+        const d = dayjs().subtract(mondayOffset - i, 'day');
+        return { label: weekDays[i], date: d.format('YYYY-MM-DD'), isToday: d.format('YYYY-MM-DD') === dayjs().format('YYYY-MM-DD') };
+    });
+
     return (
-        <div className="shell-page space-y-5 pb-6 pt-6">
-            <header className="animate-fade-in">
-                <div className="flex items-start justify-between gap-4">
-                    <div>
-                        <p className="text-sm font-semibold text-text-secondary">{dayjs().format('dddd, MMM D')}</p>
-                        <h1 className="mt-1 font-display text-[2.35rem] font-extrabold leading-tight text-text-primary">
-                            Today, {firstName}
+        <div className="shell-page space-y-5 pb-6 pt-5">
+
+            {/* ── Header Greeting ── */}
+            <header className="animate-fade-in px-1">
+                <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0 flex-1">
+                        <h1 className="font-display text-[1.7rem] font-extrabold leading-tight text-text-primary">
+                            {greetingWord}, {firstName}! <span className="inline-block">👋</span>
                         </h1>
-                        <p className="mt-2 max-w-sm text-sm leading-6 text-text-secondary">
-                            {todayRecommendation.title}. You are building consistency one useful session at a time.
-                        </p>
+                        <p className="mt-1 text-sm text-text-muted">Today is {dayjs().format('MMMM D, YYYY')}</p>
                     </div>
-                    <div className="flex flex-col items-end gap-2">
-                        {!isOnline && <StatChip tone="accent" icon={<WifiOff size={15} />} label="Offline" value="Gym mode" />}
-                        <StatChip tone="secondary" icon={<CalendarCheck size={15} />} label={`${weeklyProgress}/${weeklyGoal}`} value="this week" />
+                    <div className="flex flex-col items-end gap-1.5 shrink-0">
+                        {!isOnline && (
+                            <span className="flex items-center gap-1 rounded-full bg-amber/15 px-2.5 py-1 text-[10px] font-bold text-amber">
+                                <WifiOff size={11} />
+                                Offline
+                            </span>
+                        )}
+                        <button
+                            onClick={() => setShowHealthForm((c) => !c)}
+                            className="flex items-center gap-1.5 rounded-full bg-primary-container px-3 py-1.5 text-[11px] font-bold text-primary"
+                        >
+                            <ShieldCheck size={12} />
+                            Check-in
+                        </button>
                     </div>
                 </div>
             </header>
 
-            <WorkoutCard
-                tone="primary"
-                title={todayRecommendation.title}
-                subtitle={todayRecommendation.detail}
-                actionLabel={todayRecommendation.ctaLabel}
-                onAction={handleTodayRecommendation}
-                progress={
-                    <ProgressRing value={weeklyProgressPct} size={94} strokeWidth={8} tone="secondary" label="Week">
-                        <span className="font-display text-2xl font-extrabold text-text-inverse">{weeklyProgressPct}%</span>
-                    </ProgressRing>
-                }
-                meta={[
-                    { icon: <Zap size={14} />, label: activeSession ? 'Active session' : goalHero.eyebrow },
-                    { icon: <TimerReset size={14} />, label: profile?.onboarding?.timeAvailableMinutes ? `${profile.onboarding.timeAvailableMinutes} min` : 'Fast start' },
-                ]}
-                className="animate-fade-in"
-            />
-
-            {!activeSession && latestWorkout && (
-                <button
-                    type="button"
-                    onClick={() => handleRepeatLastWorkout(false)}
-                    className="pressable w-full rounded-[1.5rem] border border-secondary/30 bg-secondary-container p-4 text-left shadow-card animate-fade-in"
-                >
-                    <div className="flex items-center justify-between gap-4">
-                        <div>
-                            <p className="text-xs font-bold uppercase tracking-[0.14em] text-primary">Fast lane</p>
-                            <h2 className="mt-1 text-lg font-extrabold text-text-primary">Your last session is ready to repeat</h2>
-                            <p className="mt-1 text-sm text-text-secondary">{getWorkoutHeadline(latestWorkout)}</p>
-                        </div>
-                        <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-primary text-text-inverse">
-                            <ChevronRight size={22} />
-                        </span>
-                    </div>
-                </button>
-            )}
-
-            <section className="grid grid-cols-2 gap-3 animate-fade-in stagger-1">
-                <MetricCard label="Streak" value={stats.streak} helper="days moving" icon={<Flame size={20} />} tone="accent" />
-                <MetricCard label="Week" value={`${weeklyProgress}/${weeklyGoal}`} helper="planned sessions" icon={<CalendarCheck size={20} />} tone="secondary" />
-            </section>
-
-            <section className="premium-card-high p-5 animate-fade-in stagger-1">
-                <div className="flex items-center justify-between gap-4">
-                    <div>
-                        <p className="text-xs font-bold uppercase tracking-[0.14em] text-primary">Weekly progress</p>
-                        <h2 className="mt-2 text-2xl font-extrabold text-text-primary">{weeklyProgressPct}% complete</h2>
-                        <p className="mt-2 text-sm leading-6 text-text-secondary">
-                            {weeklyProgress >= weeklyGoal ? 'You hit the weekly target. Keep recovery honest.' : `${Math.max(weeklyGoal - weeklyProgress, 0)} sessions left this week.`}
-                        </p>
-                    </div>
-                    <ActivityRing
-                        size={128}
-                        centerValue={`${weeklyProgress}/${weeklyGoal}`}
-                        centerLabel="week"
-                        rings={[
-                            { value: weeklyProgress, max: weeklyGoal, label: 'Weekly sessions', tone: 'secondary' },
-                            { value: Math.min(stats.streak, 7), max: 7, label: 'Streak', tone: 'accent' },
-                            { value: todayReadiness?.score ?? 0, max: 10, label: 'Readiness', tone: 'tertiary' },
-                        ]}
-                    />
-                </div>
-            </section>
-
-            <ReadinessCard
-                score={todayReadiness ? todayReadiness.score * 10 : null}
-                status={readinessStrip.value}
-                guidance={readinessStrip.detail}
-                contributors={[
-                    { label: 'Check-in', value: todayHealthCheck ? 'Done' : 'Needed' },
-                    { label: 'Mode', value: 'No wearable' },
-                ]}
-                action={
-                    <ActionButton variant="secondary" fullWidth onClick={() => setShowHealthForm((current) => !current)}>
-                        {readinessStrip.ctaLabel}
-                    </ActionButton>
-                }
-                className="animate-fade-in"
-            />
-
-            <button
-                type="button"
-                onClick={() => navigate('/community')}
-                className="pressable premium-card w-full p-4 text-left animate-fade-in stagger-1"
-            >
-                <div className="flex items-start justify-between gap-3">
-                    <div>
-                        <p className="text-xs font-bold uppercase tracking-[0.14em] text-tertiary">Circle</p>
-                        <p className="mt-2 text-base font-extrabold text-text-primary">{circleShortcut.title}</p>
-                        <p className="mt-1 text-sm leading-6 text-text-secondary">{circleShortcut.detail}</p>
-                        <span className="mt-3 inline-flex rounded-full bg-tertiary-container px-3 py-1.5 text-xs font-bold text-tertiary">
-                            {circleShortcut.ctaLabel}
-                        </span>
-                    </div>
-                    <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-tertiary-container text-tertiary">
-                        <Users size={20} />
-                    </div>
-                </div>
-            </button>
-
+            {/* ── Health Check Form (inline) ── */}
             {showHealthForm && (
                 <HealthCheckForm
                     athleteId={user?.uid || ''}
@@ -657,70 +590,260 @@ export default function DashboardPage() {
                 />
             )}
 
-            {todayReadiness && todayRecoveryGuidance && (
-                <div className="space-y-3 animate-fade-in">
-                    <RecoveryGuidanceCard
-                        title={todayRecoveryGuidance.headline}
-                        description={todayRecoveryGuidance.summary}
-                        options={recoveryAlternatives.options.slice(0, 4)}
-                        actionLabel="Open recovery"
-                        onAction={() => navigate('/nutrition')}
+            {/* ── Your Activity ── */}
+            <section className="bg-bg-card rounded-3xl p-5 shadow-card animate-fade-in">
+                <div className="flex items-center justify-between mb-4">
+                    <div>
+                        <p className="text-xs font-bold uppercase tracking-[0.12em] text-text-muted">Your Activity</p>
+                        <p className="text-[11px] text-text-muted">This week</p>
+                    </div>
+                    <button onClick={() => navigate('/progress')} className="text-xs font-bold text-primary">
+                        View week →
+                    </button>
+                </div>
+
+                <div className="flex items-center gap-4">
+                    <ActivityRing
+                        size={108}
+                        centerValue={String(activityPoints)}
+                        centerLabel="pts"
+                        rings={[
+                            { value: Math.min(moveCalories, moveGoal), max: moveGoal, label: 'Move', tone: 'accent' },
+                            { value: Math.min(exerciseMinutes, exerciseGoal), max: exerciseGoal, label: 'Exercise', tone: 'secondary' },
+                            { value: standDays, max: standGoal, label: 'Stand', tone: 'tertiary' },
+                        ]}
                     />
-                    <div className="mt-4 space-y-2">
-                        {todayRecoveryGuidance.items.map((item) => {
-                            const tone = getGuidanceTone(item.tone);
-                            return (
-                                <div
-                                    key={item.id}
-                                    className={`rounded-2xl border ${tone.border} ${tone.surface} p-3`}
-                                >
-                                    <div className="flex items-start justify-between gap-3">
-                                        <div>
-                                            <p className="text-sm font-semibold">{item.title}</p>
-                                            <p className="mt-1 text-xs text-text-secondary">{item.detail}</p>
-                                        </div>
-                                        <span className={`rounded-full px-2 py-1 text-[10px] font-semibold ${tone.badge}`}>
-                                            {item.tone}
-                                        </span>
-                                    </div>
-                                </div>
-                            );
-                        })}
+                    <div className="flex-1 space-y-2.5">
+                        <div className="flex items-center justify-between">
+                            <div className="flex items-center gap-2">
+                                <span className="w-2.5 h-2.5 rounded-full bg-amber shrink-0" />
+                                <span className="text-xs font-semibold text-text-primary">Move</span>
+                            </div>
+                            <div className="text-right">
+                                <span className="text-xs font-bold text-text-primary">{moveCalories.toLocaleString()} Cal</span>
+                                <span className="text-[10px] text-text-muted ml-1">{Math.round(Math.min(moveCalories / moveGoal, 1) * 100)}%</span>
+                            </div>
+                        </div>
+                        <div className="flex items-center justify-between">
+                            <div className="flex items-center gap-2">
+                                <span className="w-2.5 h-2.5 rounded-full bg-secondary shrink-0" />
+                                <span className="text-xs font-semibold text-text-primary">Exercise</span>
+                            </div>
+                            <div className="text-right">
+                                <span className="text-xs font-bold text-text-primary">{exerciseMinutes} / 150 min</span>
+                                <span className="text-[10px] text-text-muted ml-1">{Math.round(Math.min(exerciseMinutes / exerciseGoal, 1) * 100)}%</span>
+                            </div>
+                        </div>
+                        <div className="flex items-center justify-between">
+                            <div className="flex items-center gap-2">
+                                <span className="w-2.5 h-2.5 rounded-full bg-tertiary shrink-0" />
+                                <span className="text-xs font-semibold text-text-primary">Stand</span>
+                            </div>
+                            <div className="text-right">
+                                <span className="text-xs font-bold text-text-primary">{standDays} / 7 hr</span>
+                                <span className="text-[10px] text-text-muted ml-1">{Math.round((standDays / standGoal) * 100)}%</span>
+                            </div>
+                        </div>
                     </div>
                 </div>
-            )}
 
+                {/* Day strip */}
+                <div className="mt-4 flex justify-between">
+                    {weekDayDates.map(({ label, date, isToday }) => {
+                        const done = weekDaySet.has(date);
+                        return (
+                            <div key={date} className="flex flex-col items-center gap-1">
+                                <span className={`text-[10px] font-semibold ${isToday ? 'text-primary' : 'text-text-muted'}`}>{label}</span>
+                                <div
+                                    className="w-6 h-6 rounded-full flex items-center justify-center"
+                                    style={{
+                                        background: done ? '#2f7d32' : isToday ? '#dcefd8' : '#edf4e8',
+                                        border: isToday && !done ? '2px solid #9bd93c' : '2px solid transparent',
+                                    }}
+                                >
+                                    {done && <span className="text-white text-[10px] font-bold">✓</span>}
+                                </div>
+                            </div>
+                        );
+                    })}
+                </div>
+            </section>
+
+            {/* ── Readiness + Streak row ── */}
+            <div className="grid grid-cols-2 gap-3 animate-fade-in stagger-1">
+                {/* Readiness */}
+                <div
+                    className={`rounded-3xl p-4 shadow-card border ${readinessTone?.border ?? 'border-border'}`}
+                    style={{ background: todayReadiness ? undefined : '#fff' }}
+                >
+                    <p className="text-[11px] font-bold uppercase tracking-wide text-text-muted">Readiness</p>
+                    <div className="mt-1 flex items-end gap-1">
+                        <span className="font-display text-4xl font-extrabold text-text-primary leading-none">
+                            {todayReadiness ? Math.round(todayReadiness.score * 10) : '--'}
+                        </span>
+                        <span className="text-sm text-text-muted mb-0.5">/100</span>
+                    </div>
+                    <p className="mt-1.5 text-[11px] leading-4 text-text-secondary">
+                        {readinessStrip.tone === 'empty'
+                            ? 'Log a check-in to see readiness'
+                            : readinessStrip.detail.slice(0, 50)}
+                    </p>
+                    <button
+                        onClick={() => setShowHealthForm((c) => !c)}
+                        className={`mt-3 rounded-xl px-3 py-2 text-[11px] font-bold w-full ${readinessTone?.badge ?? 'bg-bg-input text-text-secondary'}`}
+                    >
+                        {readinessStrip.ctaLabel}
+                    </button>
+                </div>
+
+                {/* Streak */}
+                <div className="rounded-3xl p-4 shadow-card bg-bg-card border border-amber/20">
+                    <p className="text-[11px] font-bold uppercase tracking-wide text-text-muted">Streak 🔥</p>
+                    <div className="mt-1 flex items-end gap-1">
+                        <span className="font-display text-4xl font-extrabold text-amber leading-none">
+                            {stats.streak}
+                        </span>
+                        <span className="text-sm text-text-muted mb-0.5">days</span>
+                    </div>
+                    <p className="mt-1.5 text-[11px] leading-4 text-text-secondary">
+                        {stats.streak > 0 ? "Keep it up! You're building a strong habit." : 'Start your streak today!'}
+                    </p>
+                    <div className="mt-3 flex items-center justify-center">
+                        <div className="w-10 h-10 rounded-full bg-amber/15 border-2 border-amber flex items-center justify-center">
+                            <span className="text-sm font-extrabold text-amber">{stats.streak}</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            {/* ── Recommended Workout ── */}
+            <section className="bg-bg-card rounded-3xl p-5 shadow-card animate-fade-in stagger-1">
+                <span className="inline-block rounded-full bg-secondary-container px-2.5 py-1 text-[10px] font-bold text-primary uppercase tracking-[0.1em]">
+                    Recommended for you
+                </span>
+                <h2 className="mt-2 font-display text-2xl font-extrabold text-text-primary leading-tight">
+                    {todayRecommendation.title}
+                </h2>
+                <div className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-text-secondary">
+                    {profile?.onboarding?.timeAvailableMinutes && (
+                        <span className="flex items-center gap-1">
+                            <TimerReset size={12} className="text-text-muted" />
+                            {profile.onboarding.timeAvailableMinutes} min
+                        </span>
+                    )}
+                    <span className="text-text-muted">·</span>
+                    <span className="flex items-center gap-1">
+                        <BarChart3 size={12} className="text-text-muted" />
+                        {goalHero.eyebrow}
+                    </span>
+                    {profile?.onboarding?.trainingEnvironment && (
+                        <>
+                            <span className="text-text-muted">·</span>
+                            <span className="text-text-secondary capitalize">{profile.onboarding.trainingEnvironment.replace(/_/g, ' ')}</span>
+                        </>
+                    )}
+                </div>
+                <p className="mt-2.5 text-sm leading-6 text-text-secondary">
+                    {todayRecommendation.detail}
+                </p>
+
+                <button
+                    type="button"
+                    onClick={handleTodayRecommendation}
+                    className="mt-4 w-full py-4 rounded-2xl bg-primary text-text-inverse font-bold text-base flex items-center justify-center gap-2"
+                >
+                    {todayRecommendation.ctaLabel}
+                    <ChevronRight size={18} strokeWidth={2.5} />
+                </button>
+
+                {!activeSession && latestWorkout && (
+                    <button
+                        type="button"
+                        onClick={() => handleRepeatLastWorkout(false)}
+                        className="mt-2 w-full py-3 rounded-2xl border border-border bg-bg-surface text-sm text-text-secondary font-semibold flex items-center justify-center gap-2"
+                    >
+                        Repeat: {getWorkoutHeadline(latestWorkout)}
+                    </button>
+                )}
+            </section>
+
+            {/* ── Quick Actions ── */}
+            <section className="animate-fade-in stagger-2">
+                <div className="flex gap-2 overflow-x-auto pb-1 -mx-1 px-1">
+                    {[
+                        { icon: Footprints, label: 'Go for a Run', color: 'text-cyan', bg: 'bg-cyan/10', onClick: () => navigate('/workout') },
+                        { icon: Dumbbell, label: 'Strength', color: 'text-primary', bg: 'bg-primary-container', onClick: () => navigate('/workout') },
+                        { icon: Wind, label: 'Mobility', color: 'text-tertiary', bg: 'bg-tertiary-container', onClick: () => navigate('/workout') },
+                        { icon: Bike, label: 'Outdoor', color: 'text-amber', bg: 'bg-amber/10', onClick: () => navigate('/workout') },
+                    ].map(({ icon: Icon, label, color, bg, onClick }) => (
+                        <button
+                            key={label}
+                            onClick={onClick}
+                            className={`shrink-0 flex flex-col items-center gap-2 rounded-2xl ${bg} px-4 py-3 min-w-[72px]`}
+                        >
+                            <Icon size={22} className={color} />
+                            <span className={`text-[11px] font-semibold ${color} text-center leading-tight`}>{label}</span>
+                        </button>
+                    ))}
+                </div>
+            </section>
+
+            {/* ── Hydrate & Recover ── */}
+            <div className="bg-bg-card rounded-3xl p-4 shadow-card border border-tertiary/15 animate-fade-in stagger-2">
+                <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 rounded-2xl bg-tertiary/10 flex items-center justify-center shrink-0">
+                        <Droplets size={20} className="text-tertiary" />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                        <p className="text-sm font-bold text-text-primary">Hydrate &amp; recover</p>
+                        <p className="text-xs text-text-secondary mt-0.5">
+                            {todayCalories > 0
+                                ? `You've hit ${todayCalories} kcal today. Drink water and eat protein to recover.`
+                                : 'Log your meals and drink water. Nutrition is half the protocol.'}
+                        </p>
+                    </div>
+                    <button
+                        onClick={() => navigate('/nutrition')}
+                        className="shrink-0 rounded-xl bg-tertiary/10 px-3 py-2 text-xs font-bold text-tertiary"
+                    >
+                        Log Water
+                    </button>
+                </div>
+            </div>
+
+            {/* ── 1RM Prompt ── */}
             {oneRepMaxStatus.shouldPrompt && (
-                <div className="glass rounded-[28px] p-5 animate-fade-in">
+                <div className="bg-bg-card rounded-3xl p-5 shadow-card border border-amber/20 animate-fade-in">
                     <div className="flex items-start justify-between gap-3">
                         <div>
                             <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-amber">Strength profile</p>
-                            <h2 className="mt-1 text-lg font-bold text-text-primary">Update your 1RM</h2>
-                            <p className="mt-2 text-sm text-text-secondary">{oneRepMaxStatus.reason}</p>
+                            <h2 className="mt-1 text-base font-bold text-text-primary">Update your 1RM</h2>
+                            <p className="mt-1.5 text-sm text-text-secondary">{oneRepMaxStatus.reason}</p>
                         </div>
-                        <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-amber/12 shrink-0">
-                            <BarChart3 size={20} className="text-amber" />
+                        <div className="w-10 h-10 rounded-2xl bg-amber/10 flex items-center justify-center shrink-0">
+                            <BarChart3 size={18} className="text-amber" />
                         </div>
                     </div>
                     <div className="mt-4 flex gap-2">
                         <button
                             onClick={() => navigate('/profile?focus=one-rep-maxes')}
-                            className="flex-1 rounded-2xl bg-amber px-4 py-3 font-semibold text-white"
+                            className="flex-1 rounded-2xl bg-amber px-4 py-3 font-bold text-white text-sm"
                         >
-                            Update now
+                            Update in Profile
                         </button>
                         <button
                             onClick={() => void handleSnoozeOneRepMaxPrompt()}
                             disabled={savingPromptState}
-                            className="flex items-center gap-2 rounded-2xl border border-border bg-white px-4 py-3 text-sm text-text-secondary disabled:opacity-50"
+                            className="flex items-center gap-2 rounded-2xl border border-border bg-bg-surface px-4 py-3 text-sm text-text-secondary disabled:opacity-50"
                         >
-                            <TimerReset size={15} />
+                            <TimerReset size={14} />
                             7 days
                         </button>
                     </div>
                 </div>
             )}
 
+            {/* ── Progress section ── */}
             {!loadingWorkouts && !hasWorkoutHistory ? (
                 <EmptyState
                     className="animate-fade-in stagger-2"
@@ -737,33 +860,34 @@ export default function DashboardPage() {
                 />
             ) : (
                 <>
-                    <div className="glass rounded-[28px] p-4 animate-fade-in stagger-2 min-w-0">
+                    {/* Bar chart */}
+                    <div className="bg-bg-card rounded-3xl p-4 shadow-card animate-fade-in stagger-2 min-w-0">
                         <div className="mb-4 flex items-center justify-between">
-                            <h3 className="text-sm font-semibold text-text-primary">Weekly progress</h3>
-                            <span className="text-xs text-text-muted">{trendInsights.last7Count}/7 sessions</span>
+                            <h3 className="text-sm font-bold text-text-primary">Weekly sessions</h3>
+                            <span className="text-xs text-text-muted">{trendInsights.last7Count} this week</span>
                         </div>
-                        <div ref={chartContainerRef} className="h-36 w-full min-w-0">
+                        <div ref={chartContainerRef} className="h-32 w-full min-w-0">
                             {isChartReady ? (
                                 <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={1}>
-                                    <BarChart data={chartData} barSize={26}>
-                                        <XAxis dataKey="day" axisLine={false} tickLine={false} />
+                                    <BarChart data={chartData} barSize={24}>
+                                        <XAxis dataKey="day" axisLine={false} tickLine={false} tick={{ fontSize: 11, fill: '#748177' }} />
                                         <YAxis hide allowDecimals={false} />
                                         <Tooltip
                                             cursor={false}
                                             contentStyle={{
                                                 background: '#ffffff',
-                                                border: '1px solid #dfe8d8',
+                                                border: '1px solid #dce8d5',
                                                 borderRadius: '12px',
                                                 fontSize: '12px',
-                                                color: '#172119',
-                                                boxShadow: '0 12px 32px rgba(23,33,25,0.08)',
+                                                color: '#142117',
+                                                boxShadow: '0 8px 24px rgba(20,33,23,0.08)',
                                             }}
                                         />
-                                        <Bar dataKey="count" radius={[8, 8, 0, 0]} name="Workouts">
+                                        <Bar dataKey="count" radius={[8, 8, 4, 4]} name="Workouts">
                                             {chartData.map((entry, i) => (
                                                 <Cell
                                                     key={i}
-                                                    fill={entry.count > 0 ? '#2563eb' : 'rgba(37,99,235,0.14)'}
+                                                    fill={entry.count > 0 ? '#17452a' : '#dcefd8'}
                                                 />
                                             ))}
                                         </Bar>
@@ -775,51 +899,54 @@ export default function DashboardPage() {
                         </div>
                     </div>
 
-                    <div className="glass rounded-[28px] p-4 animate-fade-in stagger-2">
+                    {/* Strength trends */}
+                    <div className="bg-bg-card rounded-3xl p-4 shadow-card animate-fade-in stagger-2">
                         <div className="mb-3 flex items-center justify-between">
-                            <h3 className="text-sm font-semibold text-text-primary">Strength trends</h3>
-                            <span className="text-xs text-text-muted">{trendInsights.last7Count}/7 sessions</span>
+                            <h3 className="text-sm font-bold text-text-primary">Strength trends</h3>
+                            <button onClick={() => navigate('/progress')} className="text-xs font-medium text-primary">
+                                See progress →
+                            </button>
                         </div>
                         <div className="grid grid-cols-2 gap-3">
                             <div className="rounded-2xl bg-bg-surface p-3">
                                 <p className="text-[11px] uppercase tracking-wide text-text-muted">Volume</p>
-                                <p className="mt-1 text-lg font-bold">{trendInsights.lastVolume}</p>
-                                <p className={`mt-1 text-xs ${trendInsights.volumeDeltaPct >= 0 ? 'text-green' : 'text-red'}`}>
+                                <p className="mt-1 text-lg font-extrabold text-text-primary">{trendInsights.lastVolume.toLocaleString()}</p>
+                                <p className={`mt-0.5 text-xs font-semibold ${trendInsights.volumeDeltaPct >= 0 ? 'text-green' : 'text-red'}`}>
                                     {trendInsights.volumeDeltaPct >= 0 ? '+' : ''}{trendInsights.volumeDeltaPct}% vs last week
                                 </p>
                             </div>
                             <div className="rounded-2xl bg-bg-surface p-3">
                                 <p className="text-[11px] uppercase tracking-wide text-text-muted">Avg duration</p>
-                                <p className="mt-1 text-lg font-bold">{formatDurationHuman(trendInsights.currentAvgDuration)}</p>
-                                <p className={`mt-1 text-xs ${trendInsights.durationDeltaPct >= 0 ? 'text-amber' : 'text-cyan'}`}>
+                                <p className="mt-1 text-lg font-extrabold text-text-primary">{formatDurationHuman(trendInsights.currentAvgDuration)}</p>
+                                <p className={`mt-0.5 text-xs font-semibold ${trendInsights.durationDeltaPct >= 0 ? 'text-amber' : 'text-cyan'}`}>
                                     {trendInsights.durationDeltaPct >= 0 ? '+' : ''}{trendInsights.durationDeltaPct}% vs last week
                                 </p>
                             </div>
                         </div>
                         <div className="mt-3 rounded-2xl bg-bg-surface p-3">
-                            <p className="text-[11px] uppercase tracking-wide text-text-muted">Top lift in the last 30 days</p>
-                            <p className="mt-1 text-sm font-semibold">{trendInsights.topExerciseName}</p>
-                            <p className="mt-1 text-xs text-text-secondary">{trendInsights.topExerciseVolume} kg·reps</p>
+                            <p className="text-[11px] uppercase tracking-wide text-text-muted">Top lift · 30 days</p>
+                            <p className="mt-1 text-sm font-bold text-text-primary">{trendInsights.topExerciseName}</p>
+                            <p className="text-xs text-text-secondary">{trendInsights.topExerciseVolume.toLocaleString()} kg·reps</p>
                         </div>
                     </div>
                 </>
             )}
 
             {progressionInsight && (
-                <div className="glass rounded-[28px] p-4 animate-fade-in stagger-3">
+                <div className="bg-bg-card rounded-3xl p-4 shadow-card animate-fade-in stagger-3 border border-tertiary/20">
                     <div className="flex items-center justify-between gap-3">
                         <div>
-                            <p className="text-[11px] uppercase tracking-wide text-cyan font-semibold">Next progression</p>
-                            <h3 className="mt-1 text-base font-bold">{progressionInsight.exerciseName}</h3>
+                            <p className="text-[11px] uppercase tracking-wide text-tertiary font-bold">Next progression</p>
+                            <h3 className="mt-1 text-base font-bold text-text-primary">{progressionInsight.exerciseName}</h3>
                         </div>
                         <button
                             onClick={() => navigate('/workout')}
-                            className="rounded-xl border border-border bg-white px-3 py-2 text-xs text-text-secondary"
+                            className="rounded-xl border border-border bg-bg-surface px-3 py-2 text-xs font-semibold text-text-secondary"
                         >
                             Open planner
                         </button>
                     </div>
-                    <p className="mt-3 text-xl font-black">{formatProgressionInsightTarget(progressionInsight)}</p>
+                    <p className="mt-2 text-xl font-black text-text-primary">{formatProgressionInsightTarget(progressionInsight)}</p>
                     <p className="mt-1 text-xs text-text-secondary">{progressionInsight.reason}</p>
                 </div>
             )}
@@ -827,31 +954,30 @@ export default function DashboardPage() {
             {challenges.length > 0 && (
                 <div className="animate-fade-in stagger-3">
                     <div className="mb-3 flex items-center justify-between">
-                        <h3 className="text-sm font-semibold text-text-primary">Active challenges</h3>
-                        <button onClick={() => navigate('/challenges')} className="text-xs font-medium text-accent">
-                            View all
+                        <h3 className="text-sm font-bold text-text-primary">Active challenges</h3>
+                        <button onClick={() => navigate('/challenges')} className="text-xs font-bold text-primary">
+                            View all →
                         </button>
                     </div>
                     <div className="space-y-3">
                         {challenges.slice(0, 2).map((c) => {
                             const pct = Math.min(100, Math.round((c.currentCount / c.targetCount) * 100));
                             return (
-                                <div key={c.id} className="glass rounded-[24px] p-4">
-                                    <div className="mb-2 flex items-center justify-between">
+                                <div key={c.id} className="bg-bg-card rounded-3xl p-4 shadow-card">
+                                    <div className="mb-3 flex items-center justify-between">
                                         <div className="flex items-center gap-2">
                                             <Trophy size={16} className="text-amber" />
-                                            <span className="text-sm font-medium">{c.title}</span>
+                                            <span className="text-sm font-semibold text-text-primary">{c.title}</span>
                                         </div>
-                                        <span className="text-xs text-text-muted">
-                                            {c.currentCount}/{c.targetCount}
-                                        </span>
+                                        <span className="text-xs text-text-muted font-semibold">{c.currentCount}/{c.targetCount}</span>
                                     </div>
-                                    <div className="h-2 w-full overflow-hidden rounded-full bg-bg-input">
+                                    <div className="h-2.5 w-full overflow-hidden rounded-full bg-bg-input">
                                         <div
-                                            className="h-full rounded-full gradient-primary transition-all duration-500"
+                                            className="h-full rounded-full bg-primary transition-all duration-500"
                                             style={{ width: `${pct}%` }}
                                         />
                                     </div>
+                                    <p className="mt-1.5 text-[11px] text-text-muted">{pct}% complete</p>
                                 </div>
                             );
                         })}
@@ -859,15 +985,16 @@ export default function DashboardPage() {
                 </div>
             )}
 
-            <div className="glass rounded-[28px] p-4 animate-fade-in stagger-4">
+            {/* ── Food today ── */}
+            <div className="bg-bg-card rounded-3xl p-4 shadow-card animate-fade-in stagger-4">
                 <div className="mb-2 flex items-center justify-between">
-                    <h3 className="text-sm font-semibold text-text-primary">Food today</h3>
-                    <button onClick={() => navigate('/nutrition')} className="text-xs font-medium text-accent">
+                    <h3 className="text-sm font-bold text-text-primary">Food today</h3>
+                    <button onClick={() => navigate('/nutrition')} className="text-xs font-bold text-primary">
                         Log food
                     </button>
                 </div>
-                <div className="flex items-baseline gap-1">
-                    <span className="text-2xl font-bold">{todayCalories}</span>
+                <div className="flex items-baseline gap-1.5">
+                    <span className="text-3xl font-extrabold text-text-primary">{todayCalories}</span>
                     <span className="text-sm text-text-muted">kcal</span>
                 </div>
                 <div className="mt-2 flex gap-4">
@@ -877,13 +1004,14 @@ export default function DashboardPage() {
                 </div>
             </div>
 
+            {/* ── Recent sessions ── */}
             {workouts.length > 0 && (
                 <div className="animate-fade-in stagger-5">
                     <div className="mb-3 flex items-center justify-between">
-                        <h3 className="text-sm font-semibold text-text-primary">Recent sessions</h3>
+                        <h3 className="text-sm font-bold text-text-primary">Recent sessions</h3>
                         <button
                             onClick={() => navigate('/history')}
-                            className="text-xs font-medium text-accent"
+                            className="text-xs font-bold text-primary"
                         >
                             Open calendar
                         </button>
@@ -893,26 +1021,39 @@ export default function DashboardPage() {
                             <button
                                 key={w.id}
                                 onClick={() => navigate(`/history/${w.id}`)}
-                                className="glass flex w-full items-center gap-3 rounded-[24px] p-4 text-left"
+                                className="bg-bg-card flex w-full items-center gap-3 rounded-3xl p-4 text-left shadow-card"
                             >
-                                <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-accent/10">
-                                    <Dumbbell size={18} className="text-accent" />
+                                <div className="w-11 h-11 rounded-2xl bg-primary-container flex items-center justify-center shrink-0">
+                                    <Dumbbell size={18} className="text-primary" />
                                 </div>
                                 <div className="min-w-0 flex-1">
-                                    <p className="truncate text-sm font-medium">
+                                    <p className="truncate text-sm font-semibold text-text-primary">
                                         {getWorkoutHeadline(w)}
                                     </p>
                                     <p className="text-xs text-text-muted">
-                                        {formatDurationHuman(w.duration)} • {formatRelativeTime(w.startedAt)}
+                                        {formatDurationHuman(w.duration)} · {formatRelativeTime(w.startedAt)}
                                     </p>
                                 </div>
-                                <div className="flex items-center gap-2 shrink-0">
+                                <div className="flex items-center gap-1.5 shrink-0">
                                     <span className="text-xs text-text-muted">{w.exercises.length} ex</span>
-                                    <ChevronRight size={16} className="text-text-muted" />
+                                    <ChevronRight size={15} className="text-text-muted" />
                                 </div>
                             </button>
                         ))}
                     </div>
+                </div>
+            )}
+
+            {/* ── Recovery guidance ── */}
+            {todayReadiness && todayRecoveryGuidance && (
+                <div className="space-y-3 animate-fade-in">
+                    <RecoveryGuidanceCard
+                        title={todayRecoveryGuidance.headline}
+                        description={todayRecoveryGuidance.summary}
+                        options={recoveryAlternatives.options.slice(0, 4)}
+                        actionLabel="Open recovery"
+                        onAction={() => navigate('/nutrition')}
+                    />
                 </div>
             )}
         </div>
